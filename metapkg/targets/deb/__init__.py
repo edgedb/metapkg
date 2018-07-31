@@ -167,8 +167,9 @@ class BaseDebTarget(Target):
     def get_package_repository(self):
         return DebRepository()
 
-    def build(self, root_pkg, deps, build_deps, io):
-        return debuild.Build(self, io, root_pkg, deps, build_deps).run()
+    def build(self, root_pkg, deps, build_deps, io, workdir):
+        return debuild.Build(
+            self, io, root_pkg, deps, build_deps, workdir).run()
 
     def sh_get_command(self, command):
         return command

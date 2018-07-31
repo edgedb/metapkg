@@ -16,12 +16,14 @@ def detect_target(io):
         if not like:
             like = distro_info['id']
 
-        if like in {'rhel', 'fedora', 'centos'}:
+        like_set = set(like.split(' '))
+
+        if like_set & {'rhel', 'fedora', 'centos'}:
             target = rpm.get_specific_target(distro_info)
-        elif like in {'debian', 'ubuntu'} or True:
+        elif like_set & {'debian', 'ubuntu'}:
             target = deb.get_specific_target(distro_info)
         else:
-            io.error(f'Linux distro not supported: {distro_info["name"]}')
+            io.error(f'Linux distro not supported: {distro_info["id"]}')
 
     else:
         io.error(f'System not supported: {system}')

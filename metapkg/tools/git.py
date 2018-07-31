@@ -46,6 +46,12 @@ def update_repo(repo_url, io) -> str:
         status = git.run('status', '-b', '--porcelain').strip().split(' ')
         tracking = status[1]
         local, _, remote = tracking.partition('...')
+        if not remote:
+            remote_name = git.run('config', f'branch.{local}.remote').strip()
+            remote_ref = git.run('config', f'branch.{local}.merge').strip()
+            remote_ref = remote_ref[len('refs/heads/'):]
+            remote = f'{remote_name}/{remote_ref}'
+
         git.run('reset', '--hard', remote)
     else:
         if repo_gitdir.exists():

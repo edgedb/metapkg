@@ -1,4 +1,5 @@
 import importlib
+import tempfile
 
 from poetry import packages as poetry_pkg
 from poetry.puzzle import solver as poetry_solver
@@ -17,6 +18,7 @@ class Build(base.Command):
     build
         { name : Package to build. }
         { --dest= : Destination path. }
+        { --keepwork : Do not remove the work directory. }
     """
 
     help = """Builds the specified package on the current platform."""
@@ -28,6 +30,7 @@ class Build(base.Command):
         # logging.basicConfig(level='DEBUG')
 
         pkgname = self.argument('name')
+        keepwork = self.option('keepwork')
         # destination = self.option('dest')
 
         modname, _, clsname = pkgname.rpartition(':')
@@ -90,4 +93,15 @@ class Build(base.Command):
 
         build_deps = list(topological.sort(graph))
 
-        target.build(pkg, packages, build_deps, io=self.output)
+        if keepwork:
+            workdir = tempfile.mkdtemp(prefix='metapkg.')
+        else:
+            tempdir = tempfile.TemporaryDirectory(prefix='metapkg.')
+            workdir = tempdir.name
+
+        try:
+            target.build(
+                pkg, packages, build_deps, io=self.output, workdir=workdir)
+        finally:
+            if not keepwork:
+                tempdir.cleanup()

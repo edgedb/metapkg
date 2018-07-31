@@ -4,9 +4,9 @@ import sys
 from metapkg import prog
 
 
-def cmd(*cmd, errors_are_fatal=True, **kwargs):
+def cmd(*cmd, errors_are_fatal=True, hide_stderr=False, **kwargs):
     default_kwargs = {
-        'stderr': sys.stderr,
+        'stderr': subprocess.DEVNULL if hide_stderr else sys.stderr,
         'stdout': subprocess.PIPE,
         'universal_newlines': True,
     }

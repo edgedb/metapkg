@@ -43,11 +43,24 @@ class BasePackage(poetry_pkg.Package):
     def get_no_install_list_script(self, build) -> str:
         return ''
 
+    def get_ignore_list_script(self, build) -> str:
+        return ''
+
+    def get_private_libraries(self, build) -> list:
+        return []
+
 
 class BundledPackage(BasePackage):
+
     title = None
     name = None
+    description = None
+    license = None
+    group = None
+    url = None
+
     artifact_requirements = []
+    artifact_build_requirements = []
 
     @classmethod
     def _get_sources(cls, version: str) -> typing.List[af_sources.BaseSource]:
@@ -140,13 +153,23 @@ class BundledPackage(BasePackage):
 
         extra_requires = self.get_requirements()
         self.requires.update(extra_requires)
-        self.build_requires = []
+        self.build_requires = self.get_build_requirements()
+        self.description = type(self).description
 
         repository.bundle_repo.add_package(self)
 
     def get_requirements(self) -> typing.List[Dependency]:
         reqs = []
         for item in self.artifact_requirements:
+            if isinstance(item, str):
+                reqs.append(poetry_pkg.dependency_from_pep_508(item))
+            else:
+                reqs.append(item)
+        return reqs
+
+    def get_build_requirements(self) -> typing.List[Dependency]:
+        reqs = []
+        for item in self.artifact_build_requirements:
             if isinstance(item, str):
                 reqs.append(poetry_pkg.dependency_from_pep_508(item))
             else:
@@ -212,6 +235,9 @@ class BundledPackage(BasePackage):
 
     def get_no_install_list_script(self, build) -> str:
         return self._get_file_list_script(build, 'no_install')
+
+    def get_ignore_list_script(self, build) -> str:
+        return self._get_file_list_script(build, 'ignore')
 
     def __repr__(self):
         return "<BundledPackage {}>".format(self.unique_name)
