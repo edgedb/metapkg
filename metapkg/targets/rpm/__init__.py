@@ -8,7 +8,7 @@ from poetry import semver
 
 from metapkg import tools
 from metapkg.packages import repository
-from metapkg.targets.base import Target
+from metapkg.targets import base as targets
 from metapkg.targets.package import SystemPackage
 
 from . import build as rpmbuild
@@ -147,36 +147,20 @@ class RPMRepository(repository.Repository):
         return meta
 
 
-class BaseRPMTarget(Target):
+class BaseRPMTarget(targets.FHSTarget):
+
     def __init__(self, distro_info):
         self.distro = distro_info
 
     def get_package_repository(self):
         return RPMRepository()
 
+    def get_arch_libdir(self):
+        return pathlib.Path(tools.cmd('rpm', '--eval', '%_libdir').strip())
+
     def build(self, root_pkg, deps, build_deps, io, workdir):
         return rpmbuild.Build(
             self, io, root_pkg, deps, build_deps, workdir).run()
-
-    def sh_get_command(self, command):
-        return command
-
-    def sh_get_install_path_prefix(self):
-        return pathlib.Path('/opt')
-
-    def sh_get_rel_install_path(self, aspect, package):
-        if aspect == 'sysconf':
-            return 'etc'
-        elif aspect == 'data':
-            return 'share'
-        elif aspect == 'bin':
-            return 'bin'
-        elif aspect == 'lib':
-            return 'lib'
-        elif aspect == 'include':
-            return 'include'
-        else:
-            raise LookupError(f'aspect: {aspect}')
 
 
 class RHEL7OrNewerTarget(BaseRPMTarget):

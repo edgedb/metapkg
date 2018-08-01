@@ -19,6 +19,33 @@ class Target:
         pass
 
 
+class FHSTarget(Target):
+
+    def get_arch_libdir(self):
+        raise NotImplementedError
+
+    def sh_get_command(self, command):
+        return command
+
+    def get_install_prefix(self, build):
+        libdir = self.get_arch_libdir()
+        return libdir / build.root_package.name
+
+    def get_install_path(self, build, aspect):
+        if aspect == 'sysconf':
+            return pathlib.Path('/etc')
+        elif aspect == 'data':
+            return pathlib.Path('/usr/share') / build.root_package.name
+        elif aspect == 'bin':
+            return self.get_install_prefix(build) / 'bin'
+        elif aspect == 'lib':
+            return self.get_install_prefix(build) / 'lib'
+        elif aspect == 'include':
+            return pathlib.Path('/usr/include') / build.root_package.name
+        else:
+            raise LookupError(f'aspect: {aspect}')
+
+
 class Build:
 
     def __init__(self, target, io, root_pkg, deps, build_deps, workdir):
@@ -59,13 +86,11 @@ class Build:
 
         return self.get_path(path, relative_to=relative_to)
 
-    def sh_get_install_prefix(self):
-        prefix = self._target.sh_get_install_path_prefix()
-        return prefix / self._root_pkg.name
+    def get_install_path(self, aspect):
+        return self._target.get_install_path(self, aspect)
 
-    def sh_get_install_path(self, aspect, package):
-        rel_path = self._target.sh_get_rel_install_path(aspect, package)
-        return self.sh_get_install_prefix() / rel_path
+    def get_install_prefix(self):
+        return self._target.get_install_prefix(self)
 
     def sh_get_command(self, command, *, relative_to='pkgbuild'):
         path = self._tools.get(command)

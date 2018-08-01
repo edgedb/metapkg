@@ -175,7 +175,7 @@ class PythonMixin:
         build_python = build.sh_get_command('python')
         dest = (
             build.get_temp_root(relative_to='pkgbuild') /
-            build.sh_get_install_prefix().relative_to('/')
+            build.get_install_prefix().relative_to('/')
         )
 
         sitescript = (
@@ -217,7 +217,7 @@ class PythonMixin:
         return ''
 
     def get_install_list_script(self, build) -> str:
-        prefix = build.sh_get_install_prefix()
+        prefix = build.get_install_prefix()
         dest = build.get_install_dir(self, relative_to='pkgbuild')
 
         dist_name = self.pretty_name.replace('-', '_')

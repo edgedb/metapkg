@@ -189,8 +189,10 @@ class BundledPackage(BasePackage):
 
         paths = {}
         for aspect in ('bin', 'data', 'include', 'lib'):
-            path = build.sh_get_install_path(aspect, self).relative_to('/')
+            path = build.get_install_path(aspect).relative_to('/')
             paths[f'{aspect}dir'] = path
+
+        paths['prefix'] = build.get_install_prefix().relative_to('/')
 
         processed_entries = []
         for entry in entries:
