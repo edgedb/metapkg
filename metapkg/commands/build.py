@@ -51,10 +51,12 @@ class Build(base.Command):
             return 1
 
         root = poetry_pkg.ProjectPackage('__root__', '1')
-        root.add_dependency(pkg.name, {'git': source.url})
+        root.add_dependency(pkg.name, pkg.version.text)
         af_repo.bundle_repo.add_package(root)
 
         target = targets.detect_target(self.output)
+        target_capabilities = target.get_capabilities()
+        extras = [f'capability-{c}' for c in target_capabilities]
 
         repo_pool = af_repo.Pool()
         repo_pool.add_repository(target.get_package_repository())
@@ -64,7 +66,8 @@ class Build(base.Command):
         if item_repo is not None:
             repo_pool.add_repository(item_repo)
 
-        provider = af_repo.Provider(root, repo_pool, self.output)
+        provider = af_repo.Provider(
+            root, repo_pool, self.output, extras=extras)
         resolution = poetry_solver.resolve_version(root, provider)
 
         graph = {}

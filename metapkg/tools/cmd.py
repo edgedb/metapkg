@@ -1,7 +1,9 @@
+import logging
 import subprocess
 import sys
 
-from metapkg import prog
+
+logger = logging.getLogger(__name__)
 
 
 def cmd(*cmd, errors_are_fatal=True, hide_stderr=False, **kwargs):
@@ -19,7 +21,7 @@ def cmd(*cmd, errors_are_fatal=True, hide_stderr=False, **kwargs):
         if errors_are_fatal:
             msg = '{} failed with exit code {}'.format(
                 ' '.join(cmd), e.returncode)
-            prog.die(msg)
+            logger.error(msg)
         else:
             raise
 

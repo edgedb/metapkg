@@ -1,3 +1,5 @@
+import itertools
+
 from poetry import packages as poetry_pkg
 from poetry import repositories as poetry_repo
 from poetry.puzzle import provider as poetry_provider
@@ -47,9 +49,11 @@ bundle_repo = BundleRepository()
 
 class Provider(poetry_provider.Provider):
 
-    def __init__(self, package, pool, io, *, include_build_reqs=False) -> None:
+    def __init__(self, package, pool, io, *,
+                 include_build_reqs=False, extras=None) -> None:
         super().__init__(package, pool, io)
         self.include_build_reqs = include_build_reqs
+        self._active_extras = set(extras) if extras else set()
 
     def search_for_vcs(self, dependency):
         path = tools.git.update_repo(dependency.source, self._io)
@@ -88,3 +92,16 @@ class Provider(poetry_provider.Provider):
                 package.requires = old_requires
         else:
             return super().incompatibilities_for(package)
+
+    def complete_package(self, package) -> poetry_pkg.Package:
+        chain = [package.requires]
+        build_requires = getattr(package, 'build_requires', None)
+        if build_requires:
+            chain.append(build_requires)
+
+        for dep in itertools.chain.from_iterable(chain):
+            if not dep.is_activated() and dep.extras:
+                if not (set(dep.extras) - self._active_extras):
+                    dep.activate()
+
+        return super().complete_package(package)

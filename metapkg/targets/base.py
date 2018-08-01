@@ -18,6 +18,12 @@ class Target:
     def build(self, root_pkg, deps, io, workdir):
         pass
 
+    def get_capabilities(self) -> list:
+        return []
+
+    def has_capability(self, capability):
+        return capability in self.get_capabilities()
+
 
 class FHSTarget(Target):
 
@@ -123,6 +129,18 @@ class Build:
                     f'unexpected tool type: {path}')
 
         return cmd
+
+    def sh_format_command(self, path, args: dict) -> str:
+        args_parts = []
+        for arg, val in args.items():
+            if val is None:
+                args_parts.append(arg)
+            else:
+                args_parts.append(f'{arg}={shlex.quote(str(val))}')
+
+        args_str = '\\\n  '.join(args_parts)
+
+        return f'{shlex.quote(str(path))} \\\n  {args_str}'
 
     def write_helper(self, name: str, text: str, *, relative_to: str) -> str:
         """Write an executable helper and return it's shell-escaped name."""

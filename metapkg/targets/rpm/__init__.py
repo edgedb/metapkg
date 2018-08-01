@@ -21,6 +21,7 @@ PACKAGE_MAP = {
     'pam': 'pam-devel',
     'python': 'python3',
     'uuid': 'libuuid-devel',
+    'systemd-dev': 'systemd-devel',
 }
 
 _version_trans = str.maketrans({'+': '.', '-': '.', '~': '.'})
@@ -133,7 +134,7 @@ class RPMRepository(repository.Repository):
             if line == 'Available Packages':
                 break
         else:
-            raise RuntimeError('could not parse yum list output')
+            return {}
 
         versions = []
 
@@ -164,7 +165,10 @@ class BaseRPMTarget(targets.FHSTarget):
 
 
 class RHEL7OrNewerTarget(BaseRPMTarget):
-    pass
+
+    def get_capabilities(self) -> list:
+        capabilities = super().get_capabilities()
+        return capabilities + ['systemd']
 
 
 def get_specific_target(distro_info):

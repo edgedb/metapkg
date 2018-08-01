@@ -179,6 +179,10 @@ class BaseDebTarget(targets.FHSTarget):
 
 class ModernDebianTarget(BaseDebTarget):
 
+    def get_capabilities(self) -> list:
+        capabilities = super().get_capabilities()
+        return capabilities + ['systemd']
+
     def get_global_rules(self):
         return textwrap.dedent('''\
             export DH_VERBOSE=1
