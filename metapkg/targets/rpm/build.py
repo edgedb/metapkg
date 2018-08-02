@@ -3,6 +3,7 @@ import glob
 import os
 import pathlib
 import platform
+import shlex
 import subprocess
 import textwrap
 
@@ -12,10 +13,8 @@ from metapkg import tools
 
 class Build(targets.Build):
 
-    def run(self):
-        self._io.writeln(f'<info>Building {self._root_pkg} on '
-                         f'{self._target.distro["id"]}-'
-                         f'{self._target.distro["version"]}</info>')
+    def prepare(self):
+        super().prepare()
 
         self._pkgroot = self._droot / self._root_pkg.name
         self._srcroot = self._pkgroot / self._root_pkg.name
@@ -25,8 +24,8 @@ class Build(targets.Build):
         self._installroot = pathlib.Path('INSTALL')
 
         self._system_tools['make'] = f'make -j{os.cpu_count()}'
-
-        self._build()
+        self._system_tools['useradd'] = 'useradd'
+        self._system_tools['groupadd'] = 'groupadd'
 
     def get_source_abspath(self):
         return self._srcroot
@@ -108,7 +107,7 @@ class Build(targets.Build):
             f'{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}'
         )
 
-    def _build(self):
+    def build(self):
         self.prepare_tools()
         self.prepare_tarballs()
         self.prepare_patches()
@@ -116,6 +115,14 @@ class Build(targets.Build):
         self._rpmbuild()
 
     def _write_spec(self):
+        sysreqs = self.get_extra_system_requirements()
+        tarballs = self.get_tarball_root(relative_to=None)
+
+        for name, content in self._sysunits.items():
+            path = tarballs / name
+            with open(path, 'w') as f:
+                print(content, file=f)
+
         rules = textwrap.dedent('''\
             Name: {name}
             Version: {version}
@@ -154,8 +161,16 @@ class Build(targets.Build):
 
             %install
             {install_script}
+            {install_extras}
+
+            %pre
+            {pre_script}
+
+            %post
+            {post_script}
 
             %files -f {temp_root}/install.list
+            {files_extras}
 
             %changelog
             {changelog}
@@ -168,7 +183,7 @@ class Build(targets.Build):
             group=self._root_pkg.group,
             version=self._root_pkg.pretty_version,
             build_reqs=self._get_build_reqs_spec(),
-            runtime_reqs=self._get_runtime_reqs_spec(),
+            runtime_reqs=self._get_runtime_reqs_spec(sysreqs),
             source_spec=self._get_source_spec(),
             patch_spec=self._get_patch_spec(),
             patch_script=self._get_patch_script(),
@@ -183,6 +198,14 @@ class Build(targets.Build):
                 relative_to='buildroot'),
             install_script=self._write_script(
                 'install', installable_only=True,
+                relative_to='buildroot'),
+            install_extras=self._get_install_extras(),
+            files_extras=self._get_files_extras(),
+            pre_script=self.get_script(
+                'before_install', installable_only=True,
+                relative_to='buildroot'),
+            post_script=self.get_script(
+                'after_install', installable_only=True,
                 relative_to='buildroot'),
             temp_root=self.get_temp_root(relative_to='buildroot'),
             privatelibs=self._get_private_libs_pattern(),
@@ -225,13 +248,24 @@ class Build(targets.Build):
 
         return '\n'.join(lines)
 
-    def _get_runtime_reqs_spec(self):
+    def _get_runtime_reqs_spec(self, extrareqs):
         lines = []
 
         deps = (pkg for pkg in self._deps
                 if isinstance(pkg, targets.SystemPackage))
         for pkg in deps:
             lines.append(f'Requires: {pkg.system_name}')
+
+        categorymap = {
+            'before-install': 'pre',
+            'after-install': 'post',
+            'before-uninstall': 'preun',
+            'after-uninstall': 'postun'
+        }
+
+        for cat, reqs in extrareqs.items():
+            cat = categorymap[cat]
+            lines.append(f'Requires({cat}): {" ".join(reqs)}')
 
         return '\n'.join(lines)
 
@@ -240,6 +274,9 @@ class Build(targets.Build):
 
         for i, tarball in enumerate(self._tarballs.values()):
             lines.append(f'Source{i}: {tarball.name}')
+
+        for j, sysunit in enumerate(self._sysunits):
+            lines.append(f'Source{i + j + 1}: {sysunit}')
 
         return '\n'.join(lines)
 
@@ -334,6 +371,29 @@ class Build(targets.Build):
 
             popd >/dev/null
         ''')
+
+    def _get_install_extras(self) -> str:
+        lines = []
+
+        if self._sysunits:
+            lines.append(r'%{__install} -d %{buildroot}%{_unitdir}')
+
+            offset = len(self._tarballs)
+            for i, unit in enumerate(self._sysunits):
+                line = (f'%{{__install}} -m 644 %{{SOURCE{offset + i}}} '
+                        f'%{{buildroot}}%{{_unitdir}}/{shlex.quote(unit)}')
+                lines.append(line)
+
+        return '\n'.join(lines)
+
+    def _get_files_extras(self) -> str:
+        lines = []
+
+        for i, unit in enumerate(self._sysunits):
+            line = f'%{{_unitdir}}/{unit}'
+            lines.append(line)
+
+        return '\n'.join(lines)
 
     def _rpmbuild(self):
         tools.cmd(

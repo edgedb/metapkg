@@ -24,6 +24,12 @@ PACKAGE_MAP = {
     'systemd-dev': 'systemd-devel',
 }
 
+
+SYSTEM_DEPENDENCY_MAP = {
+    'adduser': ['/usr/sbin/useradd', '/usr/sbin/groupadd'],
+}
+
+
 _version_trans = str.maketrans({'+': '.', '-': '.', '~': '.'})
 
 
@@ -148,7 +154,7 @@ class RPMRepository(repository.Repository):
         return meta
 
 
-class BaseRPMTarget(targets.FHSTarget):
+class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
 
     def __init__(self, distro_info):
         self.distro = distro_info
@@ -162,6 +168,12 @@ class BaseRPMTarget(targets.FHSTarget):
     def build(self, root_pkg, deps, build_deps, io, workdir):
         return rpmbuild.Build(
             self, io, root_pkg, deps, build_deps, workdir).run()
+
+    def get_system_dependencies(self, dep_name) -> list:
+        try:
+            return SYSTEM_DEPENDENCY_MAP[dep_name]
+        except KeyError:
+            return super().get_system_dependencies(dep_name)
 
 
 class RHEL7OrNewerTarget(BaseRPMTarget):

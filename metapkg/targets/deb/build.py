@@ -10,20 +10,16 @@ from metapkg import tools
 
 class Build(targets.Build):
 
-    def run(self):
-        self._io.writeln(f'<info>Building {self._root_pkg} on '
-                         f'{self._target.distro["id"]}-'
-                         f'{self._target.distro["version"]}</info>')
+    def prepare(self):
+        super().prepare()
 
         self._pkgroot = self._droot / self._root_pkg.name
         self._srcroot = self._pkgroot / self._root_pkg.name
         self._debroot = self._srcroot / 'debian'
-        self._tools = {}
-        self._common_tools = {}
-        self._system_tools = {
-            'make': 'make -j{}'.format(os.cpu_count())
-        }
-        self._tool_wrappers = {}
+
+        self._system_tools['make'] = 'make -j{}'.format(os.cpu_count())
+        self._system_tools['useradd'] = 'useradd'
+        self._system_tools['groupadd'] = 'groupadd'
 
         self._artifactroot = pathlib.Path('_artifacts')
         self._buildroot = self._artifactroot / 'build'
@@ -32,8 +28,6 @@ class Build(targets.Build):
 
         self._debroot.mkdir(parents=True)
         (self._debroot / self._tmproot).mkdir(parents=True)
-
-        self._build()
 
     def get_source_abspath(self):
         return self._srcroot
@@ -65,6 +59,10 @@ class Build(targets.Build):
             return (self.get_source_abspath() / path).resolve()
         else:
             raise ValueError(f'invalid relative_to argument: {relative_to}')
+
+    def get_spec_root(self, *, relative_to='sourceroot'):
+        return self.get_dir(
+            pathlib.Path('debian'), relative_to=relative_to)
 
     def get_helpers_root(self, *, relative_to='sourceroot'):
         return self.get_dir(
@@ -106,7 +104,7 @@ class Build(targets.Build):
             f'{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}'
         )
 
-    def _build(self):
+    def build(self):
         self.prepare_tools()
         self.prepare_tarballs()
         self.unpack_sources()
@@ -115,6 +113,7 @@ class Build(targets.Build):
         self._write_control()
         self._write_changelog()
         self._write_rules()
+        self._write_scriptlets()
         self._dpkg_buildpackage()
 
     def _write_common_bits(self):
@@ -127,7 +126,7 @@ class Build(targets.Build):
 
     def _write_control(self):
         deps = ',\n '.join(f'{dep.system_name} (= {dep.pretty_version})'
-                           for dep in self._deps
+                           for dep in self._build_deps
                            if isinstance(dep, targets.SystemPackage))
 
         control = textwrap.dedent('''\
@@ -215,6 +214,7 @@ class Build(targets.Build):
 
             override_dh_auto_install-arch:
             {build_install_steps}
+            {install_extras}
 
             override_dh_install-arch:
             {install_steps}
@@ -228,6 +228,7 @@ class Build(targets.Build):
             build_steps=self._write_script('build'),
             build_install_steps=self._write_script(
                 'build_install', installable_only=True),
+            install_extras=textwrap.indent(self._get_install_extras(), '\t'),
             install_steps=self._write_script(
                 'install', installable_only=True),
         )
@@ -235,6 +236,24 @@ class Build(targets.Build):
         with open(self._debroot / 'rules', 'w') as f:
             f.write(rules)
             os.fchmod(f.fileno(), 0o755)
+
+    def _write_scriptlets(self):
+
+        stagemap = {
+            'before_install': 'preinst',
+            'after_install': 'postinst',
+            'before_uninstall': 'prerm',
+            'after_uninstall': 'postrm'
+        }
+
+        for genstage, debstage in stagemap.items():
+            script = self.get_script(genstage, installable_only=True)
+            if script:
+                stagefile = f'{self.root_package.name}.{debstage}'
+                spec_root = self.get_spec_root(relative_to=None)
+                with open(spec_root / stagefile, 'w') as f:
+                    print('#!/bin/bash\nset -e', file=f)
+                    print(script, file=f)
 
     def _get_package_install_script(self, pkg) -> str:
         source_root = self.get_source_root(relative_to='pkgbuild')
@@ -259,6 +278,14 @@ class Build(targets.Build):
         trim_install = self.sh_get_command(
             'trim-install', relative_to='sourceroot')
 
+        sd_units = []
+        for unit in self._sysunits:
+            sd_units.append(
+                f'echo /lib/systemd/system/{unit} >> {temp_dir}/install'
+            )
+
+        sd_units = '\n'.join(sd_units)
+
         return textwrap.dedent(f'''
             pushd "{source_root}" >/dev/null
 
@@ -270,10 +297,30 @@ class Build(targets.Build):
                 "{temp_dir}/not-installed" "{temp_dir}/ignored" \\
                 "{install_dir}" > "debian/{self._root_pkg.name}.install"
 
+            {sd_units}
+
             dh_install --sourcedir="{install_dir}" --fail-missing
 
             popd >/dev/null
         ''')
+
+    def _get_install_extras(self) -> str:
+        spec_root = self.get_spec_root(relative_to=None)
+
+        for name, content in self._sysunits.items():
+            path = spec_root / name
+            with open(path, 'w') as f:
+                print(content, file=f)
+
+        lines = []
+
+        if self._sysunits:
+            for i, unit in enumerate(self._sysunits):
+                lines.append(
+                    f'install -m644 debian/{unit} '
+                    f'$(DESTDIR)/lib/systemd/system')
+
+        return '\n'.join(lines)
 
     def _dpkg_buildpackage(self):
         env = os.environ.copy()

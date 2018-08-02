@@ -1,3 +1,4 @@
+import collections
 import os
 import pathlib
 import re
@@ -7,10 +8,20 @@ import stat
 import sys
 import textwrap
 
+from metapkg import tools
 from metapkg.packages import sources as mpkg_sources
 
 from . import _helpers as helpers_pkg
 from . import package as tgt_pkg
+
+
+class TargetAction:
+
+    def __init__(self, build) -> None:
+        self._build = build
+
+    def get_script(self, **kwargs) -> str:
+        raise NotImplementedError
 
 
 class Target:
@@ -23,6 +34,120 @@ class Target:
 
     def has_capability(self, capability):
         return capability in self.get_capabilities()
+
+    def get_system_dependencies(self, dep_name) -> list:
+        return [dep_name]
+
+    def get_action(self, name, build) -> TargetAction:
+        raise NotImplementedError(f'unknown target action: {name}')
+
+
+class LinuxEnsureDirAction(TargetAction):
+
+    def get_script(self, *, path, owner_user, owner_group, mode=0o755):
+
+        return textwrap.dedent(f'''\
+            if ! [ -d "{path}" ]; then
+                mkdir -p "{path}"
+                chmod "{mode:o}" "{path}"
+                chown "{owner_user}:{owner_group}" "{path}"
+            fi
+        ''')
+
+
+class LinuxAddUserAction(TargetAction):
+
+    def get_script(self, *, name, group=None, homedir=None,
+                   shell=False, system=False, description=None) -> str:
+
+        args = {}
+        if group:
+            args['-g'] = group
+        if homedir:
+            args['-d'] = homedir
+        else:
+            args['-M'] = None
+        if shell:
+            args['-s'] = '/bin/bash'
+        else:
+            args['-s'] = '/sbin/nologin'
+        if system:
+            args['-r'] = None
+        if description:
+            args['-c'] = description
+
+        args[name] = None
+
+        user_group = name
+
+        if group:
+            group_args = {}
+            if system:
+                group_args['-r'] = None
+            group_args[group] = None
+
+            groupadd = self._build.sh_get_command('groupadd')
+
+            groupadd_cmd = self._build.sh_format_command(
+                groupadd, group_args, extra_indent=4)
+            group_script = textwrap.dedent('''\
+                if ! getent group "{group}" > /dev/null; then
+                    {groupadd_cmd}
+                fi
+            ''').format(group=group, groupadd_cmd=groupadd_cmd)
+
+            user_group += f':{group}'
+        else:
+            group_script = ''
+
+        if homedir:
+            homedir_script = LinuxEnsureDirAction(self._build).get_script(
+                path=homedir, owner_user=name, owner_group=group)
+        else:
+            homedir_script = ''
+
+        useradd = self._build.sh_get_command('useradd')
+        useradd_cmd = self._build.sh_format_command(
+            useradd, args, extra_indent=4)
+
+        return textwrap.dedent('''\
+            {group_script}
+            if ! getent passwd "{name}" > /dev/null; then
+                {useradd_cmd}
+            fi
+            {homedir_script}
+        ''').format(group_script=group_script, name=name,
+                    useradd_cmd=useradd_cmd,
+                    homedir_script=homedir_script)
+
+
+class LinuxTarget(Target):
+
+    def get_action(self, name, build) -> TargetAction:
+        if name == 'adduser':
+            return LinuxAddUserAction(build)
+        elif name == 'ensuredir':
+            return LinuxEnsureDirAction(build)
+        else:
+            return super().get_action(name, build)
+
+    def get_su_script(self, build, script, user) -> str:
+        return f"su '{user}' -c {shlex.quote(script)}\n"
+
+    def service_scripts_for_package(self, build, package) -> dict:
+        if self.has_capability('systemd'):
+            units = package.read_support_files(build, '*.service.in')
+            result = {}
+            for name, content in units.items():
+                name = name.replace('VERSION', str(package.version.major))[:-3]
+                content = build.format_package_template(content, package)
+                result[name] = content
+
+            return result
+
+        else:
+            raise NotImplementedError(
+                'non-systemd linux targets are not supported')
 
 
 class FHSTarget(Target):
@@ -48,6 +173,10 @@ class FHSTarget(Target):
             return self.get_install_prefix(build) / 'lib'
         elif aspect == 'include':
             return pathlib.Path('/usr/include') / build.root_package.name
+        elif aspect == 'localstate':
+            return pathlib.Path('/var')
+        elif aspect == 'runstate':
+            return pathlib.Path('/run')
         else:
             raise LookupError(f'aspect: {aspect}')
 
@@ -76,6 +205,7 @@ class Build:
         self._tool_wrappers = {}
         self._tarballs = {}
         self._patches = []
+        self._sysunits = {}
 
     @property
     def root_package(self):
@@ -84,6 +214,20 @@ class Build:
     @property
     def target(self):
         return self._target
+
+    def run(self):
+        self._io.writeln(f'<info>Building {self._root_pkg} on '
+                         f'{self._target.distro["id"]}-'
+                         f'{self._target.distro["version"]}</info>')
+
+        self.prepare()
+        self.build()
+
+    def prepare(self):
+        self._sysunits = self.get_service_scripts()
+
+    def build(self):
+        raise NotImplementedError
 
     def get_dir(self, path, *, relative_to):
         absolute_path = (self.get_source_abspath() / path).resolve()
@@ -130,21 +274,38 @@ class Build:
 
         return cmd
 
-    def sh_format_command(self, path, args: dict) -> str:
+    def sh_format_command(self, path, args: dict, *, extra_indent=0,
+                          user=None) -> str:
         args_parts = []
         for arg, val in args.items():
             if val is None:
                 args_parts.append(arg)
-            else:
+            elif arg.startswith('--'):
                 args_parts.append(f'{arg}={shlex.quote(str(val))}')
+            else:
+                args_parts.append(f'{arg} {shlex.quote(str(val))}')
 
-        args_str = '\\\n  '.join(args_parts)
+        args_str = ' \\\n    '.join(args_parts)
+        if extra_indent:
+            args_str = textwrap.indent(args_str, ' ' * extra_indent)
 
-        return f'{shlex.quote(str(path))} \\\n  {args_str}'
+        return f'{shlex.quote(str(path))} \\\n    {args_str}'
+
+    def format_package_template(self, tpl, package) -> str:
+        variables = {}
+        for aspect in ('bin', 'data', 'include', 'lib'):
+            path = self.get_install_path(aspect)
+            variables[f'{aspect}dir'] = path
+
+        variables['prefix'] = self.get_install_prefix()
+
+        variables['version'] = package.version.major
+        variables['description'] = package.description
+        variables['documentation'] = package.url
+
+        return tools.format_template(tpl, **variables)
 
     def write_helper(self, name: str, text: str, *, relative_to: str) -> str:
-        """Write an executable helper and return it's shell-escaped name."""
-
         helpers_abs = self.get_helpers_root(relative_to=None)
         helpers_rel = self.get_helpers_root(relative_to=relative_to)
 
@@ -156,6 +317,8 @@ class Build:
 
     def sh_write_helper(
             self, name: str, text: str, *, relative_to: str) -> str:
+        """Write an executable helper and return it's shell-escaped name."""
+
         cmd = self.write_helper(name, text, relative_to=relative_to)
         return f'{shlex.quote(cmd)}'
 
@@ -187,11 +350,14 @@ class Build:
     def get_tool_list(self):
         return ['trim-install.py']
 
+    def get_su_script(self, script, user):
+        return self.target.get_su_script(self, script, user)
+
     def prepare_tools(self):
         for pkg in self._bundled:
-            tools = pkg.get_build_tools(self)
-            if tools:
-                self._tools.update(tools)
+            bundled_tools = pkg.get_build_tools(self)
+            if bundled_tools:
+                self._tools.update(bundled_tools)
 
         source_dirs = [pathlib.Path(helpers_pkg.__path__[0])]
         specific_helpers = pathlib.Path(
@@ -270,10 +436,47 @@ class Build:
 
         self._patches = series
 
+    def get_extra_system_requirements(self) -> dict:
+        all_reqs = collections.defaultdict(set)
+
+        for pkg in self._installable:
+            reqs = pkg.get_extra_system_requirements(self)
+            for req_type, req_list in reqs.items():
+                sys_reqs = set()
+                for req in req_list:
+                    sys_reqs.update(self.target.get_system_dependencies(req))
+
+                all_reqs[req_type].update(sys_reqs)
+
+        return all_reqs
+
+    def get_service_scripts(self) -> dict:
+        all_scripts = {}
+
+        for pkg in self._installable:
+            pkg_scripts = pkg.get_service_scripts(self)
+            all_scripts.update(pkg_scripts)
+
+        return all_scripts
+
     def _write_script(
             self, stage: str, *,
             installable_only: bool=False,
             relative_to: str='sourceroot') -> str:
+
+        script = self.get_script(stage, installable_only=installable_only,
+                                 relative_to=relative_to)
+
+        helper = self.sh_write_bash_helper(
+            f'_{stage}.sh', script, relative_to=relative_to)
+
+        return f'\t{helper}'
+
+    def get_script(
+            self, stage: str, *,
+            installable_only: bool=False,
+            relative_to: str='sourceroot') -> str:
+
         scripts = []
 
         if installable_only:
@@ -281,17 +484,36 @@ class Build:
         else:
             packages = self._bundled
 
+        global_method = getattr(self, f'_get_global_{stage}_script', None)
+        if global_method:
+            global_script = global_method()
+            if global_script:
+                scripts.append(global_script)
+
         for pkg in packages:
             script = self._get_package_script(
                 pkg, stage, relative_to=relative_to)
             if script.strip():
                 scripts.append(script)
 
-        helper = self.sh_write_bash_helper(
-            f'_{stage}.sh', '\n\n'.join(scripts),
-            relative_to=relative_to)
+        return '\n\n'.join(scripts)
 
-        return f'\t{helper}'
+    def _get_global_after_install_script(self) -> str:
+
+        if self.target.has_capability('systemd') and self._sysunits:
+            rundir = self.get_install_path('runstate')
+            systemd = rundir / 'systemd' / 'system'
+
+            script = textwrap.dedent(f'''\
+                if [ -d "{systemd}" ]; then
+                    systemctl daemon-reload
+                fi
+            ''')
+
+        else:
+            script = ''
+
+        return script
 
     def _get_package_script(
             self, pkg, stage: str, *, relative_to='sourceroot') -> str:
@@ -308,13 +530,18 @@ class Build:
         if pkg_method:
             pkg_script += pkg_method(self)
 
+        build_time = stage not in {'before_install', 'after_install',
+                                   'before_uninstall', 'after_uninstall'}
+
         if pkg_script:
-            script = (
-                f'### {pkg.unique_name}\n'
-                f'pushd "{bdir}" >/dev/null\n'
-                f'{pkg_script}\n'
-                f'popd >/dev/null'
-            )
+            script_lines = [f'### {pkg.unique_name}\n']
+            if build_time:
+                script_lines.append(f'pushd "{bdir}" >/dev/null\n')
+            script_lines.append(f'{pkg_script}\n')
+            if build_time:
+                script_lines.append(f'popd >/dev/null')
+
+            script = ''.join(script_lines)
         else:
             script = ''
 

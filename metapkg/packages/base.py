@@ -1,4 +1,5 @@
 import collections
+import glob
 import pathlib
 import pprint
 import sys
@@ -48,6 +49,18 @@ class BasePackage(poetry_pkg.Package):
 
     def get_private_libraries(self, build) -> list:
         return []
+
+    def get_extra_system_requirements(self, build) -> dict:
+        return {}
+
+    def get_before_install_script(self, build) -> str:
+        return ''
+
+    def get_after_install_script(self, build) -> str:
+        return ''
+
+    def get_service_scripts(self, build) -> dict:
+        return {}
 
 
 class BundledPackage(BasePackage):
@@ -219,6 +232,20 @@ class BundledPackage(BasePackage):
         return build.sh_write_python_helper(
             scriptfile_name, pyscript, relative_to='pkgbuild')
 
+    def read_support_files(self, build, file_glob) -> dict:
+
+        mod = sys.modules[type(self).__module__]
+        path = pathlib.Path(mod.__file__).parent / file_glob
+
+        result = {}
+
+        for pathname in glob.glob(str(path)):
+            path = pathlib.Path(pathname)
+            with open(path, 'r') as f:
+                result[path.name] = f.read()
+
+        return result
+
     def _get_file_list_script(self, build, listname) -> str:
         mod = sys.modules[type(self).__module__]
         path = pathlib.Path(mod.__file__).parent / f'{listname}.list'
@@ -240,6 +267,9 @@ class BundledPackage(BasePackage):
 
     def get_ignore_list_script(self, build) -> str:
         return self._get_file_list_script(build, 'ignore')
+
+    def get_service_scripts(self, build) -> dict:
+        return build.target.service_scripts_for_package(build, self)
 
     def __repr__(self):
         return "<BundledPackage {}>".format(self.unique_name)

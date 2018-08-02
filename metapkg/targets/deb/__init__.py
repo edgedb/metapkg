@@ -22,6 +22,7 @@ PACKAGE_MAP = {
     'pam': 'libpam0g-dev',
     'python': 'python3',
     'uuid': 'uuid-dev',
+    'systemd-dev': 'libsystemd-dev',
 }
 
 _version_trans = str.maketrans({'+': '.', '-': '.', '~': '.'})
@@ -160,7 +161,7 @@ class DebRepository(repository.Repository):
         return meta
 
 
-class BaseDebTarget(targets.FHSTarget):
+class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
 
     def __init__(self, distro_info):
         self.distro = distro_info

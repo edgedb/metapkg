@@ -22,6 +22,7 @@ def cmd(*cmd, errors_are_fatal=True, hide_stderr=False, **kwargs):
             msg = '{} failed with exit code {}'.format(
                 ' '.join(cmd), e.returncode)
             logger.error(msg)
+            sys.exit(1)
         else:
             raise
 
