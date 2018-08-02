@@ -62,6 +62,9 @@ class BasePackage(poetry_pkg.Package):
     def get_service_scripts(self, build) -> dict:
         return {}
 
+    def get_exposed_commands(self, build) -> list:
+        return []
+
 
 class BundledPackage(BasePackage):
 

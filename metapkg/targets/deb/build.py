@@ -320,6 +320,18 @@ class Build(targets.Build):
                     f'install -m644 debian/{unit} '
                     f'$(DESTDIR)/lib/systemd/system')
 
+        symlinks = []
+        for pkg in self._installable:
+            for cmd in pkg.get_exposed_commands(self):
+                symlinks.append((cmd.relative_to('/'), f'usr/bin/{cmd.name}'))
+
+        if symlinks:
+            with open(spec_root / f'{self.root_package.name}.links', 'w') as f:
+                print('\n'.join(f'{src} {dst}' for src, dst in symlinks),
+                      file=f)
+
+            lines.append('dh_link')
+
         return '\n'.join(lines)
 
     def _dpkg_buildpackage(self):

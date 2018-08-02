@@ -384,6 +384,19 @@ class Build(targets.Build):
                         f'%{{buildroot}}%{{_unitdir}}/{shlex.quote(unit)}')
                 lines.append(line)
 
+        symlinks = []
+        for pkg in self._installable:
+            for cmd in pkg.get_exposed_commands(self):
+                symlinks.append(cmd)
+
+        if symlinks:
+            lines.append(r'install -m755 -d "${RPM_BUILD_ROOT}/%{_bindir}"')
+
+            for cmd in symlinks:
+                lines.append(
+                    f'ln -sf "{cmd}" '
+                    f'"${{RPM_BUILD_ROOT}}/%{{_bindir}}/{cmd.name}"')
+
         return '\n'.join(lines)
 
     def _get_files_extras(self) -> str:
@@ -392,6 +405,10 @@ class Build(targets.Build):
         for i, unit in enumerate(self._sysunits):
             line = f'%{{_unitdir}}/{unit}'
             lines.append(line)
+
+        for pkg in self._installable:
+            for cmd in pkg.get_exposed_commands(self):
+                lines.append(f'%{{_bindir}}/{cmd.name}')
 
         return '\n'.join(lines)
 
