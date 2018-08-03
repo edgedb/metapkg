@@ -26,12 +26,9 @@ class Build(base.Command):
     _loggers = ['metapkg.build']
 
     def handle(self):
-        # import logging
-        # logging.basicConfig(level='DEBUG')
-
         pkgname = self.argument('name')
         keepwork = self.option('keepwork')
-        # destination = self.option('dest')
+        destination = self.option('dest')
 
         modname, _, clsname = pkgname.rpartition(':')
 
@@ -104,7 +101,8 @@ class Build(base.Command):
 
         try:
             target.build(
-                pkg, packages, build_deps, io=self.output, workdir=workdir)
+                pkg, packages, build_deps, io=self.output, workdir=workdir,
+                outputdir=destination)
         finally:
             if not keepwork:
                 tempdir.cleanup()

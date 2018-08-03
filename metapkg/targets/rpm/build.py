@@ -4,6 +4,7 @@ import os
 import pathlib
 import platform
 import shlex
+import shutil
 import subprocess
 import textwrap
 
@@ -443,10 +444,16 @@ class Build(targets.Build):
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT)
 
-        rpms = self.get_dir('RPMS', relative_to=None) / platform.machine()
+        if self._outputroot is not None:
+            if not self._outputroot.exists():
+                self._outputroot.mkdir()
 
-        for rpm in glob.glob(str(rpms / '*.rpm')):
-            tools.cmd(
-                'rpmlint', '-i', rpm,
-                stdout=self._io.output.stream,
-                stderr=subprocess.STDOUT)
+            rpms = self.get_dir('RPMS', relative_to=None) / platform.machine()
+            for rpm in glob.glob(str(rpms / '*.rpm')):
+                rpm = pathlib.Path(rpm)
+                shutil.copy2(rpm, self._outputroot / rpm.name)
+
+            srpms = self.get_dir('SRPMS', relative_to=None)
+            for rpm in glob.glob(str(srpms / '*.rpm')):
+                rpm = pathlib.Path(rpm)
+                shutil.copy2(rpm, self._outputroot / rpm.name)

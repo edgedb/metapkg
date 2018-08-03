@@ -26,7 +26,7 @@ class TargetAction:
 
 class Target:
 
-    def build(self, root_pkg, deps, io, workdir):
+    def build(self, root_pkg, deps, io, workdir, outputdir):
         pass
 
     def get_capabilities(self) -> list:
@@ -183,8 +183,13 @@ class FHSTarget(Target):
 
 class Build:
 
-    def __init__(self, target, io, root_pkg, deps, build_deps, workdir):
+    def __init__(self, target, io, root_pkg, deps,
+                 build_deps, workdir, outputdir):
         self._droot = pathlib.Path(workdir)
+        if outputdir is not None:
+            self._outputroot = pathlib.Path(outputdir)
+        else:
+            self._outputroot = None
         self._target = target
         self._io = io
         self._root_pkg = root_pkg

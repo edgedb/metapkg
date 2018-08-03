@@ -1,6 +1,7 @@
 import datetime
 import os
 import pathlib
+import shutil
 import subprocess
 import textwrap
 
@@ -367,3 +368,11 @@ class Build(targets.Build):
             cwd=str(self._srcroot),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT)
+
+        if self._outputroot is not None:
+            if not self._outputroot.exists():
+                self._outputroot.mkdir()
+
+            for entry in self._pkgroot.iterdir():
+                if not entry.is_dir():
+                    shutil.copy2(entry, self._outputroot / entry.name)
