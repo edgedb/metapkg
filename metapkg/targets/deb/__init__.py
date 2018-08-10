@@ -184,6 +184,12 @@ class ModernDebianTarget(BaseDebTarget):
         capabilities = super().get_capabilities()
         return capabilities + ['systemd']
 
+    def get_resource_path(self, build, resource):
+        if resource == 'systemd-units':
+            return pathlib.Path('/lib/systemd/system')
+        else:
+            return super().get_resource_path(build, resource)
+
     def get_global_rules(self):
         return textwrap.dedent('''\
             export DH_VERBOSE=1

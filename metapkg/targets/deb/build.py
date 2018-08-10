@@ -19,6 +19,7 @@ class Build(targets.Build):
         self._debroot = self._srcroot / 'debian'
 
         self._system_tools['make'] = 'make -j{}'.format(os.cpu_count())
+        self._system_tools['install'] = 'install'
         self._system_tools['useradd'] = 'useradd'
         self._system_tools['groupadd'] = 'groupadd'
 
@@ -78,6 +79,10 @@ class Build(targets.Build):
     def get_patches_root(self, *, relative_to='sourceroot'):
         return self.get_dir(
             pathlib.Path('debian') / 'patches', relative_to=relative_to)
+
+    def get_extras_root(self, *, relative_to='sourceroot'):
+        return self.get_dir(
+            pathlib.Path('debian') / 'extras', relative_to=relative_to)
 
     def get_source_dir(self, package, *, relative_to='sourceroot'):
         return self.get_dir(
@@ -279,14 +284,6 @@ class Build(targets.Build):
         trim_install = self.sh_get_command(
             'trim-install', relative_to='sourceroot')
 
-        sd_units = []
-        for unit in self._sysunits:
-            sd_units.append(
-                f'echo /lib/systemd/system/{unit} >> {temp_dir}/install'
-            )
-
-        sd_units = '\n'.join(sd_units)
-
         return textwrap.dedent(f'''
             pushd "{source_root}" >/dev/null
 
@@ -298,35 +295,29 @@ class Build(targets.Build):
                 "{temp_dir}/not-installed" "{temp_dir}/ignored" \\
                 "{install_dir}" > "debian/{self._root_pkg.name}.install"
 
-            {sd_units}
-
             dh_install --sourcedir="{install_dir}" --fail-missing
 
             popd >/dev/null
         ''')
 
     def _get_install_extras(self) -> str:
-        spec_root = self.get_spec_root(relative_to=None)
-
-        for name, content in self._sysunits.items():
-            path = spec_root / name
-            with open(path, 'w') as f:
-                print(content, file=f)
-
         lines = []
-
-        if self._sysunits:
-            for i, unit in enumerate(self._sysunits):
-                lines.append(
-                    f'install -m644 debian/{unit} '
-                    f'$(DESTDIR)/lib/systemd/system')
-
         symlinks = []
+
+        extras_dir = self.get_extras_root(relative_to=None)
+
         for pkg in self._installable:
+            for path, content in pkg.get_service_scripts(self).items():
+                directory = extras_dir / path.parent.relative_to('/')
+                directory.mkdir(parents=True)
+                with open(directory / path.name, 'w') as f:
+                    print(content, file=f)
+
             for cmd in pkg.get_exposed_commands(self):
                 symlinks.append((cmd.relative_to('/'), f'usr/bin/{cmd.name}'))
 
         if symlinks:
+            spec_root = self.get_spec_root(relative_to=None)
             with open(spec_root / f'{self.root_package.name}.links', 'w') as f:
                 print('\n'.join(f'{src} {dst}' for src, dst in symlinks),
                       file=f)

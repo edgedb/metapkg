@@ -26,7 +26,7 @@ class BasePackage(poetry_pkg.Package):
         raise NotImplementedError(f'{self}.build()')
 
     def get_build_install_script(self, build) -> str:
-        raise NotImplementedError(f'{self}.build_install()')
+        return ''
 
     def get_install_script(self, build) -> str:
         return ''
@@ -249,13 +249,21 @@ class BundledPackage(BasePackage):
 
         return result
 
-    def _get_file_list_script(self, build, listname) -> str:
+    def _get_file_list_script(
+            self, build, listname, *, extra_files=None) -> str:
         mod = sys.modules[type(self).__module__]
         path = pathlib.Path(mod.__file__).parent / f'{listname}.list'
 
+        entries = []
+
         if path.exists():
             with open(path, 'r') as f:
-                entries = list(f)
+                entries.extend(f)
+
+        if extra_files:
+            entries.extend(str(p.relative_to('/')) for p in extra_files)
+
+        if entries:
             script = self.write_file_list_script(build, listname, entries)
         else:
             script = ''
@@ -263,13 +271,38 @@ class BundledPackage(BasePackage):
         return script
 
     def get_install_list_script(self, build) -> str:
-        return self._get_file_list_script(build, 'install')
+        extra_files = list(self.get_service_scripts(build))
+        return self._get_file_list_script(
+            build, 'install', extra_files=extra_files)
 
     def get_no_install_list_script(self, build) -> str:
         return self._get_file_list_script(build, 'no_install')
 
     def get_ignore_list_script(self, build) -> str:
         return self._get_file_list_script(build, 'ignore')
+
+    def get_build_install_script(self, build) -> str:
+        service_scripts = self.get_service_scripts(build)
+        if service_scripts:
+            install = build.sh_get_command('install', relative_to='pkgbuild')
+            extras_dir = build.get_extras_root(relative_to='pkgbuild')
+            install_dir = build.get_install_dir(self, relative_to='pkgbuild')
+
+            commands = []
+            for path, content in service_scripts.items():
+                path = path.relative_to('/')
+                args = {
+                    '-m': '644',
+                    '-D': None,
+                    str(extras_dir / path): None,
+                    str(install_dir / path): None,
+                }
+                cmd = build.sh_format_command(install, args)
+                commands.append(cmd)
+
+            return '\n'.join(commands)
+        else:
+            return ''
 
     def get_service_scripts(self, build) -> dict:
         return build.target.service_scripts_for_package(build, self)

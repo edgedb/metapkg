@@ -201,11 +201,13 @@ class PythonMixin:
         ''')
 
     def get_build_install_script(self, build) -> str:
+        common_script = super().get_build_install_script(build)
+
         python = build.sh_get_command('python')
         root = build.get_install_dir(self, relative_to='pkgbuild')
         wheeldir_script = 'import pathlib; print(pathlib.Path(".").resolve())'
 
-        return textwrap.dedent(f'''\
+        wheel_install = textwrap.dedent(f'''\
             _wheeldir=$("{python}" -c '{wheeldir_script}')
             "{python}" -m pip install \\
                 --no-index --no-deps --upgrade --force-reinstall \\
@@ -213,10 +215,17 @@ class PythonMixin:
                 --only-binary :all: --root "{root}" "{self.name}"
         ''')
 
+        if common_script:
+            return f'{common_script}\n{wheel_install}'
+        else:
+            return wheel_install
+
     def get_install_script(self, build) -> str:
         return ''
 
     def get_install_list_script(self, build) -> str:
+        common_script = super().get_install_list_script(build)
+
         prefix = build.get_install_prefix()
         dest = build.get_install_dir(self, relative_to='pkgbuild')
 
@@ -250,8 +259,13 @@ class PythonMixin:
 
         scriptfile_name = f'_gen_install_list_from_wheel_{self.unique_name}.py'
 
-        return build.sh_write_python_helper(
+        wheel_files = build.sh_write_python_helper(
             scriptfile_name, pyscript, relative_to='pkgbuild')
+
+        if common_script:
+            return f'{common_script}\n{wheel_files}'
+        else:
+            return wheel_files
 
 
 class PythonPackage(PythonMixin, base.BasePackage):

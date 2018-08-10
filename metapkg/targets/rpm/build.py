@@ -3,7 +3,6 @@ import glob
 import os
 import pathlib
 import platform
-import shlex
 import shutil
 import subprocess
 import textwrap
@@ -25,6 +24,7 @@ class Build(targets.Build):
         self._installroot = pathlib.Path('INSTALL')
 
         self._system_tools['make'] = f'make -j{os.cpu_count()}'
+        self._system_tools['install'] = 'install'
         self._system_tools['useradd'] = 'useradd'
         self._system_tools['groupadd'] = 'groupadd'
 
@@ -74,6 +74,9 @@ class Build(targets.Build):
     def get_patches_root(self, *, relative_to='sourceroot'):
         return self.get_tarball_root(relative_to=relative_to)
 
+    def get_extras_root(self, *, relative_to='sourceroot'):
+        return self.get_tarball_root(relative_to=relative_to) / 'extras'
+
     def get_spec_root(self, *, relative_to='sourceroot'):
         return self.get_dir(pathlib.Path('SPECS'), relative_to=relative_to)
 
@@ -117,12 +120,6 @@ class Build(targets.Build):
 
     def _write_spec(self):
         sysreqs = self.get_extra_system_requirements()
-        tarballs = self.get_tarball_root(relative_to=None)
-
-        for name, content in self._sysunits.items():
-            path = tarballs / name
-            with open(path, 'w') as f:
-                print(content, file=f)
 
         rules = textwrap.dedent('''\
             Name: {name}
@@ -276,9 +273,6 @@ class Build(targets.Build):
         for i, tarball in enumerate(self._tarballs.values()):
             lines.append(f'Source{i}: {tarball.name}')
 
-        for j, sysunit in enumerate(self._sysunits):
-            lines.append(f'Source{i + j + 1}: {sysunit}')
-
         return '\n'.join(lines)
 
     def _get_patch_spec(self):
@@ -375,18 +369,17 @@ class Build(targets.Build):
 
     def _get_install_extras(self) -> str:
         lines = []
-
-        if self._sysunits:
-            lines.append(r'%{__install} -d %{buildroot}%{_unitdir}')
-
-            offset = len(self._tarballs)
-            for i, unit in enumerate(self._sysunits):
-                line = (f'%{{__install}} -m 644 %{{SOURCE{offset + i}}} '
-                        f'%{{buildroot}}%{{_unitdir}}/{shlex.quote(unit)}')
-                lines.append(line)
-
         symlinks = []
+
+        extras_dir = self.get_extras_root(relative_to=None)
+
         for pkg in self._installable:
+            for path, content in pkg.get_service_scripts(self).items():
+                directory = extras_dir / path.parent.relative_to('/')
+                directory.mkdir(parents=True)
+                with open(directory / path.name, 'w') as f:
+                    print(content, file=f)
+
             for cmd in pkg.get_exposed_commands(self):
                 symlinks.append(cmd)
 
@@ -402,10 +395,6 @@ class Build(targets.Build):
 
     def _get_files_extras(self) -> str:
         lines = []
-
-        for i, unit in enumerate(self._sysunits):
-            line = f'%{{_unitdir}}/{unit}'
-            lines.append(line)
 
         for pkg in self._installable:
             for cmd in pkg.get_exposed_commands(self):

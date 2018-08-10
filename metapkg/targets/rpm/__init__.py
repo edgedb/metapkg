@@ -182,6 +182,13 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
         capabilities = super().get_capabilities()
         return capabilities + ['systemd']
 
+    def get_resource_path(self, build, resource):
+        if resource == 'systemd-units':
+            return pathlib.Path(
+                tools.cmd('rpm', '--eval', '%_unitdir').strip())
+        else:
+            return super().get_resource_path(build, resource)
+
 
 def get_specific_target(distro_info):
     if distro_info['id'] in {'centos', 'rhel'}:

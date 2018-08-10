@@ -140,11 +140,16 @@ class LinuxTarget(Target):
     def service_scripts_for_package(self, build, package) -> dict:
         if self.has_capability('systemd'):
             units = package.read_support_files(build, '*.service.in')
+            systemd_path = self.get_resource_path(build, 'systemd-units')
+            if systemd_path is None:
+                raise RuntimeError(
+                    'systemd-enabled target does not define '
+                    '"systemd-units" path')
             result = {}
             for name, content in units.items():
                 name = name.replace('VERSION', str(package.version.major))[:-3]
                 content = build.format_package_template(content, package)
-                result[name] = content
+                result[systemd_path / name] = content
 
             return result
 
@@ -219,7 +224,6 @@ class Build:
         self._tool_wrappers = {}
         self._tarballs = {}
         self._patches = []
-        self._sysunits = {}
 
     @property
     def root_package(self):
@@ -238,7 +242,7 @@ class Build:
         self.build()
 
     def prepare(self):
-        self._sysunits = self.get_service_scripts()
+        pass
 
     def build(self):
         raise NotImplementedError
@@ -514,7 +518,9 @@ class Build:
 
     def _get_global_after_install_script(self) -> str:
 
-        if self.target.has_capability('systemd') and self._sysunits:
+        if (self.target.has_capability('systemd') and
+                any(pkg.get_service_scripts(self)
+                    for pkg in self._installable)):
             rundir = self.get_install_path('runstate')
             systemd = rundir / 'systemd' / 'system'
 
