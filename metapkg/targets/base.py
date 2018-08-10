@@ -41,6 +41,9 @@ class Target:
     def get_action(self, name, build) -> TargetAction:
         raise NotImplementedError(f'unknown target action: {name}')
 
+    def get_resource_path(self, build, resource):
+        return None
+
 
 class LinuxEnsureDirAction(TargetAction):
 
@@ -179,6 +182,12 @@ class FHSTarget(Target):
             return pathlib.Path('/run')
         else:
             raise LookupError(f'aspect: {aspect}')
+
+    def get_resource_path(self, build, resource):
+        if resource == 'zoneinfo':
+            return pathlib.Path('/usr/share/zoneinfo')
+        else:
+            return None
 
 
 class Build:
