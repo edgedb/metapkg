@@ -18,7 +18,11 @@ class Build(targets.Build):
         self._srcroot = self._pkgroot / self._root_pkg.name
         self._debroot = self._srcroot / 'debian'
 
-        self._system_tools['make'] = 'make -j{}'.format(os.cpu_count())
+        # MAKELEVEL=0 is required because debian/rules
+        # is a Makefile, and some package makefiles have
+        # conditions on MAKELEVEL.
+        self._system_tools['make'] = \
+            'make MAKELEVEL=0 -j{}'.format(os.cpu_count())
         self._system_tools['install'] = 'install'
         self._system_tools['useradd'] = 'useradd'
         self._system_tools['groupadd'] = 'groupadd'
