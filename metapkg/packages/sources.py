@@ -1,8 +1,10 @@
 import hashlib
 import pathlib
+import re
 import requests
 import shutil
 import tarfile
+import tempfile
 import typing
 import urllib.parse
 import zipfile
@@ -133,8 +135,13 @@ class HttpsSource(BaseSource):
 
 
 class GitSource(BaseSource):
+
+    def __init__(self, url: str, name: str, *, branch):
+        super().__init__(url, name)
+        self.branch = branch
+
     def download(self, io) -> str:
-        return tools.git.update_repo(self.url, io)
+        return tools.git.update_repo(self.url, io=io)
 
     def tarball(
             self, pkg, name_tpl: typing.Optional[str]=None, *, io) \
@@ -143,21 +150,52 @@ class GitSource(BaseSource):
         repo = tools.git.repo(self.url)
         if name_tpl is None:
             name_tpl = f'{pkg.unique_name}{{part}}.tar{{comp}}'
-        name = name_tpl.format(part='', comp='.gz')
+        name = name_tpl.format(part='', comp='')
         repo.run(
-            'archive', f'--output={name}', '--format=tar.gz',
+            'archive', f'--output={name}', '--format=tar',
             f'--prefix={pkg.unique_name}/', 'HEAD')
 
-        return pathlib.Path(name)
+        submodules = repo.run(
+            'submodule', 'foreach', '--recursive').strip('\n')
+        if submodules:
+            submodules = submodules.split('\n')
+            for submodule in submodules:
+                path_m = re.match("Entering '([^']+)'", submodule)
+                if not path_m:
+                    raise ValueError(
+                        'cannot parse git submodule foreach output')
+                path = path_m.group(1)
+                module_repo = tools.git.Git(repo._work_dir / path)
+
+                with tempfile.NamedTemporaryFile() as f:
+                    module_repo.run(
+                        'archive', '--format=tar', f'--output={f.name}',
+                        f'--prefix={pkg.unique_name}/{path}/', 'HEAD'
+                    )
+
+                    tools.cmd(
+                        'tar', '--concatenate', '--file', name, f.name)
+
+        final_name = name_tpl.format(part='', comp='.gz')
+        tools.cmd('gzip', name)
+
+        return pathlib.Path(final_name)
 
 
 def source_for_url(url: str) -> BaseSource:
     parts = urllib.parse.urlparse(url)
-    name = parts.path.split('/')[-1]
+    path_parts = parts.path.split('/')
+    name = path_parts[-1]
+    name, _, branch = name.partition('@')
     if parts.scheme == 'https':
         return HttpsSource(url, name=name)
     elif parts.scheme.startswith('git+'):
-        return GitSource(url[4:], name=name)
+        url = urllib.parse.urlunparse(
+            (parts.scheme, parts.netloc,
+             '/'.join(path_parts[:-1] + [name]),
+             parts.params, parts.query, parts.fragment)
+        )
+        return GitSource(url[4:], name=name, branch=branch or 'master')
     else:
         raise ValueError(f'unsupported source URL scheme: {parts.scheme}')
 

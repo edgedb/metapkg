@@ -56,7 +56,7 @@ class Provider(poetry_provider.Provider):
         self._active_extras = set(extras) if extras else set()
 
     def search_for_vcs(self, dependency):
-        path = tools.git.update_repo(dependency.source, self._io)
+        path = tools.git.update_repo(dependency.source, io=self._io)
         setup_py = path / 'setup.py'
 
         if setup_py.exists():

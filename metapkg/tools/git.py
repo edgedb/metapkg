@@ -35,7 +35,7 @@ def repo(repo_url):
     return Git(repodir(repo_url))
 
 
-def update_repo(repo_url, io) -> str:
+def update_repo(repo_url, *, branch=None, io) -> str:
     repo_dir = repodir(repo_url)
     repo_gitdir = repo_dir / '.git'
 
@@ -48,16 +48,24 @@ def update_repo(repo_url, io) -> str:
         local, _, remote = tracking.partition('...')
         if not remote:
             remote_name = git.run('config', f'branch.{local}.remote').strip()
-            remote_ref = git.run('config', f'branch.{local}.merge').strip()
-            remote_ref = remote_ref[len('refs/heads/'):]
-            remote = f'{remote_name}/{remote_ref}'
+            if branch:
+                remote_ref = branch
+            else:
+                remote_ref = git.run('config', f'branch.{local}.merge').strip()
+                remote_ref = remote_ref[len('refs/heads/'):]
+                remote = f'{remote_name}/{remote_ref}'
 
         git.run('reset', '--hard', remote)
+        git.run('submodule', 'update', '--init', '--depth=50')
     else:
         if repo_gitdir.exists():
             # Repo dir exists for some reason, remove it.
             shutil.rmtree(repo_dir)
 
-        git.clone(repo_url, repo_dir)
+        args = (repo_url, repo_dir)
+        if branch:
+            args = ('-b', branch) + args
+        git.run('clone', '--depth=50', *args)
+        git.run('submodule', 'update', '--init', '--depth=50')
 
     return repo_dir

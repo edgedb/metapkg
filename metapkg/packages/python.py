@@ -292,7 +292,7 @@ class BundledPythonPackage(PythonMixin, base.BundledPackage):
         setup_py = repo_dir / 'setup.py'
 
         if not setup_py.exists():
-            raise RuntimeError(f'{cls}/setup.py does not exist')
+            raise RuntimeError(f'{repo_dir}/setup.py does not exist')
 
         dist = tools.python.get_dist(repo_dir)
 
