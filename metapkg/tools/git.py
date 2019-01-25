@@ -1,6 +1,6 @@
 import os.path
 import pathlib
-import shutil
+import subprocess
 import urllib.parse
 
 from poetry import vcs
@@ -12,12 +12,12 @@ from . import cmd
 
 class Git(vcs.Git):
 
-    def run(self, *args):
+    def run(self, *args, **kwargs):
         if self._work_dir and self._work_dir.exists():
             wd = self._work_dir.as_posix()
         else:
             wd = None
-        return cmd.cmd('git', *args, cwd=wd)
+        return cmd.cmd('git', *args, cwd=wd, **kwargs)
 
 
 def _repodir(repo_url):
@@ -35,7 +35,8 @@ def repo(repo_url):
     return Git(repodir(repo_url))
 
 
-def update_repo(repo_url, *, branch=None, io) -> str:
+def update_repo(repo_url, *, exclude_submodules=None,
+                clone_depth=50, branch=None, io) -> str:
     repo_dir = repodir(repo_url)
     repo_gitdir = repo_dir / '.git'
 
@@ -56,16 +57,49 @@ def update_repo(repo_url, *, branch=None, io) -> str:
                 remote = f'{remote_name}/{remote_ref}'
 
         git.run('reset', '--hard', remote)
-        git.run('submodule', 'update', '--init', '--depth=50')
     else:
-        if repo_gitdir.exists():
-            # Repo dir exists for some reason, remove it.
-            shutil.rmtree(repo_dir)
-
         args = (repo_url, repo_dir)
         if branch:
             args = ('-b', branch) + args
-        git.run('clone', '--depth=50', *args)
-        git.run('submodule', 'update', '--init', '--depth=50')
+
+        if clone_depth:
+            args += (f'--depth={clone_depth}',)
+
+        git.run('clone', *args)
+
+    submodules = None
+    deinit_submodules = set()
+    if exclude_submodules:
+        try:
+            output = git.run(
+                'config', '--file', '.gitmodules', '--name-only',
+                '--get-regexp', 'path', errors_are_fatal=False)
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 1:
+                # No .gitmodules file, that's fine
+                submodules = set()
+            else:
+                raise
+        else:
+            submodules = set()
+            submodule_configs = output.strip().split('\n')
+            for smc in submodule_configs:
+                submodule_path = git.run(
+                    'config', '--file', '.gitmodules', smc).strip()
+                if submodule_path not in exclude_submodules:
+                    submodules.add(submodule_path)
+                else:
+                    deinit_submodules.add(submodule_path)
+
+    if submodules != set():
+        args = ('submodule', 'update', '--init')
+        if clone_depth:
+            args += (f'--depth={clone_depth}',)
+        if submodules:
+            args += tuple(submodules)
+        git.run(*args)
+
+        if deinit_submodules:
+            git.run(*(('submodule', 'deinit') + tuple(deinit_submodules)))
 
     return repo_dir

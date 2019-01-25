@@ -85,7 +85,12 @@ class BundledPackage(BasePackage):
         for source in cls.sources:
             if isinstance(source, dict):
                 url = source['url'].format(version=version)
-                src = af_sources.source_for_url(url)
+                extras = source.get('extras')
+                if extras:
+                    extras = {k.replace('-', '_'): v
+                              for k, v in extras.items()}
+
+                src = af_sources.source_for_url(url, extras)
 
                 csum = source.get('csum')
                 csum_url = source.get('csum_url')

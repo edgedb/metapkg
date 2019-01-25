@@ -136,12 +136,17 @@ class HttpsSource(BaseSource):
 
 class GitSource(BaseSource):
 
-    def __init__(self, url: str, name: str, *, branch):
+    def __init__(self, url: str, name: str, *, branch,
+                 exclude_submodules=None, clone_depth=50):
         super().__init__(url, name)
         self.branch = branch
+        self.exclude_submodules = exclude_submodules
+        self.clone_depth = clone_depth
 
     def download(self, io) -> str:
-        return tools.git.update_repo(self.url, io=io)
+        return tools.git.update_repo(
+            self.url, exclude_submodules=self.exclude_submodules,
+            clone_depth=self.clone_depth, io=io)
 
     def tarball(
             self, pkg, name_tpl: typing.Optional[str]=None, *, io) \
@@ -182,20 +187,24 @@ class GitSource(BaseSource):
         return pathlib.Path(final_name)
 
 
-def source_for_url(url: str) -> BaseSource:
+def source_for_url(url: str,
+                   extras: typing.Optional[dict] = None) -> BaseSource:
     parts = urllib.parse.urlparse(url)
     path_parts = parts.path.split('/')
     name = path_parts[-1]
     name, _, branch = name.partition('@')
+    if extras is None:
+        extras = {}
     if parts.scheme == 'https':
-        return HttpsSource(url, name=name)
+        return HttpsSource(url, name=name, **extras)
     elif parts.scheme.startswith('git+'):
         url = urllib.parse.urlunparse(
             (parts.scheme, parts.netloc,
              '/'.join(path_parts[:-1] + [name]),
              parts.params, parts.query, parts.fragment)
         )
-        return GitSource(url[4:], name=name, branch=branch or 'master')
+        return GitSource(
+            url[4:], name=name, branch=branch or 'master', **extras)
     else:
         raise ValueError(f'unsupported source URL scheme: {parts.scheme}')
 
