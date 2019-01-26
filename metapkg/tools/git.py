@@ -43,7 +43,10 @@ def update_repo(repo_url, *, exclude_submodules=None,
     git = Git(repo_dir)
 
     if repo_gitdir.exists():
-        git.run('fetch')
+        args = ('fetch',)
+        if clone_depth:
+            args += (f'--depth={clone_depth}',)
+        git.run(*args)
         status = git.run('status', '-b', '--porcelain').strip().split(' ')
         tracking = status[1]
         local, _, remote = tracking.partition('...')
