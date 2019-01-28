@@ -370,4 +370,11 @@ class Build(targets.Build):
 
             for entry in self._pkgroot.iterdir():
                 if not entry.is_dir():
-                    shutil.copy2(entry, self._outputroot / entry.name)
+                    if entry.suffix == '.ddeb':
+                        # Ubuntu likes to call their dbgsym packages ddebs,
+                        # whereas Debian tools, including reprepro like it
+                        # to just be a .deb.
+                        output_name = entry.stem + '.deb'
+                    else:
+                        output_name = entry.name
+                    shutil.copy2(entry, self._outputroot / output_name)

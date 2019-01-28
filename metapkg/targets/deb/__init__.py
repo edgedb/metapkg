@@ -206,7 +206,15 @@ class DebianStretchOrNewerTarget(ModernDebianTarget):
 
 
 class UbuntuBionicOrNewerTarget(ModernDebianTarget):
-    pass
+
+    def __init__(self, distro_info):
+        self.distro = distro_info
+        if ' ' in self.distro['codename']:
+            # distro described in full, e,g, "Bionic Beaver",
+            # normalize that to a single lowercase word as
+            # per debian convention
+            c = self.distro['codename'].split(' ')[0].lower()
+            self.distro['codename'] = c
 
 
 def get_specific_target(distro_info):
