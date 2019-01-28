@@ -25,6 +25,12 @@ PACKAGE_MAP = {
     'systemd-dev': 'libsystemd-dev',
 }
 
+
+GROUP_MAP = {
+    'Application/Databases': 'database',
+}
+
+
 _version_trans = str.maketrans({'+': '.', '-': '.', '~': '.'})
 
 
@@ -168,6 +174,9 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
 
     def get_package_repository(self):
         return DebRepository()
+
+    def get_package_group(self, pkg):
+        return GROUP_MAP.get(pkg.group, pkg.group)
 
     def get_arch_libdir(self):
         arch = tools.cmd('dpkg-architecture', '-qDEB_HOST_MULTIARCH').strip()

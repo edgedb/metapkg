@@ -152,6 +152,7 @@ class Build(targets.Build):
 
             Package: {name}
             Architecture: any
+            Section: {section}
             Depends:
              ${{misc:Depends}},
              ${{shlibs:Depends}}
@@ -160,6 +161,7 @@ class Build(targets.Build):
         ''').format(
             name=self._root_pkg.name,
             deps=deps,
+            section=self._target.get_package_group(self._root_pkg),
             description=self._root_pkg.description,
             maintainer='MagicStack Inc. <hello@magic.io>',
         )
