@@ -142,6 +142,7 @@ class Build(targets.Build):
         control = textwrap.dedent('''\
             Source: {name}
             Priority: optional
+            Section: {section}
             Maintainer: {maintainer}
             Standards-Version: 4.1.5
             Build-Depends:
@@ -152,7 +153,6 @@ class Build(targets.Build):
 
             Package: {name}
             Architecture: any
-            Section: {section}
             Depends:
              ${{misc:Depends}},
              ${{shlibs:Depends}}
