@@ -368,12 +368,19 @@ class Build(targets.Build):
             if not self._outputroot.exists():
                 self._outputroot.mkdir()
 
+            # Ubuntu likes to call their dbgsym packages ddebs,
+            # whereas Debian tools, including reprepro like it
+            # to just be a .deb.
+            for changes in self._pkgroot.glob('*.changes'):
+                with open(changes, 'r+t') as f:
+                    f.seek(0)
+                    patched = f.read().replace('.ddeb', '.deb')
+                    f.seek(0)
+                    f.write(patched)
+
             for entry in self._pkgroot.iterdir():
                 if not entry.is_dir():
                     if entry.suffix == '.ddeb':
-                        # Ubuntu likes to call their dbgsym packages ddebs,
-                        # whereas Debian tools, including reprepro like it
-                        # to just be a .deb.
                         output_name = entry.stem + '.deb'
                     else:
                         output_name = entry.name
