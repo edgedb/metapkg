@@ -135,8 +135,12 @@ class Build(targets.Build):
             f.write('9\n')
 
     def _write_control(self):
+        build_deps = ',\n '.join(f'{dep.system_name} (= {dep.pretty_version})'
+                                 for dep in self._build_deps
+                                 if isinstance(dep, targets.SystemPackage))
+
         deps = ',\n '.join(f'{dep.system_name} (= {dep.pretty_version})'
-                           for dep in self._build_deps
+                           for dep in self._deps
                            if isinstance(dep, targets.SystemPackage))
 
         control = textwrap.dedent('''\
@@ -149,11 +153,12 @@ class Build(targets.Build):
              debhelper (>= 9~),
              dh-exec (>= 0.13~),
              dpkg-dev (>= 1.16.1~),
-             {deps}
+             {build_deps}
 
             Package: {name}
             Architecture: any
             Depends:
+             {deps}
              ${{misc:Depends}},
              ${{shlibs:Depends}}
             Description:
@@ -161,6 +166,7 @@ class Build(targets.Build):
         ''').format(
             name=self._root_pkg.name,
             deps=deps,
+            build_deps=build_deps,
             section=self._target.get_package_group(self._root_pkg),
             description=self._root_pkg.description,
             maintainer='MagicStack Inc. <hello@magic.io>',
