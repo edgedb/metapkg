@@ -117,8 +117,8 @@ class HttpsSource(BaseSource):
         return destination
 
     def tarball(
-            self, pkg, name_tpl: typing.Optional[str]=None, *, io) \
-            -> pathlib.Path:
+            self, pkg, name_tpl: typing.Optional[str] = None, *,
+            target_dir: pathlib.Path, io) -> pathlib.Path:
         src = self.download(io)
         if src.suffix == '.tgz':
             comp = '.gz'
@@ -128,10 +128,10 @@ class HttpsSource(BaseSource):
             comp = src.suffix
         if name_tpl is None:
             name_tpl = f'{pkg.unique_name}{{part}}.tar{{comp}}'
-        name = name_tpl.format(part='', comp=comp)
-        shutil.copy(src, name)
+        target_path = target_dir / name_tpl.format(part='', comp=comp)
+        shutil.copy(src, target_path)
 
-        return pathlib.Path(name)
+        return target_path
 
 
 class GitSource(BaseSource):
@@ -149,15 +149,15 @@ class GitSource(BaseSource):
             clone_depth=self.clone_depth, branch=self.branch, io=io)
 
     def tarball(
-            self, pkg, name_tpl: typing.Optional[str]=None, *, io) \
-            -> pathlib.Path:
+            self, pkg, name_tpl: typing.Optional[str] = None, *,
+            target_dir: pathlib.Path, io) -> pathlib.Path:
         self.download(io)
         repo = tools.git.repo(self.url)
         if name_tpl is None:
             name_tpl = f'{pkg.unique_name}{{part}}.tar{{comp}}'
-        name = name_tpl.format(part='', comp='')
+        target_path = target_dir / name_tpl.format(part='', comp='')
         repo.run(
-            'archive', f'--output={name}', '--format=tar',
+            'archive', f'--output={target_path}', '--format=tar',
             f'--prefix={pkg.unique_name}/', 'HEAD')
 
         submodules = repo.run(
@@ -179,10 +179,10 @@ class GitSource(BaseSource):
                     )
 
                     tools.cmd(
-                        'tar', '--concatenate', '--file', name, f.name)
+                        'tar', '--concatenate', '--file', target_path, f.name)
 
         final_name = name_tpl.format(part='', comp='.gz')
-        tools.cmd('gzip', name)
+        tools.cmd('gzip', target_path)
 
         return pathlib.Path(final_name)
 
