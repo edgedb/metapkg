@@ -181,10 +181,8 @@ class GitSource(BaseSource):
                     tools.cmd(
                         'tar', '--concatenate', '--file', target_path, f.name)
 
-        final_name = name_tpl.format(part='', comp='.gz')
-        tools.cmd('gzip', target_path)
-
-        return pathlib.Path(final_name)
+        tools.cmd('gzip', target_path, cwd=target_dir)
+        return pathlib.Path(f'{target_path}.gz')
 
 
 def source_for_url(url: str,
