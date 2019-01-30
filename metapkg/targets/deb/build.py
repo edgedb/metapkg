@@ -176,6 +176,8 @@ class Build(targets.Build):
             f.write(control)
 
     def _write_changelog(self):
+        distro = self._target.distro['codename']
+
         changelog = textwrap.dedent('''\
             {name} ({version}) {distro}; urgency=medium
 
@@ -184,8 +186,8 @@ class Build(targets.Build):
              -- {maintainer}  {date}
         ''').format(
             name=self._root_pkg.name,
-            version=f'{self._root_pkg.version.text}-1',
-            distro=self._target.distro['codename'],
+            version=f'{self._root_pkg.version.text}-1~{distro}',
+            distro=distro,
             maintainer='MagicStack Inc. <hello@magic.io>',
             date=datetime.datetime.now(datetime.timezone.utc).strftime(
                 '%a, %d %b %Y %H:%M:%S %z'
