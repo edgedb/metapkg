@@ -23,6 +23,7 @@ PACKAGE_MAP = {
     'python': 'python3',
     'uuid': 'uuid-dev',
     'systemd-dev': 'libsystemd-dev',
+    'ncurses': 'ncurses-bin',
 }
 
 
