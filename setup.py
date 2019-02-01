@@ -20,5 +20,6 @@ setup(
         'requests~=2.19.0',
         'poetry~=0.11.2',
         'distlib~=0.2.7',
+        'wheel~=0.32.3',
     ],
 )
