@@ -44,6 +44,9 @@ class Target:
     def get_resource_path(self, build, resource):
         return None
 
+    def get_full_install_prefix(self, build) -> pathlib.Path:
+        return self.get_install_root(build) / self.get_install_prefix(build)
+
 
 class LinuxEnsureDirAction(TargetAction):
 
@@ -126,6 +129,10 @@ class LinuxAddUserAction(TargetAction):
 
 class LinuxTarget(Target):
 
+    @property
+    def name(self):
+        return f'{self._target.distro["id"]}-{self._target.distro["version"]}'
+
     def get_action(self, name, build) -> TargetAction:
         if name == 'adduser':
             return LinuxAddUserAction(build)
@@ -166,25 +173,31 @@ class FHSTarget(Target):
     def sh_get_command(self, command):
         return command
 
+    def get_install_root(self, build):
+        return pathlib.Path('/')
+
     def get_install_prefix(self, build):
         libdir = self.get_arch_libdir()
-        return libdir / build.root_package.name
+        return (libdir / build.root_package.name).relative_to('/')
 
     def get_install_path(self, build, aspect):
+        root = self.get_install_root(build)
+        prefix = self.get_install_prefix(build)
+
         if aspect == 'sysconf':
-            return pathlib.Path('/etc')
+            return root / 'etc'
         elif aspect == 'data':
-            return pathlib.Path('/usr/share') / build.root_package.name
+            return root / 'usr' / 'share' / build.root_package.name
         elif aspect == 'bin':
-            return self.get_install_prefix(build) / 'bin'
+            return root / prefix / 'bin'
         elif aspect == 'lib':
-            return self.get_install_prefix(build) / 'lib'
+            return root / prefix / 'lib'
         elif aspect == 'include':
-            return pathlib.Path('/usr/include') / build.root_package.name
+            return root / 'usr' / 'include' / build.root_package.name
         elif aspect == 'localstate':
-            return pathlib.Path('/var')
+            return root / 'var'
         elif aspect == 'runstate':
-            return pathlib.Path('/run')
+            return root / 'run'
         else:
             raise LookupError(f'aspect: {aspect}')
 
@@ -233,10 +246,21 @@ class Build:
     def target(self):
         return self._target
 
+    def get_package(self, name):
+        for pkg in self._deps:
+            if pkg.name == name:
+                return pkg
+
+        for pkg in self._build_deps:
+            if pkg.name == name:
+                return pkg
+
+    def is_bundled(self, pkg):
+        return pkg in self._bundled
+
     def run(self):
         self._io.writeln(f'<info>Building {self._root_pkg} on '
-                         f'{self._target.distro["id"]}-'
-                         f'{self._target.distro["version"]}</info>')
+                         f'{self._target.name}</info>')
 
         self.prepare()
         self.build()
@@ -247,12 +271,12 @@ class Build:
     def build(self):
         raise NotImplementedError
 
-    def get_dir(self, path, *, relative_to):
+    def get_dir(self, path, *, relative_to, package=None):
         absolute_path = (self.get_source_abspath() / path).resolve()
         if not absolute_path.exists():
             absolute_path.mkdir(parents=True)
 
-        return self.get_path(path, relative_to=relative_to)
+        return self.get_path(path, relative_to=relative_to, package=package)
 
     def get_install_path(self, aspect):
         return self._target.get_install_path(self, aspect)
@@ -260,7 +284,10 @@ class Build:
     def get_install_prefix(self):
         return self._target.get_install_prefix(self)
 
-    def sh_get_command(self, command, *, relative_to='pkgbuild'):
+    def get_full_install_prefix(self):
+        return self._target.get_full_install_prefix(self)
+
+    def sh_get_command(self, command, *, package=None, relative_to='pkgbuild'):
         path = self._tools.get(command)
         if not path:
             path = self._common_tools.get(command)
@@ -276,10 +303,11 @@ class Build:
             cmd = system_tool
 
         else:
-            rel_path = self.get_path(path, relative_to=relative_to)
+            rel_path = self.get_path(path, package=package,
+                                     relative_to=relative_to)
             if rel_path.suffix == '.py':
                 python = self.sh_get_command(
-                    'python', relative_to=relative_to)
+                    'python', package=package, relative_to=relative_to)
 
                 cmd = f'{python} {shlex.quote(str(rel_path))}'
 
@@ -298,10 +326,13 @@ class Build:
         for arg, val in args.items():
             if val is None:
                 args_parts.append(arg)
-            elif arg.startswith('--'):
-                args_parts.append(f'{arg}={shlex.quote(str(val))}')
             else:
-                args_parts.append(f'{arg} {shlex.quote(str(val))}')
+                val = str(val)
+                if not val.startswith('!'):
+                    val = shlex.quote(val)
+                else:
+                    val = val[1:]
+                args_parts.append(f'{arg}={val}')
 
         args_str = ' \\\n    '.join(args_parts)
         if extra_indent:
@@ -509,11 +540,17 @@ class Build:
             if global_script:
                 scripts.append(global_script)
 
+        if stage == 'complete':
+            stages = ['configure', 'build', 'build_install']
+        else:
+            stages = [stage]
+
         for pkg in packages:
-            script = self._get_package_script(
-                pkg, stage, relative_to=relative_to)
-            if script.strip():
-                scripts.append(script)
+            for stg in stages:
+                script = self._get_package_script(
+                    pkg, stg, relative_to=relative_to)
+                if script.strip():
+                    scripts.append(script)
 
         return '\n\n'.join(scripts)
 

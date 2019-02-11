@@ -173,11 +173,12 @@ class PythonMixin:
 
     def get_build_script(self, build) -> str:
         sdir = build.get_source_dir(self, relative_to='pkgbuild')
-        src_python = build.sh_get_command('python', relative_to='pkgsource')
+        src_python = build.sh_get_command(
+            'python', package=self, relative_to='pkgsource')
         build_python = build.sh_get_command('python')
         dest = (
             build.get_temp_root(relative_to='pkgbuild') /
-            build.get_install_prefix().relative_to('/')
+            build.get_full_install_prefix().relative_to('/')
         )
 
         sitescript = (
@@ -205,7 +206,7 @@ class PythonMixin:
     def get_build_install_script(self, build) -> str:
         common_script = super().get_build_install_script(build)
 
-        python = build.sh_get_command('python')
+        python = build.sh_get_command('python', package=self)
         root = build.get_install_dir(self, relative_to='pkgbuild')
         wheeldir_script = 'import pathlib; print(pathlib.Path(".").resolve())'
 
@@ -228,7 +229,7 @@ class PythonMixin:
     def get_install_list_script(self, build) -> str:
         common_script = super().get_install_list_script(build)
 
-        prefix = build.get_install_prefix()
+        prefix = build.get_full_install_prefix()
         dest = build.get_install_dir(self, relative_to='pkgbuild')
 
         dist_name = self.pretty_name.replace('-', '_')

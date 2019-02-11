@@ -19,6 +19,7 @@ class Build(base.Command):
         { name : Package to build. }
         { --dest= : Destination path. }
         { --keepwork : Do not remove the work directory. }
+        { --generic : Build a generic target. }
     """
 
     help = """Builds the specified package on the current platform."""
@@ -29,6 +30,7 @@ class Build(base.Command):
         pkgname = self.argument('name')
         keepwork = self.option('keepwork')
         destination = self.option('dest')
+        generic = self.option('generic')
 
         modname, _, clsname = pkgname.rpartition(':')
 
@@ -51,7 +53,11 @@ class Build(base.Command):
         root.add_dependency(pkg.name, pkg.version.text)
         af_repo.bundle_repo.add_package(root)
 
-        target = targets.detect_target(self.output)
+        if generic:
+            target = targets.generic.GenericTarget()
+        else:
+            target = targets.detect_target(self.output)
+
         target_capabilities = target.get_capabilities()
         extras = [f'capability-{c}' for c in target_capabilities]
 
@@ -88,7 +94,7 @@ class Build(base.Command):
         for package in resolution.packages:
             reqs = (set(package.requires) |
                     set(getattr(package, 'build_requires', [])))
-            deps = {req.name for req in reqs}
+            deps = {req.name for req in reqs if req.is_activated()}
             graph[package.name] = {'item': package, 'deps': deps}
 
         build_deps = list(topological.sort(graph))

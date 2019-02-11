@@ -86,6 +86,7 @@ class Provider(poetry_provider.Provider):
 
             try:
                 breqs = list(getattr(package, 'build_requires', []))
+                breqs = [req for req in breqs if req.is_activated()]
                 package.requires = old_requires + breqs
                 return super().incompatibilities_for(package)
             finally:

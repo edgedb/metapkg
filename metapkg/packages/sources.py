@@ -1,5 +1,6 @@
 import hashlib
 import pathlib
+import platform
 import re
 import requests
 import shutil
@@ -178,8 +179,20 @@ class GitSource(BaseSource):
                         f'--prefix={pkg.unique_name}/{path}/', 'HEAD'
                     )
 
-                    tools.cmd(
-                        'tar', '--concatenate', '--file', target_path, f.name)
+                    if platform.system() == 'Darwin':
+                        with tarfile.open(f.name) as modf, \
+                                tarfile.open(target_path, 'a') as tf:
+                            while True:
+                                m = modf.next()
+                                if m is None:
+                                    break
+                                else:
+                                    tf.addfile(m, modf.extractfile(m))
+
+                    else:
+                        tools.cmd(
+                            'tar', '--concatenate', '--file', target_path,
+                            f.name)
 
         tools.cmd('gzip', target_path, cwd=target_dir)
         return pathlib.Path(f'{target_path}.gz')
@@ -192,7 +205,7 @@ def source_for_url(url: str,
     name = path_parts[-1]
     if extras is None:
         extras = {}
-    if parts.scheme == 'https':
+    if parts.scheme == 'https' or parts.scheme == 'http':
         return HttpsSource(url, name=name, **extras)
     elif parts.scheme.startswith('git+'):
         return GitSource(url[4:], name=name, **extras)

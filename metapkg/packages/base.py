@@ -82,9 +82,11 @@ class BundledPackage(BasePackage):
     def _get_sources(cls, version: str) -> typing.List[af_sources.BaseSource]:
         sources = []
 
+        underscore_v = version.replace('.', '_')
         for source in cls.sources:
             if isinstance(source, dict):
-                url = source['url'].format(version=version)
+                url = source['url'].format(
+                    version=version, underscore_version=underscore_v)
                 extras = source.get('extras')
                 if extras:
                     extras = {k.replace('-', '_'): v
@@ -98,7 +100,8 @@ class BundledPackage(BasePackage):
 
                 if csum_algo:
                     if csum_url:
-                        csum_url = csum_url.format(version=version)
+                        csum_url = csum_url.format(
+                            version=version, underscore_version=underscore_v)
                     csum_verify = af_sources.HashVerification(
                         csum_algo, hash_url=csum_url, hash_value=csum)
                     src.add_verification(csum_verify)
@@ -213,7 +216,7 @@ class BundledPackage(BasePackage):
             path = build.get_install_path(aspect).relative_to('/')
             paths[f'{aspect}dir'] = path
 
-        paths['prefix'] = build.get_install_prefix().relative_to('/')
+        paths['prefix'] = build.get_full_install_prefix().relative_to('/')
 
         processed_entries = []
         for entry in entries:
