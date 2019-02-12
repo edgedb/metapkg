@@ -4,6 +4,7 @@ import tempfile
 import textwrap
 import typing
 
+from poetry import semver
 from poetry import packages as poetry_pkg
 from poetry.repositories import pypi_repository
 
@@ -12,13 +13,14 @@ from metapkg import tools
 from . import base
 from . import repository as af_repository
 from . import sources as af_sources
+from .utils import python_dependency_from_pep_508
 
 
 PythonPackage = poetry_pkg.Package
 
 
 python_dependency = poetry_pkg.Dependency(name='python', constraint='>=3.6')
-wheel_dependency = poetry_pkg.Dependency(name='wheel', constraint='*')
+wheel_dependency = poetry_pkg.Dependency(name='pypkg-wheel', constraint='*')
 
 
 def set_python_runtime_dependency(dep):
@@ -32,11 +34,38 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         super().__init__()
         self._io = io
 
+    def find_packages(
+            self,
+            name: str,
+            constraint: typing.Optional[
+                typing.Union[semver.VersionConstraint, str]
+            ] = None,
+            extras: typing.Optional[list] = None,
+            allow_prereleases: bool = False) \
+            -> typing.List[poetry_pkg.Package]:
+
+        if name.startswith('pypkg-'):
+            name = name[len('pypkg-'):]
+        else:
+            return []
+
+        packages = super().find_packages(name, constraint, extras,
+                                         allow_prereleases)
+
+        for package in packages:
+            package._name = f'pypkg-{package._name}'
+            package._pretty_name = f'pypkg-{package._pretty_name}'
+
+        return packages
+
     def package(
             self,
             name: str,
             version: str,
             extras=None) -> poetry_pkg.Package:
+
+        if name.startswith('pypkg-'):
+            name = name[len('pypkg-'):]
 
         try:
             orig_package = super().package(
@@ -48,7 +77,8 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         pypi_info = self.get_pypi_info(name, version)
 
         package = PythonPackage(
-            pypi_info['info']['name'], orig_package.version,
+            f"pypkg-{pypi_info['info']['name']}",
+            orig_package.version,
             pretty_version=pypi_info['info']['version'])
 
         for attr in ('category', 'optional', 'python_versions',
@@ -57,11 +87,15 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             v = getattr(orig_package, attr)
             setattr(package, attr, v)
 
-        # Some packages like to hard-depend on PyPI version
-        # of typing, which is out-of-date at this moment, so
-        # filter it out.
-        package.requires = [dep for dep in orig_package.requires
-                            if dep.name != 'typing']
+        for dep in orig_package.requires:
+            # Some packages like to hard-depend on PyPI version
+            # of typing, which is out-of-date at this moment, so
+            # filter it out.
+            if dep.name == 'typing':
+                continue
+            dep._name = f'pypkg-{dep.name}'
+            dep._pretty_name = f'pypkg-{dep.pretty_name}'
+            package.requires.append(dep)
 
         package.requires.append(python_dependency)
         package.source = self.get_sdist_source(pypi_info)
@@ -72,6 +106,12 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             package.build_requires.append(wheel_dependency)
 
         return package
+
+    def get_package_info(self, name):
+        if name.startswith('pypkg-'):
+            name = name[len('pypkg-'):]
+
+        return super().get_package_info(name)
 
     def get_sdist_source(self, pypi_info: dict) -> af_sources.BaseSource:
         sdist_info = self._get_sdist_info(pypi_info)
@@ -94,6 +134,8 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             name: str,
             version: str) -> dict:
 
+        if name.startswith('pypkg-'):
+            name = name[len('pypkg-'):]
         if self._disable_cache:
             pypi_info = self._get_pypi_info(name, version)
         else:
@@ -156,8 +198,8 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             build_requires = []
             breqs = tools.python.get_build_requires(setup_py)
             for breq in breqs:
-                build_requires.append(
-                    poetry_pkg.dependency_from_pep_508(breq))
+                dep = python_dependency_from_pep_508(breq)
+                build_requires.append(dep)
 
         return build_requires
 
@@ -190,6 +232,12 @@ class PythonMixin:
         bdist_wheel = ' '.join(
             shlex.quote(str(c)) for c in self.get_bdist_wheel_command(build))
 
+        pkgname = getattr(self, 'dist_name', None)
+        if pkgname is None:
+            pkgname = self.name
+            if pkgname.startswith('pypkg-'):
+                pkgname = pkgname[len('pypkg-'):]
+
         return textwrap.dedent(f'''\
             (cd "{sdir}"; \\
              env SETUPTOOLS_SCM_PRETEND_VERSION="{self.pretty_version}" \\
@@ -200,7 +248,7 @@ class PythonMixin:
                 --no-warn-script-location \\
                 --no-index --no-deps --upgrade \\
                 -f "file://${{_wheeldir}}" \\
-                --only-binary :all: "{self.name}" --target "${{_target}}"
+                --only-binary :all: "{pkgname}" --target "${{_target}}"
         ''')
 
     def get_build_install_script(self, build) -> str:
@@ -210,12 +258,19 @@ class PythonMixin:
         root = build.get_install_dir(self, relative_to='pkgbuild')
         wheeldir_script = 'import pathlib; print(pathlib.Path(".").resolve())'
 
+        pkgname = getattr(self, 'dist_name', None)
+        if pkgname is None:
+            pkgname = self.name
+            if pkgname.startswith('pypkg-'):
+                pkgname = pkgname[len('pypkg-'):]
+
         wheel_install = textwrap.dedent(f'''\
             _wheeldir=$("{python}" -c '{wheeldir_script}')
             "{python}" -m pip install \\
+                --ignore-installed \\
                 --no-index --no-deps --upgrade --force-reinstall \\
                 --no-warn-script-location -f "file://${{_wheeldir}}" \\
-                --only-binary :all: --root "{root}" "{self.name}"
+                --only-binary :all: --root "{root}" "{pkgname}"
         ''')
 
         if common_script:
@@ -232,7 +287,12 @@ class PythonMixin:
         prefix = build.get_full_install_prefix()
         dest = build.get_install_dir(self, relative_to='pkgbuild')
 
-        dist_name = self.pretty_name.replace('-', '_')
+        pkgname = getattr(self, 'dist_name', None)
+        if pkgname is None:
+            pkgname = self.pretty_name
+            if pkgname.startswith('pypkg-'):
+                pkgname = pkgname[len('pypkg-'):]
+        dist_name = pkgname.replace('-', '_')
 
         pyscript = textwrap.dedent(f'''\
             import pathlib
@@ -251,7 +311,7 @@ class PythonMixin:
             )
 
             if not record.exists():
-                raise RuntimeError(f'no wheel RECORD for {self.name}')
+                raise RuntimeError(f'no wheel RECORD for {pkgname}')
 
             with open(record) as f:
                 for entry in f:
@@ -301,15 +361,16 @@ class BundledPythonPackage(PythonMixin, base.BundledPackage):
 
         requires = []
         for req in dist.metadata.run_requires:
-            requires.append(
-                poetry_pkg.dependency_from_pep_508(req))
+            dep = python_dependency_from_pep_508(req)
+            requires.append(dep)
 
         package = cls(dist.version, requires=requires)
+        package.dist_name = dist.name
 
         build_requires = tools.python.get_build_requires(setup_py)
         for breq in build_requires:
-            package.build_requires.append(
-                poetry_pkg.dependency_from_pep_508(breq))
+            dep = python_dependency_from_pep_508(breq)
+            package.build_requires.append(dep)
 
         return package
 
@@ -327,3 +388,10 @@ class BundledPythonPackage(PythonMixin, base.BundledPackage):
             return f'{static_list}\n{wheel_list}'
         else:
             return wheel_list
+
+    def clone(self):
+        clone = super().clone()
+        dist_name = getattr(self, 'dist_name', None)
+        if dist_name:
+            clone.dist_name = dist_name
+        return clone

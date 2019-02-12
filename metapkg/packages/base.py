@@ -62,6 +62,9 @@ class BasePackage(poetry_pkg.Package):
     def get_service_scripts(self, build) -> dict:
         return {}
 
+    def get_bin_shims(self, build) -> dict:
+        return {}
+
     def get_exposed_commands(self, build) -> list:
         return []
 
@@ -74,9 +77,25 @@ class BundledPackage(BasePackage):
     license = None
     group = None
     url = None
+    identifier = None
 
     artifact_requirements = []
     artifact_build_requirements = []
+
+    @property
+    def slot(self) -> str:
+        return ''
+
+    @property
+    def slot_suffix(self) -> str:
+        if self.slot:
+            return f'-{self.slot}'
+        else:
+            return ''
+
+    @property
+    def name_slot(self):
+        return f'{self.name}{self.slot_suffix}'
 
     @classmethod
     def _get_sources(cls, version: str) -> typing.List[af_sources.BaseSource]:
@@ -243,7 +262,7 @@ class BundledPackage(BasePackage):
         return build.sh_write_python_helper(
             scriptfile_name, pyscript, relative_to='pkgbuild')
 
-    def read_support_files(self, build, file_glob) -> dict:
+    def read_support_files(self, build, file_glob, binary=False) -> dict:
 
         mod = sys.modules[type(self).__module__]
         path = pathlib.Path(mod.__file__).parent / file_glob
@@ -252,8 +271,20 @@ class BundledPackage(BasePackage):
 
         for pathname in glob.glob(str(path)):
             path = pathlib.Path(pathname)
-            with open(path, 'r') as f:
-                result[path.name] = f.read()
+            mode = 'rb' if binary else 'r'
+            with open(path, mode) as f:
+                content = f.read()
+                name = path.name
+                if not binary and name.endswith('.in'):
+                    content = build.format_package_template(content, self)
+                    name = name[:-3]
+                    name = name.replace(
+                        'SLOT',
+                        self.slot)
+                    name = name.replace(
+                        'IDENTIFIER',
+                        build.target.get_package_system_ident(build, self))
+                result[name] = content
 
         return result
 
@@ -292,16 +323,18 @@ class BundledPackage(BasePackage):
     def get_build_install_script(self, build) -> str:
         service_scripts = self.get_service_scripts(build)
         if service_scripts:
-            install = build.sh_get_command('install', relative_to='pkgbuild')
+            install = build.sh_get_command('cp', relative_to='pkgbuild')
             extras_dir = build.get_extras_root(relative_to='pkgbuild')
             install_dir = build.get_install_dir(self, relative_to='pkgbuild')
+            ensuredir = build.target.get_action('ensuredir', build)
 
             commands = []
+
             for path, content in service_scripts.items():
                 path = path.relative_to('/')
+                commands.append(ensuredir.get_script(
+                    path=(install_dir / path).parent))
                 args = {
-                    '-m': '644',
-                    '-D': None,
                     str(extras_dir / path): None,
                     str(install_dir / path): None,
                 }
@@ -312,8 +345,14 @@ class BundledPackage(BasePackage):
         else:
             return ''
 
+    def get_resources(self, build) -> dict:
+        return self.read_support_files(build, 'resources/*', binary=True)
+
     def get_service_scripts(self, build) -> dict:
         return build.target.service_scripts_for_package(build, self)
+
+    def get_bin_shims(self, build) -> dict:
+        return self.read_support_files(build, 'shims/*')
 
     def __repr__(self):
         return "<BundledPackage {}>".format(self.unique_name)

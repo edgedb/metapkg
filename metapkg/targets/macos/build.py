@@ -1,15 +1,10 @@
-import datetime
 import mimetypes
 import os
 import pathlib
-import plistlib
-import shutil
-import subprocess
-import textwrap
+import stat
 
 from xml.dom import minidom
 
-from metapkg import targets
 from metapkg.targets import generic
 from metapkg import tools
 
@@ -17,31 +12,85 @@ from metapkg import tools
 class Build(generic.Build):
 
     def _build(self):
-        # super()._build()
-        srcdir = self.get_image_root(relative_to=None)
-        dirs = srcdir / 'Library' / 'Frameworks' / 'EdgeDB'
-        dirs.mkdir(parents=True)
-        with open(dirs / 'foo.txt', 'w') as f:
-            print('Hey', file=f)
+        super()._build()
         self._build_installer()
 
     def _build_installer(self):
-        name = self._root_pkg.name
-        title = self._root_pkg.title
-        version = self._root_pkg.pretty_version
-        major = self._root_pkg.version.major
-        ident = f'{self._root_pkg.identifier}.{title}-{major}'
+        pkg = self._root_pkg
+        title = pkg.title
+        version = pkg.pretty_version
+        ident = f'{pkg.identifier}{pkg.slot_suffix}'
 
         temp_root = self.get_temp_root(relative_to=None)
         installer = temp_root / 'installer'
         installer.mkdir(parents=True)
 
-        pkgname = f'{title}-{major}.pkg'
+        srcdir = self.get_image_root(relative_to=None)
+
+        # Unversioned package.
+
+        selectdir = installer / 'Common'
+        selectdir.mkdir(parents=True)
+
+        sysbindir = self.get_install_path('systembin')
+
+        for path, data in self._root_pkg.get_bin_shims(self).items():
+            bin_path = (sysbindir / path).relative_to('/')
+            inst_path = selectdir / bin_path
+            inst_path.parent.mkdir(parents=True)
+            with open(inst_path, 'w') as f:
+                f.write(data)
+            os.chmod(inst_path,
+                     stat.S_IRWXU | stat.S_IRGRP |
+                     stat.S_IXGRP | stat.S_IROTH |
+                     stat.S_IXOTH)
+
+        paths_d = selectdir / 'etc' / 'paths.d' / self._root_pkg.identifier
+        paths_d.parent.mkdir(parents=True)
+        sysbindir = self.get_install_path('systembin')
+
+        with open(paths_d, 'w') as f:
+            print(sysbindir, file=f)
+
+        common_pkgname = f'{title}-common.pkg'
+        common_pkgpath = installer / common_pkgname
+
+        tools.cmd('pkgbuild',
+                  '--root', selectdir,
+                  '--identifier', f'{self._root_pkg.identifier}-common',
+                  '--version', version,
+                  '--install-location', '/',
+                  common_pkgpath)
+
+        # Main Versioned Package
+        stagemap = {
+            'before_install': 'preinstall',
+            'after_install': 'postinstall',
+        }
+
+        scriptdir = installer / 'Scripts'
+        scriptdir.mkdir(parents=True)
+
+        for genstage, inststage in stagemap.items():
+            script = self.get_script(genstage, installable_only=True)
+            if script:
+                with open(scriptdir / inststage, 'w') as f:
+                    print('#!/bin/bash\nset -e', file=f)
+                    print(script, file=f)
+                os.chmod(scriptdir / inststage,
+                         stat.S_IRWXU | stat.S_IRGRP |
+                         stat.S_IXGRP | stat.S_IROTH |
+                         stat.S_IXOTH)
+
+        pkgname = f'{title}{pkg.slot_suffix}.pkg'
         pkgpath = installer / pkgname
 
-        srcdir = self.get_image_root(relative_to=None)
-        tools.cmd('pkgbuild', '--root', srcdir, '--identifier', ident,
-                  '--version', version, '--install-location', '/',
+        tools.cmd('pkgbuild',
+                  '--root', srcdir,
+                  '--identifier', ident,
+                  '--scripts', scriptdir,
+                  '--version', version,
+                  '--install-location', '/',
                   pkgpath)
 
         rsrcdir = installer / 'Resources'
@@ -55,9 +104,11 @@ class Build(generic.Build):
 
         distribution = installer / 'Distribution.xml'
 
-        tools.cmd('productbuild', '--package', pkgpath,
+        tools.cmd('productbuild',
+                  '--package', pkgpath,
+                  '--package', common_pkgpath,
                   '--resources', rsrcdir,
-                  '--identifier', f'{self._root_pkg.identifier}-{major}',
+                  '--identifier', ident,
                   '--version', version,
                   '--synthesize', distribution)
 
@@ -95,7 +146,7 @@ class Build(generic.Build):
         tools.cmd('productbuild',
                   '--package-path', pkgpath.parent,
                   '--resources', rsrcdir,
-                  '--identifier', f'{self._root_pkg.identifier}-{major}',
+                  '--identifier', ident,
                   '--version', version,
                   '--distribution', distribution,
                   self._outputroot / f'{title}-{version}.pkg')

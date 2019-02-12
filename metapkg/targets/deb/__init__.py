@@ -183,9 +183,8 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
         arch = tools.cmd('dpkg-architecture', '-qDEB_HOST_MULTIARCH').strip()
         return pathlib.Path('/usr/lib') / arch
 
-    def build(self, root_pkg, deps, build_deps, io, workdir, outputdir):
-        return debuild.Build(
-            self, io, root_pkg, deps, build_deps, workdir, outputdir).run()
+    def build(self, **kwargs):
+        return debuild.Build(self, **kwargs).run()
 
 
 class ModernDebianTarget(BaseDebTarget):

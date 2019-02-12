@@ -6,6 +6,8 @@ from poetry.puzzle import provider as poetry_provider
 
 from metapkg import tools
 
+from . import utils
+
 
 class PackageNotFoundError(LookupError):
     pass
@@ -61,17 +63,17 @@ class Provider(poetry_provider.Provider):
 
         if setup_py.exists():
             dist = tools.python.get_dist(path)
-            package = poetry_pkg.Package(dist.name, dist.version)
+            package = poetry_pkg.Package(dependency.name, dist.version)
             package.build_requires = []
 
             build_requires = tools.python.get_build_requires(setup_py)
             for breq in build_requires:
-                package.build_requires.append(
-                    poetry_pkg.dependency_from_pep_508(breq))
+                dep = utils.python_dependency_from_pep_508(breq)
+                package.build_requires.append(dep)
 
             for req in dist.metadata.run_requires:
-                package.requires.append(
-                    poetry_pkg.dependency_from_pep_508(req))
+                dep = utils.python_dependency_from_pep_508(req)
+                package.requires.append(dep)
 
         else:
             raise RuntimeError('non-Python git packages are not supported')
@@ -101,8 +103,8 @@ class Provider(poetry_provider.Provider):
             chain.append(build_requires)
 
         for dep in itertools.chain.from_iterable(chain):
-            if not dep.is_activated() and dep.extras:
-                if not (set(dep.extras) - self._active_extras):
+            if not dep.is_activated() and dep.in_extras:
+                if not (set(dep.in_extras) - self._active_extras):
                     dep.activate()
 
         return super().complete_package(package)

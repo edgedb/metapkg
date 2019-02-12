@@ -13,14 +13,15 @@ class Build(targets.Build):
     def prepare(self):
         super().prepare()
 
-        self._pkgroot = self._droot / self._root_pkg.name
-        self._srcroot = self._pkgroot / self._root_pkg.name
+        self._pkgroot = self._droot / self._root_pkg.name_slot
+        self._srcroot = self._pkgroot / self._root_pkg.name_slot
 
         # MAKELEVEL=0 is required because
         # some package makefiles have
         # conditions on MAKELEVEL.
         self._system_tools['make'] = \
             'make MAKELEVEL=0 -j{}'.format(os.cpu_count())
+        self._system_tools['cp'] = 'cp'
         self._system_tools['install'] = 'install'
         self._system_tools['patch'] = 'patch'
         self._system_tools['useradd'] = 'useradd'
@@ -56,7 +57,7 @@ class Build(targets.Build):
         elif relative_to == 'buildroot':
             return pathlib.Path('..') / path
         elif relative_to == 'pkgsource':
-            if package is not None and package.name == self.root_package.name:
+            if package is not None and package.name == self.root_package.name_slot:
                 return pathlib.Path(path)
             else:
                 return pathlib.Path('..') / '..' / path
@@ -82,13 +83,13 @@ class Build(targets.Build):
         return self.get_tarball_root(relative_to=relative_to)
 
     def get_extras_root(self, *, relative_to='sourceroot'):
-        return self.get_tarball_root(relative_to=relative_to) / 'extras'
+        return self.get_source_root(relative_to=relative_to) / 'extras'
 
     def get_spec_root(self, *, relative_to='sourceroot'):
         return self.get_dir(pathlib.Path('SPECS'), relative_to=relative_to)
 
     def get_source_dir(self, package, *, relative_to='sourceroot'):
-        if package.name == self.root_package.name:
+        if package.name == self.root_package.name_slot:
             return self.get_dir('.', relative_to=relative_to)
         else:
             return self.get_dir(
@@ -106,7 +107,7 @@ class Build(targets.Build):
 
     def get_image_root(self, *, relative_to='sourceroot'):
         return self.get_dir(
-            self._tmproot / 'buildroot' / self._root_pkg.name,
+            self._tmproot / 'buildroot' / self._root_pkg.name_slot,
             relative_to=relative_to)
 
     def get_build_dir(self, package, *, relative_to='sourceroot'):
@@ -152,6 +153,8 @@ class Build(targets.Build):
         makefile = textwrap.dedent('''\
             .PHONY: build install
 
+            DESTDIR := /
+
             {temp_root}/stamp/build:
             \t{build_script}
             \t{install_script}
@@ -163,7 +166,7 @@ class Build(targets.Build):
             install: build
             \trsync -arv --omit-dir-times --relative --no-perms --no-owner \\
             \t\t--no-group --executability \\
-            \t\t--files-from="{temp_root}/install.list" "{image_root}/" /
+            \t\t"{image_root}/" "$(DESTDIR)"
 
         ''').format(
             temp_root=temp_root,
@@ -222,13 +225,12 @@ class Build(targets.Build):
 
             {trim_install} "{temp_dir}/install" \\
                 "{temp_dir}/not-installed" "{temp_dir}/ignored" \\
-                "{install_dir}" > "{temp_dir}/install.final"
+                "{install_dir}" > "{temp_dir}/install.list"
 
-            cat "{temp_dir}/install.final" >> "{temp_root}/install.list"
+            {extras_script} >> "{temp_dir}/install.list"
 
-            {extras_script} >> "{temp_root}/install.list"
-
-            rsync -av "{install_dir}/" "{image_root}/"
+            rsync -av --files-from="{temp_dir}/install.list" --relative \\
+                "{install_dir}/" "{image_root}/"
 
             popd >/dev/null
         ''')
@@ -236,12 +238,22 @@ class Build(targets.Build):
     def _get_package_extras_script(self, pkg) -> str:
         lines = []
         install_dir = self.get_install_dir(pkg, relative_to='sourceroot')
-        bindir = (self.target.get_install_root(self) / 'bin').relative_to('/')
+        bindir = self.get_install_path('systembin').relative_to('/')
 
         lines.append(f'mkdir -p "{install_dir / bindir}"')
         for cmd in pkg.get_exposed_commands(self):
-            lines.append(f'ln -sf "{cmd}" "{install_dir / bindir}/{cmd.name}"')
-            lines.append(f'echo {bindir / cmd.name}')
+            cmdname = f'{cmd.name}{pkg.slot_suffix}'
+            lines.append(f'ln -sf "{cmd}" "{install_dir / bindir}/{cmdname}"')
+            lines.append(f'echo {bindir / cmdname}')
+
+        extras_dir = self.get_extras_root(relative_to=None)
+        for path, content in pkg.get_service_scripts(self).items():
+            directory = extras_dir / path.parent.relative_to('/')
+            directory.mkdir(parents=True, exist_ok=True)
+            with open(directory / path.name, 'w') as f:
+                print(content, file=f)
+
+            lines.append(f'echo {path.relative_to("/")}')
 
         return '\n'.join(lines)
 

@@ -26,9 +26,6 @@ class TargetAction:
 
 class Target:
 
-    def build(self, root_pkg, deps, io, workdir, outputdir):
-        pass
-
     def get_capabilities(self) -> list:
         return []
 
@@ -44,21 +41,47 @@ class Target:
     def get_resource_path(self, build, resource):
         return None
 
+    def get_package_system_ident(self, build, package):
+        return package.name_slot
+
     def get_full_install_prefix(self, build) -> pathlib.Path:
         return self.get_install_root(build) / self.get_install_prefix(build)
 
 
-class LinuxEnsureDirAction(TargetAction):
+class PosixEnsureDirAction(TargetAction):
 
-    def get_script(self, *, path, owner_user, owner_group, mode=0o755):
+    def get_script(self, *, path, owner_user=None,
+                   owner_group=None, owner_recursive=False, mode=0o755):
 
-        return textwrap.dedent(f'''\
+        chown_flags = '-R' if owner_recursive else ''
+
+        script = textwrap.dedent(f'''\
             if ! [ -d "{path}" ]; then
                 mkdir -p "{path}"
-                chmod "{mode:o}" "{path}"
-                chown "{owner_user}:{owner_group}" "{path}"
             fi
+            chmod "{mode:o}" "{path}"
         ''')
+
+        if owner_user and owner_group:
+            script += (
+                f'\nchown {chown_flags} "{owner_user}:{owner_group}" "{path}"')
+        elif owner_user:
+            script += (
+                f'\nchown {chown_flags} "{owner_user}" "{path}"')
+        elif owner_group:
+            script += (
+                f'\nchgrp {chown_flags} "{owner_group}" "{path}"')
+
+        return script
+
+
+class PosixTarget(Target):
+
+    def get_action(self, name, build) -> TargetAction:
+        if name == 'ensuredir':
+            return PosixEnsureDirAction(build)
+        else:
+            return super().get_action(name, build)
 
 
 class LinuxAddUserAction(TargetAction):
@@ -107,7 +130,7 @@ class LinuxAddUserAction(TargetAction):
             group_script = ''
 
         if homedir:
-            homedir_script = LinuxEnsureDirAction(self._build).get_script(
+            homedir_script = PosixEnsureDirAction(self._build).get_script(
                 path=homedir, owner_user=name, owner_group=group)
         else:
             homedir_script = ''
@@ -127,17 +150,15 @@ class LinuxAddUserAction(TargetAction):
                     homedir_script=homedir_script)
 
 
-class LinuxTarget(Target):
+class LinuxTarget(PosixTarget):
 
     @property
     def name(self):
-        return f'{self._target.distro["id"]}-{self._target.distro["version"]}'
+        return f'{self.distro["id"]}-{self.distro["version"]}'
 
     def get_action(self, name, build) -> TargetAction:
         if name == 'adduser':
             return LinuxAddUserAction(build)
-        elif name == 'ensuredir':
-            return LinuxEnsureDirAction(build)
         else:
             return super().get_action(name, build)
 
@@ -152,23 +173,20 @@ class LinuxTarget(Target):
                 raise RuntimeError(
                     'systemd-enabled target does not define '
                     '"systemd-units" path')
-            result = {}
-            for name, content in units.items():
-                name = name.replace('VERSION', str(package.version.major))[:-3]
-                content = build.format_package_template(content, package)
-                result[systemd_path / name] = content
-
-            return result
+            return {systemd_path / name: data for name, data in units.items()}
 
         else:
             raise NotImplementedError(
                 'non-systemd linux targets are not supported')
 
 
-class FHSTarget(Target):
+class FHSTarget(PosixTarget):
 
     def get_arch_libdir(self):
         raise NotImplementedError
+
+    def get_sys_bindir(self):
+        return pathlib.Path('/usr/bin')
 
     def sh_get_command(self, command):
         return command
@@ -178,7 +196,7 @@ class FHSTarget(Target):
 
     def get_install_prefix(self, build):
         libdir = self.get_arch_libdir()
-        return (libdir / build.root_package.name).relative_to('/')
+        return (libdir / build.root_package.name_slot).relative_to('/')
 
     def get_install_path(self, build, aspect):
         root = self.get_install_root(build)
@@ -186,14 +204,21 @@ class FHSTarget(Target):
 
         if aspect == 'sysconf':
             return root / 'etc'
+        elif aspect == 'userconf':
+            return pathlib.Path('$HOME') / '.config'
         elif aspect == 'data':
-            return root / 'usr' / 'share' / build.root_package.name
+            return root / 'usr' / 'share' / build.root_package.name_slot
         elif aspect == 'bin':
             return root / prefix / 'bin'
+        elif aspect == 'systembin':
+            if root == pathlib.Path('/'):
+                return self.get_sys_bindir()
+            else:
+                return root / 'bin'
         elif aspect == 'lib':
             return root / prefix / 'lib'
         elif aspect == 'include':
-            return root / 'usr' / 'include' / build.root_package.name
+            return root / 'usr' / 'include' / build.root_package.name_slot
         elif aspect == 'localstate':
             return root / 'var'
         elif aspect == 'runstate':
@@ -210,8 +235,9 @@ class FHSTarget(Target):
 
 class Build:
 
-    def __init__(self, target, io, root_pkg, deps,
-                 build_deps, workdir, outputdir):
+    def __init__(self, target, *, io, root_pkg, deps,
+                 build_deps, workdir, outputdir, build_source,
+                 build_debug):
         self._droot = pathlib.Path(workdir)
         if outputdir is not None:
             self._outputroot = pathlib.Path(outputdir)
@@ -222,6 +248,8 @@ class Build:
         self._root_pkg = root_pkg
         self._deps = deps
         self._build_deps = build_deps
+        self._build_source = build_source
+        self._build_debug = build_debug
         self._bundled = [
             pkg for pkg in self._build_deps
             if not isinstance(pkg, tgt_pkg.SystemPackage) and
@@ -321,7 +349,8 @@ class Build:
         return cmd
 
     def sh_format_command(self, path, args: dict, *, extra_indent=0,
-                          user=None) -> str:
+                          user=None, force_args_eq=False,
+                          linebreaks=True) -> str:
         args_parts = []
         for arg, val in args.items():
             if val is None:
@@ -332,23 +361,38 @@ class Build:
                     val = shlex.quote(val)
                 else:
                     val = val[1:]
-                args_parts.append(f'{arg}={val}')
+                sep = '=' if arg.startswith('--') or force_args_eq else ' '
+                args_parts.append(f'{arg}{sep}{val}')
 
-        args_str = ' \\\n    '.join(args_parts)
+        if linebreaks:
+            sep = ' \\\n    '
+        else:
+            sep = ' '
+
+        args_str = sep.join(args_parts)
+
+        if linebreaks:
+            args_str = textwrap.indent(args_str, ' ' * 4)
+
+        result = f'{shlex.quote(str(path))}{sep}{args_str}'
+
         if extra_indent:
-            args_str = textwrap.indent(args_str, ' ' * extra_indent)
+            result = textwrap.indent(result, ' ' * extra_indent)
 
-        return f'{shlex.quote(str(path))} \\\n    {args_str}'
+        return result
 
     def format_package_template(self, tpl, package) -> str:
         variables = {}
-        for aspect in ('bin', 'data', 'include', 'lib'):
+        for aspect in ('bin', 'data', 'include', 'lib', 'runstate',
+                       'localstate', 'userconf'):
             path = self.get_install_path(aspect)
             variables[f'{aspect}dir'] = path
 
         variables['prefix'] = self.get_install_prefix()
-
-        variables['version'] = package.version.major
+        variables['slot'] = package.slot
+        variables['identifier'] = self.target.get_package_system_ident(
+            self, package)
+        variables['name'] = package.name
         variables['description'] = package.description
         variables['documentation'] = package.url
 
@@ -393,7 +437,7 @@ class Build:
     def get_tarball_tpl(self, package):
         rp = self._root_pkg
         return (
-            f'{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}'
+            f'{rp.name_slot}_{rp.version.text}.orig-{package.name}.tar{{comp}}'
         )
 
     def get_tool_list(self):

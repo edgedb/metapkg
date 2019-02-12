@@ -2,4 +2,4 @@
 MetaPkg
 =======
 
-MetaPkg is a multiplatform native package builder.
+MetaPkg is a multi-platform native package builder.

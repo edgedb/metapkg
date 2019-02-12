@@ -1,7 +1,9 @@
 import datetime
 import os
 import pathlib
+import shlex
 import shutil
+import stat
 import subprocess
 import textwrap
 
@@ -14,8 +16,8 @@ class Build(targets.Build):
     def prepare(self):
         super().prepare()
 
-        self._pkgroot = self._droot / self._root_pkg.name
-        self._srcroot = self._pkgroot / self._root_pkg.name
+        self._pkgroot = self._droot / self._root_pkg.name_slot
+        self._srcroot = self._pkgroot / self._root_pkg.name_slot
         self._debroot = self._srcroot / 'debian'
 
         # MAKELEVEL=0 is required because debian/rules
@@ -23,6 +25,7 @@ class Build(targets.Build):
         # conditions on MAKELEVEL.
         self._system_tools['make'] = \
             'make MAKELEVEL=0 -j{}'.format(os.cpu_count())
+        self._system_tools['cp'] = 'cp'
         self._system_tools['install'] = 'install'
         self._system_tools['useradd'] = 'useradd'
         self._system_tools['groupadd'] = 'groupadd'
@@ -35,10 +38,12 @@ class Build(targets.Build):
         self._debroot.mkdir(parents=True)
         (self._debroot / self._tmproot).mkdir(parents=True)
 
+        self._bin_shims = self._root_pkg.get_bin_shims(self)
+
     def get_source_abspath(self):
         return self._srcroot
 
-    def get_path(self, path, *, relative_to):
+    def get_path(self, path, *, relative_to, package=None):
         """Return *path* relative to *relative_to* location.
 
         :param pathlike path:
@@ -139,9 +144,29 @@ class Build(targets.Build):
                                  for dep in self._build_deps
                                  if isinstance(dep, targets.SystemPackage))
 
-        deps = ',\n '.join(f'{dep.system_name} (= {dep.pretty_version})'
-                           for dep in self._deps
-                           if isinstance(dep, targets.SystemPackage))
+        # Rely on shlib-depends
+        #
+        # deps = ',\n '.join(f'{dep.system_name} (= {dep.pretty_version})'
+        #                   for dep in self._deps
+        #                   if isinstance(dep, targets.SystemPackage))
+        deps = ''
+
+        base_name = self._root_pkg.name
+        name = self._root_pkg.name_slot
+
+        if self._bin_shims:
+            common_package = textwrap.dedent('''\
+                Package: {name}-common
+                Architecture: any
+                Description:
+                 Support files for {title}.
+            ''').format(
+                name=base_name,
+                title=self._root_pkg.title,
+            )
+            deps += f',\n {base_name}-common (>= {self._root_pkg.version})'
+        else:
+            common_package = ''
 
         control = textwrap.dedent('''\
             Source: {name}
@@ -158,22 +183,29 @@ class Build(targets.Build):
             Package: {name}
             Architecture: any
             Depends:
-             {deps}
+             {deps},
              ${{misc:Depends}},
              ${{shlibs:Depends}}
             Description:
              {description}
+
+            {common_pkg}
         ''').format(
-            name=self._root_pkg.name,
+            name=name,
             deps=deps,
             build_deps=build_deps,
             section=self._target.get_package_group(self._root_pkg),
             description=self._root_pkg.description,
             maintainer='MagicStack Inc. <hello@magic.io>',
+            common_pkg=common_package,
         )
 
         with open(self._debroot / 'control', 'w') as f:
             f.write(control)
+
+        # Make sure we don't export any shlibs from the bundle.
+        with open(self._debroot / f'{name}.shlibs', 'w') as f:
+            f.write('')
 
     def _write_changelog(self):
         distro = self._target.distro['codename']
@@ -185,7 +217,7 @@ class Build(targets.Build):
 
              -- {maintainer}  {date}
         ''').format(
-            name=self._root_pkg.name,
+            name=f'{self._root_pkg.name_slot}',
             version=f'{self._root_pkg.version.text}-1~{distro}',
             distro=distro,
             maintainer='MagicStack Inc. <hello@magic.io>',
@@ -236,13 +268,16 @@ class Build(targets.Build):
             {build_install_steps}
             {install_extras}
 
+            override_dh_strip:
+            \t{strip_steps}
+
             override_dh_install-arch:
             {install_steps}
 
             override_dh_auto_clean:
             \trm -rf stamp
         ''').format(
-            name=self._root_pkg.name,
+            name=self._root_pkg.name_slot,
             target_global_rules=self._target.get_global_rules(),
             configure_steps=self._write_script('configure'),
             build_steps=self._write_script('build'),
@@ -251,6 +286,10 @@ class Build(targets.Build):
             install_extras=textwrap.indent(self._get_install_extras(), '\t'),
             install_steps=self._write_script(
                 'install', installable_only=True),
+            strip_steps=(
+                'dh_strip --automatic-dbgsym' if self._build_debug else
+                'dh_strip --no-automatic-dbgsym'
+            ),
         )
 
         with open(self._debroot / 'rules', 'w') as f:
@@ -269,7 +308,7 @@ class Build(targets.Build):
         for genstage, debstage in stagemap.items():
             script = self.get_script(genstage, installable_only=True)
             if script:
-                stagefile = f'{self.root_package.name}.{debstage}'
+                stagefile = f'{self.root_package.name_slot}.{debstage}'
                 spec_root = self.get_spec_root(relative_to=None)
                 with open(spec_root / stagefile, 'w') as f:
                     print('#!/bin/bash\nset -e', file=f)
@@ -307,7 +346,7 @@ class Build(targets.Build):
 
             {trim_install} "{temp_dir}/install" \\
                 "{temp_dir}/not-installed" "{temp_dir}/ignored" \\
-                "{install_dir}" > "debian/{self._root_pkg.name}.install"
+                "{install_dir}" > "debian/{self._root_pkg.name_slot}.install"
 
             dh_install --sourcedir="{install_dir}" --fail-missing
 
@@ -319,6 +358,7 @@ class Build(targets.Build):
         symlinks = []
 
         extras_dir = self.get_extras_root(relative_to=None)
+        sys_bindir = self.get_install_path('systembin').relative_to('/')
 
         for pkg in self._installable:
             for path, content in pkg.get_service_scripts(self).items():
@@ -328,15 +368,48 @@ class Build(targets.Build):
                     print(content, file=f)
 
             for cmd in pkg.get_exposed_commands(self):
-                symlinks.append((cmd.relative_to('/'), f'usr/bin/{cmd.name}'))
+                symlinks.append((
+                    cmd.relative_to('/'),
+                    f'{sys_bindir}/{cmd.name}{pkg.slot_suffix}',
+                ))
 
         if symlinks:
             spec_root = self.get_spec_root(relative_to=None)
-            with open(spec_root / f'{self.root_package.name}.links', 'w') as f:
+            links = spec_root / f'{self.root_package.name_slot}.links'
+            with open(links, 'w') as f:
                 print('\n'.join(f'{src} {dst}' for src, dst in symlinks),
                       file=f)
 
             lines.append('dh_link')
+
+        if self._bin_shims:
+            extras_dir_rel = self.get_extras_root(relative_to='sourceroot')
+
+            dest = shlex.quote(
+                str(self._debroot / f'{self._root_pkg.name}-common'))
+
+            sysbindir = self.get_install_path('systembin')
+
+            for path, data in self._bin_shims.items():
+                bin_path = (sysbindir / path).relative_to('/')
+                inst_path = extras_dir / bin_path
+                inst_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(inst_path, 'w') as f:
+                    f.write(data)
+                os.chmod(inst_path,
+                         stat.S_IRWXU | stat.S_IRGRP |
+                         stat.S_IXGRP | stat.S_IROTH |
+                         stat.S_IXOTH)
+
+                src_path = extras_dir_rel / bin_path
+                src = shlex.quote(str(src_path))
+
+                dest_path = dest / bin_path
+                dst = shlex.quote(str(dest_path))
+                dstdir = shlex.quote(str(dest_path.parent))
+
+                lines.append(f'mkdir -p {dstdir}')
+                lines.append(f'cp -p {src} {dst}')
 
         return '\n'.join(lines)
 
@@ -367,9 +440,13 @@ class Build(targets.Build):
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT)
 
+        args = ['-us', '-uc', '--source-option=--create-empty-orig']
+        if not self._build_source:
+            args.append('-b')
+
         tools.cmd(
-            'dpkg-buildpackage', '-us', '-uc',
-            '--source-option=--create-empty-orig',
+            'dpkg-buildpackage',
+            *args,
             cwd=str(self._srcroot),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT)

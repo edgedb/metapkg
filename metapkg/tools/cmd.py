@@ -16,6 +16,7 @@ def cmd(*cmd, errors_are_fatal=True, hide_stderr=False, **kwargs):
     default_kwargs.update(kwargs)
 
     cmd = [str(c) for c in cmd]
+    print(' '.join(cmd))
 
     try:
         p = subprocess.run(cmd, check=True, **default_kwargs)

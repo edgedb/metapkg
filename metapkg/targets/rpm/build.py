@@ -3,7 +3,9 @@ import glob
 import os
 import pathlib
 import platform
+import shlex
 import shutil
+import stat
 import subprocess
 import textwrap
 
@@ -16,22 +18,25 @@ class Build(targets.Build):
     def prepare(self):
         super().prepare()
 
-        self._pkgroot = self._droot / self._root_pkg.name
-        self._srcroot = self._pkgroot / self._root_pkg.name
+        self._pkgroot = self._droot / self._root_pkg.name_slot
+        self._srcroot = self._pkgroot / self._root_pkg.name_slot
 
         self._buildroot = pathlib.Path('BUILD')
         self._tmproot = pathlib.Path('TEMP')
         self._installroot = pathlib.Path('INSTALL')
 
         self._system_tools['make'] = f'make -j{os.cpu_count()}'
+        self._system_tools['cp'] = 'cp'
         self._system_tools['install'] = 'install'
         self._system_tools['useradd'] = 'useradd'
         self._system_tools['groupadd'] = 'groupadd'
 
+        self._bin_shims = self._root_pkg.get_bin_shims(self)
+
     def get_source_abspath(self):
         return self._srcroot
 
-    def get_path(self, path, *, relative_to):
+    def get_path(self, path, *, relative_to, package=None):
         """Return *path* relative to *relative_to* location.
 
         :param pathlike path:
@@ -94,7 +99,7 @@ class Build(targets.Build):
 
     def get_image_root(self, *, relative_to='sourceroot'):
         return self.get_dir(
-            pathlib.Path('BUILDROOT') / self._root_pkg.name,
+            pathlib.Path('BUILDROOT') / self._root_pkg.name_slot,
             relative_to=relative_to)
 
     def get_build_dir(self, package, *, relative_to='sourceroot'):
@@ -120,6 +125,32 @@ class Build(targets.Build):
 
     def _write_spec(self):
         sysreqs = self.get_extra_system_requirements()
+        base_name = self._root_pkg.name
+
+        if self._bin_shims:
+            common_package = textwrap.dedent('''\
+                %package -n {name}-common
+                Summary: Support files for {title}.
+                Group: {group}
+                License: {license}
+                URL: {url}
+
+                %description -n {name}-common
+                {long_description}
+
+                %files -n {name}-common
+                {common_files}
+            ''').format(
+                name=base_name,
+                title=self._root_pkg.title,
+                long_description=self._root_pkg.description,
+                license=self._root_pkg.license,
+                url=self._root_pkg.url,
+                group=self._root_pkg.group,
+                common_files=self._get_common_files(),
+            )
+        else:
+            common_package = ''
 
         rules = textwrap.dedent('''\
             Name: {name}
@@ -140,13 +171,15 @@ class Build(targets.Build):
             %description
             {long_description}
 
+            {common_pkg}
+
             %global _privatelibs {privatelibs}
-            %global __provides_exclude ^.*\.so$
+            %global __provides_exclude ^.*\\.so(\..*)?$
             %global __requires_exclude ^(%{{_privatelibs}})$
 
             %define __python python3
 
-            %debug_package
+            {debug_pkg}
 
             %prep
             {unpack_script}
@@ -173,7 +206,7 @@ class Build(targets.Build):
             %changelog
             {changelog}
         ''').format(
-            name=self._root_pkg.name,
+            name=self._root_pkg.name_slot,
             description=self._root_pkg.description,
             long_description=self._root_pkg.description,
             license=self._root_pkg.license,
@@ -197,7 +230,8 @@ class Build(targets.Build):
             install_script=self._write_script(
                 'install', installable_only=True,
                 relative_to='buildroot'),
-            install_extras=self._get_install_extras(),
+            install_extras=textwrap.indent(
+                self._get_install_extras(), '\t'),
             files_extras=self._get_files_extras(),
             pre_script=self.get_script(
                 'before_install', installable_only=True,
@@ -208,10 +242,12 @@ class Build(targets.Build):
             temp_root=self.get_temp_root(relative_to='buildroot'),
             privatelibs=self._get_private_libs_pattern(),
             changelog=self._get_changelog(),
+            common_pkg=common_package,
+            debug_pkg='%debug_package' if self._build_debug else '',
         )
 
         spec_root = self.get_spec_root(relative_to=None)
-        with open(spec_root / f'{self._root_pkg.name}.spec', 'w') as f:
+        with open(spec_root / f'{self._root_pkg.name_slot}.spec', 'w') as f:
             f.write(rules)
 
     def _get_changelog(self):
@@ -249,10 +285,17 @@ class Build(targets.Build):
     def _get_runtime_reqs_spec(self, extrareqs):
         lines = []
 
-        deps = (pkg for pkg in self._deps
-                if isinstance(pkg, targets.SystemPackage))
-        for pkg in deps:
-            lines.append(f'Requires: {pkg.system_name}')
+        # Rely on automatic dependency extraction from shlibs.
+        #
+        # deps = (pkg for pkg in self._deps
+        #         if isinstance(pkg, targets.SystemPackage))
+        # for pkg in deps:
+        #     lines.append(f'Requires: {pkg.system_name}')
+
+        if self._bin_shims:
+            pkg = self._root_pkg
+            lines.append(
+                f'Requires: {pkg.name}-common >= {pkg.pretty_version}')
 
         categorymap = {
             'before-install': 'pre',
@@ -372,6 +415,7 @@ class Build(targets.Build):
         symlinks = []
 
         extras_dir = self.get_extras_root(relative_to=None)
+        extras_dir_rel = self.get_extras_root(relative_to='buildroot')
 
         for pkg in self._installable:
             for path, content in pkg.get_service_scripts(self).items():
@@ -381,15 +425,38 @@ class Build(targets.Build):
                     print(content, file=f)
 
             for cmd in pkg.get_exposed_commands(self):
-                symlinks.append(cmd)
+                symlinks.append((cmd, f'{cmd.name}{pkg.slot_suffix}'))
 
         if symlinks:
             lines.append(r'install -m755 -d "${RPM_BUILD_ROOT}/%{_bindir}"')
 
-            for cmd in symlinks:
+            for src, tgt in symlinks:
                 lines.append(
-                    f'ln -sf "{cmd}" '
-                    f'"${{RPM_BUILD_ROOT}}/%{{_bindir}}/{cmd.name}"')
+                    f'ln -sf "{src}" '
+                    f'"${{RPM_BUILD_ROOT}}/%{{_bindir}}/{tgt}"')
+
+        if self._bin_shims:
+            sysbindir = self.get_install_path('systembin')
+
+            for path, data in self._bin_shims.items():
+                relpath = (sysbindir / path).relative_to('/')
+                inst_path = extras_dir / relpath
+                inst_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(inst_path, 'w') as f:
+                    f.write(data)
+                os.chmod(inst_path,
+                         stat.S_IRWXU | stat.S_IRGRP |
+                         stat.S_IXGRP | stat.S_IROTH |
+                         stat.S_IXOTH)
+
+                src_path = extras_dir_rel / relpath
+                src = shlex.quote(str(src_path))
+
+                broot_path = f'%{{_bindir}}/{path}'
+
+                lines.append(
+                    f'mkdir -p "$(dirname ${{RPM_BUILD_ROOT}}/{broot_path})"')
+                lines.append(f'cp -p {src} "${{RPM_BUILD_ROOT}}/{broot_path}"')
 
         return '\n'.join(lines)
 
@@ -398,13 +465,21 @@ class Build(targets.Build):
 
         for pkg in self._installable:
             for cmd in pkg.get_exposed_commands(self):
-                lines.append(f'%{{_bindir}}/{cmd.name}')
+                cmdname = f'{cmd.name}{pkg.slot_suffix}'
+                lines.append(f'%{{_bindir}}/{cmdname}')
 
         return '\n'.join(lines)
 
+    def _get_common_files(self) -> str:
+        if self._bin_shims:
+            return '\n'.join(
+                f'%{{_bindir}}/{path}' for path in self._bin_shims)
+        else:
+            return ''
+
     def _rpmbuild(self):
         tools.cmd(
-            'yum-builddep', '-y', f'{self._root_pkg.name}.spec',
+            'yum-builddep', '-y', f'{self._root_pkg.name_slot}.spec',
             cwd=str(self.get_spec_root(relative_to=None)),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT
@@ -418,17 +493,25 @@ class Build(targets.Build):
             stderr=subprocess.STDOUT
         )
 
-        tools.cmd(
-            'rpmbuild', '-ba', f'{self._root_pkg.name}.spec',
+        args = [
+            f'{self._root_pkg.name_slot}.spec',
             f'--define=%_topdir {self._srcroot}',
             f'--buildroot={image_root}',
             '--verbose',
+        ]
+        if self._build_source:
+            args.append('-ba')
+        else:
+            args.append('-bb')
+
+        tools.cmd(
+            'rpmbuild', *args,
             cwd=str(self.get_spec_root(relative_to=None)),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT)
 
         tools.cmd(
-            'rpmlint', '-i', f'{self._root_pkg.name}.spec',
+            'rpmlint', '-i', f'{self._root_pkg.name_slot}.spec',
             cwd=str(self.get_spec_root(relative_to=None)),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT)

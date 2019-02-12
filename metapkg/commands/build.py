@@ -20,6 +20,8 @@ class Build(base.Command):
         { --dest= : Destination path. }
         { --keepwork : Do not remove the work directory. }
         { --generic : Build a generic target. }
+        { --build-source : Build source packages. }
+        { --build-debug : Build debug symbol packages. }
     """
 
     help = """Builds the specified package on the current platform."""
@@ -31,6 +33,8 @@ class Build(base.Command):
         keepwork = self.option('keepwork')
         destination = self.option('dest')
         generic = self.option('generic')
+        build_source = self.option('build-source')
+        build_debug = self.option('build-debug')
 
         modname, _, clsname = pkgname.rpartition(':')
 
@@ -107,8 +111,9 @@ class Build(base.Command):
 
         try:
             target.build(
-                pkg, packages, build_deps, io=self.output, workdir=workdir,
-                outputdir=destination)
+                root_pkg=pkg, deps=packages, build_deps=build_deps,
+                io=self.output, workdir=workdir, outputdir=destination,
+                build_source=build_source, build_debug=build_debug)
         finally:
             if not keepwork:
                 tempdir.cleanup()

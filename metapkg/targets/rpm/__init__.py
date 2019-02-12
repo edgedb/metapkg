@@ -165,9 +165,11 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
     def get_arch_libdir(self):
         return pathlib.Path(tools.cmd('rpm', '--eval', '%_libdir').strip())
 
-    def build(self, root_pkg, deps, build_deps, io, workdir, outputdir):
-        return rpmbuild.Build(
-            self, io, root_pkg, deps, build_deps, workdir, outputdir).run()
+    def get_sys_bindir(self):
+        return pathlib.Path(tools.cmd('rpm', '--eval', '%_bindir').strip())
+
+    def build(self, **kwargs):
+        return rpmbuild.Build(self, **kwargs).run()
 
     def get_system_dependencies(self, dep_name) -> list:
         try:

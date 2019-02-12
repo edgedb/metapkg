@@ -14,6 +14,7 @@ from .build import Build
 PACKAGE_WHITELIST = [
     'bison',
     'flex',
+    'pam',
     'perl',
     'uuid',
     'zlib',
@@ -58,7 +59,7 @@ class GenericTarget(targets.FHSTarget):
         return pathlib.Path('/usr/local')
 
     def get_install_prefix(self, build) -> pathlib.Path:
-        return pathlib.Path('lib') / build.root_package.name
+        return pathlib.Path('lib') / build.root_package.name_slot
 
     def get_install_path(self, build, aspect) -> pathlib.Path:
         root = self.get_install_root(build)
@@ -66,24 +67,30 @@ class GenericTarget(targets.FHSTarget):
 
         if aspect == 'sysconf':
             return root / 'etc'
+        elif aspect == 'userconf':
+            return pathlib.Path('$HOME') / '.config'
         elif aspect == 'data':
-            return root / 'share' / build.root_package.name
+            return root / 'share' / build.root_package.name_slot
         elif aspect == 'bin':
             return root / prefix / 'bin'
+        elif aspect == 'systembin':
+            if root == pathlib.Path('/'):
+                return root / 'usr' / 'bin'
+            else:
+                return root / 'bin'
         elif aspect == 'lib':
             return root / prefix / 'lib'
         elif aspect == 'include':
-            return root / 'include' / build.root_package.name
+            return root / 'include' / build.root_package.name_slot
         elif aspect == 'localstate':
-            return pathlib.Path('/var')
+            return root / 'var'
         elif aspect == 'runstate':
-            return pathlib.Path('/run')
+            return root / 'var' / 'run'
         else:
             raise LookupError(f'aspect: {aspect}')
 
-    def build(self, root_pkg, deps, build_deps, io, workdir, outputdir):
-        return Build(
-            self, io, root_pkg, deps, build_deps, workdir, outputdir).run()
+    def build(self, **kwargs):
+        return Build(self, **kwargs).run()
 
     def service_scripts_for_package(self, build, package) -> dict:
         return {}
