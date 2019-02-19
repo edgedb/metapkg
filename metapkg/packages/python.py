@@ -19,7 +19,7 @@ from .utils import python_dependency_from_pep_508
 PythonPackage = poetry_pkg.Package
 
 
-python_dependency = poetry_pkg.Dependency(name='python', constraint='>=3.6')
+python_dependency = poetry_pkg.Dependency(name='python', constraint='>=3.7')
 wheel_dependency = poetry_pkg.Dependency(name='pypkg-wheel', constraint='*')
 
 
