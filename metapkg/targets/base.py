@@ -600,21 +600,31 @@ class Build:
         return '\n\n'.join(scripts)
 
     def _get_global_after_install_script(self) -> str:
+        script = ''
+        service_scripts = self.get_service_scripts()
 
-        if (self.target.has_capability('systemd') and
-                any(pkg.get_service_scripts(self)
-                    for pkg in self._installable)):
-            rundir = self.get_install_path('runstate')
-            systemd = rundir / 'systemd' / 'system'
+        if service_scripts:
+            if self.target.has_capability('systemd'):
+                rundir = self.get_install_path('runstate')
+                systemd = rundir / 'systemd' / 'system'
 
-            script = textwrap.dedent(f'''\
-                if [ -d "{systemd}" ]; then
-                    systemctl daemon-reload
-                fi
-            ''')
+                script = textwrap.dedent(f'''\
+                    if [ -d "{systemd}" ]; then
+                        systemctl daemon-reload
+                    fi
+                ''')
 
-        else:
-            script = ''
+            elif self.target.has_capability('launchd'):
+                script_lines = []
+
+                for path in service_scripts:
+                    ident = path.stem
+                    script_lines.append(
+                        f'launchctl bootstrap system "{path}"')
+                    script_lines.append(
+                        f'launchctl enable system/{ident}')
+
+                script = '\n'.join(script_lines)
 
         return script
 
