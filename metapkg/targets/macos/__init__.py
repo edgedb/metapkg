@@ -248,6 +248,10 @@ class MacOSTarget(generic.GenericTarget):
         launchd_path = self.get_resource_path(build, 'system-daemons')
         return {launchd_path / name: data for name, data in units.items()}
 
+    def get_capabilities(self) -> list:
+        capabilities = super().get_capabilities()
+        return capabilities + ['launchd']
+
 
 class ModernMacOSTarget(MacOSTarget):
 
