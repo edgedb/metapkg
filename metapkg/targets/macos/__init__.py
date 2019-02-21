@@ -200,8 +200,12 @@ class MacOSTarget(generic.GenericTarget):
     def name(self):
         return f'macOS {".".join(str(v) for v in self.version)}'
 
-    def get_package_system_ident(self, build, package):
-        return f'{package.identifier}{package.slot_suffix}'
+    def get_package_system_ident(self, build, package,
+                                 include_slot: bool = False):
+        if include_slot:
+            return f'{package.identifier}{package.slot_suffix}'
+        else:
+            return package.identifier
 
     def get_su_script(self, build, script, user) -> str:
         return f"su '{user}' -c {shlex.quote(script)}\n"

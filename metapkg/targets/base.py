@@ -41,8 +41,9 @@ class Target:
     def get_resource_path(self, build, resource):
         return None
 
-    def get_package_system_ident(self, build, package):
-        return package.name_slot
+    def get_package_system_ident(self, build, package,
+                                 include_slot: bool = False):
+        return package.name_slot if include_slot else package.name
 
     def get_full_install_prefix(self, build) -> pathlib.Path:
         return self.get_install_root(build) / self.get_install_prefix(build)
