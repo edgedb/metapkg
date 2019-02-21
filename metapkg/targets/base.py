@@ -579,12 +579,6 @@ class Build:
         else:
             packages = self._bundled
 
-        global_method = getattr(self, f'_get_global_{stage}_script', None)
-        if global_method:
-            global_script = global_method()
-            if global_script:
-                scripts.append(global_script)
-
         if stage == 'complete':
             stages = ['configure', 'build', 'build_install']
         else:
@@ -596,6 +590,12 @@ class Build:
                     pkg, stg, relative_to=relative_to)
                 if script.strip():
                     scripts.append(script)
+
+        global_method = getattr(self, f'_get_global_{stage}_script', None)
+        if global_method:
+            global_script = global_method()
+            if global_script:
+                scripts.append(global_script)
 
         return '\n\n'.join(scripts)
 
