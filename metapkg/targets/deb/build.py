@@ -140,7 +140,7 @@ class Build(targets.Build):
             f.write('9\n')
 
     def _write_control(self):
-        build_deps = ',\n '.join(f'{dep.system_name} (= {dep.pretty_version})'
+        build_deps = ',\n '.join(f'{dep.system_name} (>= {dep.pretty_version})'
                                  for dep in self._build_deps
                                  if isinstance(dep, targets.SystemPackage))
 

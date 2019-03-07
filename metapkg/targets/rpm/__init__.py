@@ -22,6 +22,8 @@ PACKAGE_MAP = {
     'python': 'python3',
     'uuid': 'libuuid-devel',
     'systemd-dev': 'systemd-devel',
+    'openssl': 'openssl-devel',
+    'libffi': 'libffi-devel',
 }
 
 
@@ -177,12 +179,20 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
         except KeyError:
             return super().get_system_dependencies(dep_name)
 
+    def install_build_deps(self, build, spec):
+        tools.cmd(
+            'yum-builddep', '-y', spec,
+            cwd=str(build.get_spec_root(relative_to=None)),
+            stdout=build._io.output.stream,
+            stderr=subprocess.STDOUT,
+        )
+
 
 class RHEL7OrNewerTarget(BaseRPMTarget):
 
     def get_capabilities(self) -> list:
         capabilities = super().get_capabilities()
-        return capabilities + ['systemd']
+        return capabilities + ['systemd', 'libffi']
 
     def get_resource_path(self, build, resource):
         if resource == 'systemd-units':
@@ -190,6 +200,17 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
                 tools.cmd('rpm', '--eval', '%_unitdir').strip())
         else:
             return super().get_resource_path(build, resource)
+
+
+class FedoraTarget(RHEL7OrNewerTarget):
+
+    def install_build_deps(self, build, spec):
+        tools.cmd(
+            'dnf', 'builddep', '-y', spec,
+            cwd=str(build.get_spec_root(relative_to=None)),
+            stdout=build._io.output.stream,
+            stderr=subprocess.STDOUT,
+        )
 
 
 def get_specific_target(distro_info):
@@ -201,6 +222,15 @@ def get_specific_target(distro_info):
             raise NotImplementedError(
                 f'{distro_info["id"]} {distro_info["codename"]} '
                 f'is not supported')
+
+    elif distro_info['id'] == 'fedora':
+        ver = int(distro_info['version_parts']['major'])
+        if ver < 29:
+            raise NotImplementedError(
+                f'{distro_info["id"]} {distro_info["codename"]} '
+                f'is not supported')
+        else:
+            return FedoraTarget(distro_info)
 
     else:
         raise NotImplementedError(f'{distro_info["id"]} is not supported')

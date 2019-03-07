@@ -24,6 +24,7 @@ PACKAGE_MAP = {
     'uuid': 'uuid-dev',
     'systemd-dev': 'libsystemd-dev',
     'ncurses': 'ncurses-bin',
+    'libffi': 'libffi-dev',
 }
 
 
@@ -186,18 +187,27 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
     def build(self, **kwargs):
         return debuild.Build(self, **kwargs).run()
 
-
-class ModernDebianTarget(BaseDebTarget):
-
     def get_capabilities(self) -> list:
         capabilities = super().get_capabilities()
-        return capabilities + ['systemd']
+        return capabilities + ['systemd', 'libffi']
 
     def get_resource_path(self, build, resource):
         if resource == 'systemd-units':
             return pathlib.Path('/lib/systemd/system')
         else:
             return super().get_resource_path(build, resource)
+
+    def get_global_rules(self):
+        return textwrap.dedent('''\
+            export DH_VERBOSE=1
+            export SHELL = /bin/bash
+            dpkg_buildflags = \
+                DEB_BUILD_MAINT_OPTIONS=$(DEB_BUILD_MAINT_OPTIONS) \
+                dpkg-buildflags
+        ''')
+
+
+class ModernDebianTarget(BaseDebTarget):
 
     def get_global_rules(self):
         return textwrap.dedent('''\
@@ -211,6 +221,10 @@ class ModernDebianTarget(BaseDebTarget):
 
 
 class DebianStretchOrNewerTarget(ModernDebianTarget):
+    pass
+
+
+class UbuntuXenialOrNewerTarget(BaseDebTarget):
     pass
 
 
@@ -242,6 +256,8 @@ def get_specific_target(distro_info):
 
         if (major, minor) >= (18, 4):
             return UbuntuBionicOrNewerTarget(distro_info)
+        elif (major, minor) >= (16, 4):
+            return UbuntuXenialOrNewerTarget(distro_info)
         else:
             raise NotImplementedError(
                 f'{distro_info["id"]} {distro_info["codename"]} '

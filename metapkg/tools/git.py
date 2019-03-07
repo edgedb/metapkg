@@ -17,7 +17,10 @@ class Git(vcs.Git):
             wd = self._work_dir.as_posix()
         else:
             wd = None
-        return cmd.cmd('git', *args, cwd=wd, **kwargs)
+        result = cmd.cmd('git', *args, cwd=wd, **kwargs)
+        if isinstance(result, str):
+            result = result.strip(' \n\t')
+        return result
 
 
 def _repodir(repo_url):
@@ -47,15 +50,15 @@ def update_repo(repo_url, *, exclude_submodules=None,
         if clone_depth:
             args += (f'--depth={clone_depth}',)
         git.run(*args)
-        status = git.run('status', '-b', '--porcelain').strip().split(' ')
+        status = git.run('status', '-b', '--porcelain').split('\n')[0].split()
         tracking = status[1]
         local, _, remote = tracking.partition('...')
         if not remote:
-            remote_name = git.run('config', f'branch.{local}.remote').strip()
+            remote_name = git.run('config', f'branch.{local}.remote')
             if branch:
                 remote_ref = branch
             else:
-                remote_ref = git.run('config', f'branch.{local}.merge').strip()
+                remote_ref = git.run('config', f'branch.{local}.merge')
                 remote_ref = remote_ref[len('refs/heads/'):]
                 remote = f'{remote_name}/{remote_ref}'
 

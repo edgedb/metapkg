@@ -174,8 +174,8 @@ class Build(targets.Build):
             {common_pkg}
 
             %global _privatelibs {privatelibs}
-            %global __provides_exclude ^.*\\.so(\..*)?$
-            %global __requires_exclude ^(%{{_privatelibs}})$
+            %global __provides_exclude ^.*\\.so(\\..*)?$
+            %global __requires_exclude ^(%{{_privatelibs}}|(/usr)?/bin/.*)$
 
             %define __python python3
 
@@ -445,9 +445,9 @@ class Build(targets.Build):
                 with open(inst_path, 'w') as f:
                     f.write(data)
                 os.chmod(inst_path,
-                         stat.S_IRWXU | stat.S_IRGRP |
-                         stat.S_IXGRP | stat.S_IROTH |
-                         stat.S_IXOTH)
+                         stat.S_IRWXU | stat.S_IRGRP
+                         | stat.S_IXGRP | stat.S_IROTH
+                         | stat.S_IXOTH)
 
                 src_path = extras_dir_rel / relpath
                 src = shlex.quote(str(src_path))
@@ -478,12 +478,8 @@ class Build(targets.Build):
             return ''
 
     def _rpmbuild(self):
-        tools.cmd(
-            'yum-builddep', '-y', f'{self._root_pkg.name_slot}.spec',
-            cwd=str(self.get_spec_root(relative_to=None)),
-            stdout=self._io.output.stream,
-            stderr=subprocess.STDOUT
-        )
+        self.target.install_build_deps(
+            self, f'{self._root_pkg.name_slot}.spec')
 
         image_root = self.get_image_root(relative_to=None)
 
