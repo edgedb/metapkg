@@ -16,7 +16,7 @@ setup(
         ]
     },
     install_requires=[
-        'distro~=1.3.0',
+        'distro~=1.4.0',
         'requests~=2.19.0',
         'poetry~=0.11.2',
         'distlib~=0.2.7',
