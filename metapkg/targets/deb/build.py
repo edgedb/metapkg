@@ -144,12 +144,9 @@ class Build(targets.Build):
                                  for dep in self._build_deps
                                  if isinstance(dep, targets.SystemPackage))
 
-        # Rely on shlib-depends
-        #
-        # deps = ',\n '.join(f'{dep.system_name} (= {dep.pretty_version})'
-        #                   for dep in self._deps
-        #                   if isinstance(dep, targets.SystemPackage))
-        deps = ''
+        deps = ',\n '.join(f'{dep.system_name} (>= {dep.pretty_version})'
+                           for dep in self._deps
+                           if isinstance(dep, targets.SystemPackage))
 
         base_name = self._root_pkg.name
         name = self._root_pkg.name_slot

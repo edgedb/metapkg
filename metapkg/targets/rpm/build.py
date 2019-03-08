@@ -285,12 +285,10 @@ class Build(targets.Build):
     def _get_runtime_reqs_spec(self, extrareqs):
         lines = []
 
-        # Rely on automatic dependency extraction from shlibs.
-        #
-        # deps = (pkg for pkg in self._deps
-        #         if isinstance(pkg, targets.SystemPackage))
-        # for pkg in deps:
-        #     lines.append(f'Requires: {pkg.system_name}')
+        deps = (pkg for pkg in self._deps
+                if isinstance(pkg, targets.SystemPackage))
+        for pkg in deps:
+            lines.append(f'Requires: {pkg.system_name}')
 
         if self._bin_shims:
             pkg = self._root_pkg
