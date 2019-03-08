@@ -228,7 +228,7 @@ class FHSTarget(PosixTarget):
             raise LookupError(f'aspect: {aspect}')
 
     def get_resource_path(self, build, resource):
-        if resource == 'zoneinfo':
+        if resource == 'tzdata':
             return pathlib.Path('/usr/share/zoneinfo')
         else:
             return None

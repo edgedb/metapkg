@@ -192,7 +192,7 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
 
     def get_capabilities(self) -> list:
         capabilities = super().get_capabilities()
-        return capabilities + ['systemd', 'libffi']
+        return capabilities + ['systemd', 'libffi', 'tzdata']
 
     def get_resource_path(self, build, resource):
         if resource == 'systemd-units':
