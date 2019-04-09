@@ -17,7 +17,7 @@ class Build(generic.Build):
 
     def _build_installer(self):
         pkg = self._root_pkg
-        title = pkg.title
+        title = pkg.name
         version = pkg.pretty_version
         ident = f'{pkg.identifier}{pkg.slot_suffix}'
 
@@ -149,4 +149,4 @@ class Build(generic.Build):
                   '--identifier', ident,
                   '--version', version,
                   '--distribution', distribution,
-                  self._outputroot / f'{title}-{version}.pkg')
+                  self._outputroot / f'{title}{pkg.slot_suffix}_{version}.pkg')

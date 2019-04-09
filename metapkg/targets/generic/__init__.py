@@ -15,9 +15,12 @@ PACKAGE_WHITELIST = [
     'bison',
     'flex',
     'pam',
+    'pam-dev',
     'perl',
     'uuid',
+    'uuid-dev',
     'zlib',
+    'zlib-dev',
 ]
 
 

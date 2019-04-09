@@ -19,8 +19,11 @@ PACKAGE_WHITELIST = [
     'flex',
     'perl',
     'pam',
+    'pam-dev',
     'uuid',
+    'uuid-dev',
     'zlib',
+    'zlib-dev',
 ]
 
 

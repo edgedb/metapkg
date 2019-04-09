@@ -16,15 +16,18 @@ from . import build as debuild
 
 
 PACKAGE_MAP = {
-    'icu': 'libicu-dev',
-    'zlib': 'zlib1g-dev',
-    'libxslt': 'libxslt1-dev',
-    'pam': 'libpam0g-dev',
+    'icu': 'libicu',
+    'icu-dev': 'libicu-dev',
+    'zlib': 'zlib1g',
+    'zlib-dev': 'zlib1g-dev',
+    'libxslt-dev': 'libxslt1-dev',
+    'pam': 'libpam0g',
+    'pam-dev': 'libpam0g-dev',
     'python': 'python3',
-    'uuid': 'uuid-dev',
+    'uuid-dev': 'uuid-dev',
     'systemd-dev': 'libsystemd-dev',
     'ncurses': 'ncurses-bin',
-    'libffi': 'libffi-dev',
+    'libffi-dev': 'libffi-dev',
 }
 
 

@@ -15,15 +15,18 @@ from . import build as rpmbuild
 
 
 PACKAGE_MAP = {
-    'icu': 'libicu-devel',
-    'zlib': 'zlib-devel',
-    'libxslt': 'libxslt-devel',
-    'pam': 'pam-devel',
+    'icu': 'libicu',
+    'icu-dev': 'libicu-devel',
+    'zlib': 'zlib',
+    'zlib-dev': 'zlib-devel',
+    'libxslt-dev': 'libxslt-devel',
+    'pam-dev': 'pam-devel',
     'python': 'python3',
-    'uuid': 'libuuid-devel',
+    'uuid': 'libuuid',
+    'uuid-dev': 'libuuid-devel',
     'systemd-dev': 'systemd-devel',
-    'openssl': 'openssl-devel',
-    'libffi': 'libffi-devel',
+    'openssl-dev': 'openssl-devel',
+    'libffi-dev': 'libffi-devel',
 }
 
 
