@@ -1,4 +1,3 @@
-import collections
 import os
 import pathlib
 import re
@@ -9,6 +8,7 @@ import sys
 import textwrap
 
 from metapkg import tools
+from metapkg.packages import base as mpkg_base
 from metapkg.packages import sources as mpkg_sources
 
 from . import _helpers as helpers_pkg
@@ -253,7 +253,8 @@ class Build:
         self._build_debug = build_debug
         self._bundled = [
             pkg for pkg in self._build_deps
-            if not isinstance(pkg, tgt_pkg.SystemPackage) and
+            if not isinstance(pkg, (tgt_pkg.SystemPackage,
+                                    mpkg_base.DummyPackage)) and
             pkg is not root_pkg
         ]
         self._build_only = set(build_deps) - set(deps)

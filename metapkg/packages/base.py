@@ -17,6 +17,25 @@ class Dependency(poetry_pkg.Dependency):
     pass
 
 
+class DummyPackage(poetry_pkg.Package):
+
+    def clone(self):
+        clone = self.__class__(self.pretty_name, self.version)
+        clone.category = self.category
+        clone.optional = self.optional
+        clone.python_versions = self.python_versions
+        clone.platform = self.platform
+        clone.extras = self.extras
+        clone.source_type = self.source_type
+        clone.source_url = self.source_url
+        clone.source_reference = self.source_reference
+
+        for dep in self.requires:
+            clone.requires.append(dep)
+
+        return clone
+
+
 class BasePackage(poetry_pkg.Package):
 
     def get_configure_script(self, build) -> str:
@@ -211,7 +230,8 @@ class BundledPackage(BasePackage):
 
         if self.aliases:
             for alias in self.aliases:
-                pkg = self.clone(name=alias)
+                pkg = DummyPackage(name=alias, version=self.version)
+                pkg.add_dependency(self.name, self.version)
                 repository.bundle_repo.add_package(pkg)
 
     def get_requirements(self) -> typing.List[Dependency]:
@@ -232,9 +252,8 @@ class BundledPackage(BasePackage):
                 reqs.append(item)
         return reqs
 
-    def clone(self, *, name=None):
-        clone = self.__class__(
-            self.version, requires=self.requires, name=name, aliases=[])
+    def clone(self):
+        clone = self.__class__(self.version, requires=self.requires)
         clone.build_requires.extend(self.build_requires)
         return clone
 
