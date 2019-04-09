@@ -73,6 +73,7 @@ class BundledPackage(BasePackage):
 
     title = None
     name = None
+    aliases = None
     description = None
     license = None
     group = None
@@ -178,14 +179,21 @@ class BundledPackage(BasePackage):
 
     def __init__(self, version: str,
                  pretty_version: typing.Optional[str]=None, *,
-                 requires=None) -> None:
+                 requires=None,
+                 name: typing.Optional[str]=None,
+                 aliases: typing.Optional[typing.List[str]]=None) -> None:
 
         if self.title is None:
             raise RuntimeError(f'{type(self)!r} does not define the required '
                                f'title attribute')
 
-        if self.name is None:
+        if name is not None:
+            self.name = name
+        elif self.name is None:
             self.name = self.title.lower()
+
+        if aliases is not None:
+            self.aliases = aliases
 
         super().__init__(self.name, version)
 
@@ -200,6 +208,11 @@ class BundledPackage(BasePackage):
         self.description = type(self).description
 
         repository.bundle_repo.add_package(self)
+
+        if self.aliases:
+            for alias in self.aliases:
+                pkg = self.clone(name=alias)
+                repository.bundle_repo.add_package(pkg)
 
     def get_requirements(self) -> typing.List[Dependency]:
         reqs = []
@@ -219,8 +232,9 @@ class BundledPackage(BasePackage):
                 reqs.append(item)
         return reqs
 
-    def clone(self):
-        clone = self.__class__(self.version, requires=self.requires)
+    def clone(self, *, name=None):
+        clone = self.__class__(
+            self.version, requires=self.requires, name=name, aliases=[])
         clone.build_requires.extend(self.build_requires)
         return clone
 

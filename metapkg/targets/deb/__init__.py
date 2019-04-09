@@ -16,7 +16,7 @@ from . import build as debuild
 
 
 PACKAGE_MAP = {
-    'icu': 'libicu',
+    'icu': 'libicu??',
     'icu-dev': 'libicu-dev',
     'zlib': 'zlib1g',
     'zlib-dev': 'zlib1g-dev',
@@ -24,10 +24,12 @@ PACKAGE_MAP = {
     'pam': 'libpam0g',
     'pam-dev': 'libpam0g-dev',
     'python': 'python3',
+    'uuid': 'libuuid1',
     'uuid-dev': 'uuid-dev',
     'systemd-dev': 'libsystemd-dev',
     'ncurses': 'ncurses-bin',
     'libffi-dev': 'libffi-dev',
+    'openssl-dev': 'libssl-dev',
 }
 
 
@@ -124,52 +126,78 @@ class DebRepository(repository.Repository):
                 return []
             else:
                 packages = []
-                for version in policy['versions']:
-                    norm_version = _debian_version_to_pep440(version)
-                    pkg = SystemPackage(
-                        name, norm_version, pretty_version=version,
-                        system_name=system_name)
-                    packages.append(pkg)
+                for pkgmeta in policy:
+                    for version in pkgmeta['versions']:
+                        norm_version = _debian_version_to_pep440(version)
+                        pkg = SystemPackage(
+                            name, norm_version, pretty_version=version,
+                            system_name=pkgmeta['name'])
+                        packages.append(pkg)
 
                 return packages
 
     def _parse_apt_policy_output(self, output: str) -> dict:
         if not output:
-            return {}
+            return []
 
-        meta = {}
+        metas = []
 
         lines = output.split('\n')
 
-        for no, line in enumerate(lines):
-            line = line.strip()
-            if no == 0:
-                continue
+        while lines:
+            meta = {}
+            seen_name = False
 
-            name, _, value = line.partition(':')
-            value = value.strip()
-            if value:
-                meta[name.lower()] = value
-            elif name.lower() == 'version table':
+            for no, line in enumerate(lines):
+                line = line.strip()
+                if not line:
+                    continue
+
+                if not seen_name:
+                    if not line.endswith(':'):
+                        raise RuntimeError(
+                            'cannot parse apt-cache policy output')
+                    meta['name'] = line[:-1]
+                    seen_name = True
+                    continue
+
+                name, _, value = line.partition(':')
+                value = value.strip()
+                if value:
+                    meta[name.lower()] = value
+                elif name.lower() == 'version table':
+                    break
+
+            if not seen_name:
                 break
 
-        versions = []
-        last_indent = -1
+            lines = lines[no + 1:]
 
-        for line in lines[no + 1:]:
-            m = re.match(r'^([\s*]*)(.*)$', line)
-            indent = len(m.group(1))
-            content = m.group(2)
+            versions = []
+            last_indent = -1
 
-            if last_indent == -1 or indent < last_indent:
-                version = content.split(' ')[0]
-                versions.append(version)
+            for vno, line in enumerate(lines):
+                m = re.match(r'^((?:\s|\*)*)(.*)$', line)
+                indent = len(m.group(1))
+                content = m.group(2)
 
-            last_indent = indent
+                if indent == 0:
+                    break
 
-        meta['versions'] = versions
+                if last_indent == -1 or indent < last_indent:
+                    version = content.split(' ')[0]
+                    versions.append(version)
 
-        return meta
+                last_indent = indent
+
+            meta['versions'] = versions
+            if versions:
+                vno += 1
+
+            lines = lines[vno:]
+            metas.append(meta)
+
+        return metas
 
 
 class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
