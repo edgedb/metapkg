@@ -101,7 +101,7 @@ class Build(generic.Build):
         for name, data in resources.items():
             with open(rsrcdir / name, 'wb') as f:
                 data = data.replace(b'$TITLE', pkg.title.encode())
-                data = data.replace(b'$FULL_VERSION', pkg.version.encode())
+                data = data.replace(b'$FULL_VERSION', version.encode())
                 f.write(data)
 
         distribution = installer / 'Distribution.xml'
