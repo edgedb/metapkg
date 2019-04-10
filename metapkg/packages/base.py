@@ -284,7 +284,9 @@ class BundledPackage(BasePackage):
 
             for pattern in patterns:
                 for path in glob.glob(str(tmp / pattern), recursive=True):
-                    print(pathlib.Path(path).relative_to(tmp))
+                    p = pathlib.Path(path)
+                    if p.exists():
+                        print(p.relative_to(tmp))
         ''').format(
             installdest=installdest,
             patterns=pprint.pformat(processed_entries)
