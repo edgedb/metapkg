@@ -37,7 +37,7 @@ class Build(generic.Build):
         for path, data in self._root_pkg.get_bin_shims(self).items():
             bin_path = (sysbindir / path).relative_to('/')
             inst_path = selectdir / bin_path
-            inst_path.parent.mkdir(parents=True)
+            inst_path.parent.mkdir(parents=True, exist_ok=True)
             with open(inst_path, 'w') as f:
                 f.write(data)
             os.chmod(inst_path,
