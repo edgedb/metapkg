@@ -23,7 +23,7 @@ class Build(base.Command):
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
         { --tag= : VCS tag to build. }
-        { --revision=: Package revision number. }
+        { --revision= : Package revision number. }
     """
 
     help = """Builds the specified package on the current platform."""
