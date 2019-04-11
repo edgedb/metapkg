@@ -157,9 +157,11 @@ class BundledPackage(BasePackage):
         return repository.bundle_repo
 
     @classmethod
-    def resolve_vcs_source(cls, io) -> str:
+    def resolve_vcs_source(cls, io, *, tag=None) -> str:
         sources = cls._get_sources(version='git')
         if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
+            if tag:
+                sources[0].tag = tag
             repo_dir = sources[0].download(io)
         else:
             raise ValueError('Unable to resolve non-git bundled package')

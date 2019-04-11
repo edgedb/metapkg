@@ -239,7 +239,7 @@ class Build:
 
     def __init__(self, target, *, io, root_pkg, deps,
                  build_deps, workdir, outputdir, build_source,
-                 build_debug):
+                 build_debug, revision):
         self._droot = pathlib.Path(workdir)
         if outputdir is not None:
             self._outputroot = pathlib.Path(outputdir)
@@ -252,6 +252,7 @@ class Build:
         self._build_deps = build_deps
         self._build_source = build_source
         self._build_debug = build_debug
+        self._revision = revision
         self._bundled = [
             pkg for pkg in self._build_deps
             if not isinstance(pkg, (tgt_pkg.SystemPackage,

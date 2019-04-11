@@ -141,13 +141,15 @@ class GitSource(BaseSource):
                  exclude_submodules=None, clone_depth=50):
         super().__init__(url, name)
         self.branch = branch
+        self.tag = None
         self.exclude_submodules = exclude_submodules
         self.clone_depth = clone_depth
 
     def download(self, io) -> str:
         return tools.git.update_repo(
             self.url, exclude_submodules=self.exclude_submodules,
-            clone_depth=self.clone_depth, branch=self.branch, io=io)
+            clone_depth=self.clone_depth, branch=self.branch,
+            tag=self.tag, io=io)
 
     def tarball(
             self, pkg, name_tpl: typing.Optional[str] = None, *,

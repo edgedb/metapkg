@@ -175,6 +175,7 @@ class DebRepository(repository.Repository):
 
             versions = []
             last_indent = -1
+            vno = 0
 
             for vno, line in enumerate(lines):
                 m = re.match(r'^((?:\s|\*)*)(.*)$', line)

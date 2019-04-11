@@ -215,7 +215,7 @@ class Build(targets.Build):
              -- {maintainer}  {date}
         ''').format(
             name=f'{self._root_pkg.name_slot}',
-            version=f'{self._root_pkg.version.text}-1~{distro}',
+            version=f'{self._root_pkg.version.text}-{self._revision}~{distro}',
             distro=distro,
             maintainer='MagicStack Inc. <hello@magic.io>',
             date=datetime.datetime.now(datetime.timezone.utc).strftime(

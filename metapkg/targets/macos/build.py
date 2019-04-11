@@ -150,10 +150,12 @@ class Build(generic.Build):
             f.write(dist_xml.toprettyxml())
 
         self._outputroot.mkdir(parents=True, exist_ok=True)
+
+        finalname = f'{title}{pkg.slot_suffix}_{version}_{self._revision}.pkg'
         tools.cmd('productbuild',
                   '--package-path', pkgpath.parent,
                   '--resources', rsrcdir,
                   '--identifier', ident,
                   '--version', version,
                   '--distribution', distribution,
-                  self._outputroot / f'{title}{pkg.slot_suffix}_{version}.pkg')
+                  self._outputroot / finalname)

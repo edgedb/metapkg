@@ -22,6 +22,8 @@ class Build(base.Command):
         { --generic : Build a generic target. }
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
+        { --tag= : VCS tag to build. }
+        { --revision=: Package revision number. }
     """
 
     help = """Builds the specified package on the current platform."""
@@ -35,12 +37,14 @@ class Build(base.Command):
         generic = self.option('generic')
         build_source = self.option('build-source')
         build_debug = self.option('build-debug')
+        tag = self.option('tag')
+        revision = self.option('revision')
 
         modname, _, clsname = pkgname.rpartition(':')
 
         mod = importlib.import_module(modname)
         pkgcls = getattr(mod, clsname)
-        pkg = pkgcls.resolve(self.output)
+        pkg = pkgcls.resolve(self.output, tag=tag)
 
         sources = pkg.get_sources()
 
@@ -113,7 +117,8 @@ class Build(base.Command):
             target.build(
                 root_pkg=pkg, deps=packages, build_deps=build_deps,
                 io=self.output, workdir=workdir, outputdir=destination,
-                build_source=build_source, build_debug=build_debug)
+                build_source=build_source, build_debug=build_debug,
+                revision=revision or '1')
         finally:
             if not keepwork:
                 tempdir.cleanup()

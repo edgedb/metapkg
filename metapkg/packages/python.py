@@ -350,8 +350,8 @@ class BundledPythonPackage(PythonMixin, base.BundledPackage):
         return PyPiRepository(io=io)
 
     @classmethod
-    def resolve(cls, io) -> 'BundledPythonPackage':
-        repo_dir = cls.resolve_vcs_source(io)
+    def resolve(cls, io, *, tag=None) -> 'BundledPythonPackage':
+        repo_dir = cls.resolve_vcs_source(io, tag=tag)
         setup_py = repo_dir / 'setup.py'
 
         if not setup_py.exists():

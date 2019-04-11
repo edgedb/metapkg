@@ -256,7 +256,7 @@ class Build(targets.Build):
             - New version.
         ''').format(
             maintainer='MagicStack Inc. <hello@magic.io>',
-            version=f'{self._root_pkg.version.text}-1',
+            version=f'{self._root_pkg.version.text}-{self._revision}',
             date=datetime.datetime.now(datetime.timezone.utc).strftime(
                 '%a %b %d %Y'
             )
