@@ -44,7 +44,9 @@ class Build(base.Command):
 
         mod = importlib.import_module(modname)
         pkgcls = getattr(mod, clsname)
-        pkg = pkgcls.resolve(self.output, tag=tag)
+        if tag:
+            pkgcls.sources[0]['extras']['version'] = tag
+        pkg = pkgcls.resolve(self.output)
 
         sources = pkg.get_sources()
 

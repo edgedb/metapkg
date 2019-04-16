@@ -121,6 +121,8 @@ class BundledPackage(BasePackage):
     def _get_sources(cls, version: str) -> typing.List[af_sources.BaseSource]:
         sources = []
 
+        if version is None:
+            version = 'HEAD'
         underscore_v = version.replace('.', '_')
         for source in cls.sources:
             if isinstance(source, dict):
@@ -130,6 +132,11 @@ class BundledPackage(BasePackage):
                 if extras:
                     extras = {k.replace('-', '_'): v
                               for k, v in extras.items()}
+
+                    if 'version' not in extras:
+                        extras['version'] = version
+                else:
+                    extras = {'version': version}
 
                 src = af_sources.source_for_url(url, extras)
 
@@ -157,11 +164,9 @@ class BundledPackage(BasePackage):
         return repository.bundle_repo
 
     @classmethod
-    def resolve_vcs_source(cls, io, *, tag=None) -> str:
-        sources = cls._get_sources(version='git')
+    def resolve_vcs_source(cls, io, *, ref=None) -> str:
+        sources = cls._get_sources(version=ref)
         if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
-            if tag:
-                sources[0].tag = tag
             repo_dir = sources[0].download(io)
         else:
             raise ValueError('Unable to resolve non-git bundled package')

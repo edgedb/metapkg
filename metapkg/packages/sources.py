@@ -56,10 +56,11 @@ class HashVerification(BaseVerification):
 
 
 class BaseSource:
-    def __init__(self, url: str, name: str):
+    def __init__(self, url: str, name: str, **extras):
         self.url = url
         self.verifications = []
         self.name = name
+        self.extras = extras
 
     def add_verification(self, verification):
         self.verifications.append(verification)
@@ -137,19 +138,17 @@ class HttpsSource(BaseSource):
 
 class GitSource(BaseSource):
 
-    def __init__(self, url: str, name: str, *, branch=None,
+    def __init__(self, url: str, name: str, *, ref=None,
                  exclude_submodules=None, clone_depth=50):
         super().__init__(url, name)
-        self.branch = branch
-        self.tag = None
+        self.ref = ref
         self.exclude_submodules = exclude_submodules
         self.clone_depth = clone_depth
 
     def download(self, io) -> str:
         return tools.git.update_repo(
             self.url, exclude_submodules=self.exclude_submodules,
-            clone_depth=self.clone_depth, branch=self.branch,
-            tag=self.tag, io=io)
+            clone_depth=self.clone_depth, ref=self.ref, io=io)
 
     def tarball(
             self, pkg, name_tpl: typing.Optional[str] = None, *,
@@ -159,9 +158,15 @@ class GitSource(BaseSource):
         if name_tpl is None:
             name_tpl = f'{pkg.unique_name}{{part}}.tar{{comp}}'
         target_path = target_dir / name_tpl.format(part='', comp='')
+
+        if self.ref is not None:
+            ref = self.ref
+        else:
+            ref = 'HEAD'
+
         repo.run(
             'archive', f'--output={target_path}', '--format=tar',
-            f'--prefix={pkg.unique_name}/', 'HEAD')
+            f'--prefix={pkg.unique_name}/', ref)
 
         submodules = repo.run(
             'submodule', 'foreach', '--recursive').strip('\n')
@@ -210,6 +215,10 @@ def source_for_url(url: str,
     if parts.scheme == 'https' or parts.scheme == 'http':
         return HttpsSource(url, name=name, **extras)
     elif parts.scheme.startswith('git+'):
+        extras = dict(extras)
+        version = extras.pop('version', None)
+        if version:
+            extras['ref'] = version
         return GitSource(url[4:], name=name, **extras)
     else:
         raise ValueError(f'unsupported source URL scheme: {parts.scheme}')

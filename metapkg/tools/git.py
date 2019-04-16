@@ -39,7 +39,7 @@ def repo(repo_url):
 
 
 def update_repo(repo_url, *, exclude_submodules=None,
-                clone_depth=50, branch=None, tag=None, io) -> str:
+                clone_depth=50, ref=None, io) -> str:
     repo_dir = repodir(repo_url)
     repo_gitdir = repo_dir / '.git'
 
@@ -53,10 +53,8 @@ def update_repo(repo_url, *, exclude_submodules=None,
         status = git.run('status', '-b', '--porcelain').split('\n')[0].split()
         tracking = status[1]
 
-        if tag:
-            remote = f'tags/{tag}'
-        elif branch:
-            remote = branch
+        if ref:
+            remote = ref
         else:
             local, _, remote = tracking.partition('...')
             if not remote:
@@ -68,7 +66,8 @@ def update_repo(repo_url, *, exclude_submodules=None,
         git.run('reset', '--hard', remote)
     else:
         args = (repo_url, repo_dir)
-        if branch:
+        if ref.startswith('heads/'):
+            _, _, branch = ref.partition('/')
             args = ('-b', branch) + args
 
         if clone_depth:
@@ -76,8 +75,8 @@ def update_repo(repo_url, *, exclude_submodules=None,
 
         git.run('clone', *args)
 
-        if tag:
-            git.run('reset', '--hard', f'tags/{tag}')
+        if ref:
+            git.run('reset', '--hard', ref)
 
     submodules = None
     deinit_submodules = set()
