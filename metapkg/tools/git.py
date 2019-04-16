@@ -103,7 +103,7 @@ def update_repo(repo_url, *, exclude_submodules=None,
                     deinit_submodules.add(submodule_path)
 
     if submodules != set():
-        args = ('submodule', 'update', '--init')
+        args = ('submodule', 'update', '--init', '--checkout', '--force')
         if clone_depth:
             args += (f'--depth={clone_depth}',)
         if submodules:
