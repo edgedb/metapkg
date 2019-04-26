@@ -155,7 +155,7 @@ class Build(targets.Build):
         rules = textwrap.dedent('''\
             Name: {name}
             Version: {version}
-            Release: 1%{{?dist}}
+            Release: {revision}%{{?dist}}
             Summary: {description}
             License: {license}
             URL: {url}
@@ -207,6 +207,7 @@ class Build(targets.Build):
             {changelog}
         ''').format(
             name=self._root_pkg.name_slot,
+            revision=self._revision,
             description=self._root_pkg.description,
             long_description=self._root_pkg.description,
             license=self._root_pkg.license,
