@@ -350,7 +350,7 @@ class BundledPythonPackage(PythonMixin, base.BundledPackage):
         return PyPiRepository(io=io)
 
     @classmethod
-    def resolve(cls, io, *, ref=None) -> 'BundledPythonPackage':
+    def resolve(cls, io, *, ref=None, version=None) -> 'BundledPythonPackage':
         repo_dir = cls.resolve_vcs_source(io, ref=ref)
         setup_py = repo_dir / 'setup.py'
 
@@ -364,7 +364,11 @@ class BundledPythonPackage(PythonMixin, base.BundledPackage):
             dep = python_dependency_from_pep_508(req)
             requires.append(dep)
 
-        package = cls(dist.version, requires=requires)
+        if version is None:
+            version = dist.version
+
+        package = cls(version, requires=requires,
+                      source_version=ref or 'HEAD')
         package.dist_name = dist.name
 
         build_requires = tools.python.get_build_requires(setup_py)

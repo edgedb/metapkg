@@ -22,8 +22,9 @@ class Build(base.Command):
         { --generic : Build a generic target. }
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
-        { --tag= : VCS tag to build. }
-        { --revision= : Package revision number. }
+        { --source-revision= : VCS revision to build. }
+        { --pkg-version= : Override package version. }
+        { --pkg-revision= : Override package revision number (defaults to 1). }
     """
 
     help = """Builds the specified package on the current platform."""
@@ -37,16 +38,17 @@ class Build(base.Command):
         generic = self.option('generic')
         build_source = self.option('build-source')
         build_debug = self.option('build-debug')
-        tag = self.option('tag')
-        revision = self.option('revision')
+        src_revision = self.option('source-revision')
+        version = self.option('pkg-version')
+        revision = self.option('pkg-revision')
 
         modname, _, clsname = pkgname.rpartition(':')
 
         mod = importlib.import_module(modname)
         pkgcls = getattr(mod, clsname)
-        if tag:
-            pkgcls.sources[0]['extras']['version'] = tag
-        pkg = pkgcls.resolve(self.output)
+        if src_revision:
+            pkgcls.sources[0]['extras']['version'] = src_revision
+        pkg = pkgcls.resolve(self.output, version=version)
 
         sources = pkg.get_sources()
 
@@ -92,7 +94,7 @@ class Build(base.Command):
         # Build a separate package list for build deps.
         build_deps = {}
         build_root = poetry_pkg.ProjectPackage('__build_root__', '1')
-        build_root.add_dependency(pkg.name, {'git': source.url})
+        build_root.add_dependency(pkg.name, pkg.version.text)
         build_root.build_requires = []
         provider = af_repo.Provider(
             build_root, repo_pool, self.output,

@@ -179,12 +179,13 @@ class BundledPackage(BasePackage):
         return vcs.Git(repo_dir).rev_parse('HEAD').strip()
 
     @classmethod
-    def resolve(cls, io) -> 'BundledPackage':
-        version = cls.resolve_version(io)
+    def resolve(cls, io, *, version=None) -> 'BundledPackage':
+        if version is None:
+            version = cls.resolve_version(io)
         return cls(version=version)
 
     def get_sources(self) -> typing.List[af_sources.BaseSource]:
-        return self._get_sources(version=self.pretty_version)
+        return self._get_sources(version=self.source_version)
 
     def get_patches(self) -> \
             typing.Dict[str, typing.List[typing.Tuple[str, str]]]:
@@ -205,6 +206,7 @@ class BundledPackage(BasePackage):
 
     def __init__(self, version: str,
                  pretty_version: typing.Optional[str]=None, *,
+                 source_version: typing.Optional[str]=None,
                  requires=None,
                  name: typing.Optional[str]=None,
                  aliases: typing.Optional[typing.List[str]]=None) -> None:
@@ -232,6 +234,10 @@ class BundledPackage(BasePackage):
         self.requires.update(extra_requires)
         self.build_requires = self.get_build_requirements()
         self.description = type(self).description
+        if source_version is None:
+            self.source_version = self.pretty_version
+        else:
+            self.source_version = source_version
 
         repository.bundle_repo.add_package(self)
 
@@ -262,6 +268,7 @@ class BundledPackage(BasePackage):
     def clone(self):
         clone = self.__class__(self.version, requires=self.requires)
         clone.build_requires.extend(self.build_requires)
+        clone.source_version = self.source_version
         return clone
 
     def is_root(self):

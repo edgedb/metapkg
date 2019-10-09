@@ -46,7 +46,9 @@ def update_repo(repo_url, *, exclude_submodules=None,
     git = Git(repo_dir)
 
     if repo_gitdir.exists():
-        args = ('fetch',)
+        args = ('fetch', '-u')
+        if ref is not None:
+            args += ('origin', f'{ref}:{ref}',)
         if clone_depth:
             args += (f'--depth={clone_depth}',)
         git.run(*args)

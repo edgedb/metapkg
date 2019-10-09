@@ -95,6 +95,9 @@ class HttpsSource(BaseSource):
 
         progress = io.create_progress_bar(length)
         io.writeln(f'Downloading <info>{self.url}</>')
+        if req.status_code < 200 or req.status_code >= 300:
+            io.error(f'download failed: {req.status_code}')
+
         progress.start(length)
 
         try:
