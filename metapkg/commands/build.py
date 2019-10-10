@@ -25,6 +25,7 @@ class Build(base.Command):
         { --source-revision= : VCS revision to build. }
         { --pkg-version= : Override package version. }
         { --pkg-revision= : Override package revision number (defaults to 1). }
+        { --pkg-subdist= : Set package sub-distribution (e.g. nightly). }
     """
 
     help = """Builds the specified package on the current platform."""
@@ -41,6 +42,7 @@ class Build(base.Command):
         src_revision = self.option('source-revision')
         version = self.option('pkg-version')
         revision = self.option('pkg-revision')
+        subdist = self.option('pkg-subdist')
 
         modname, _, clsname = pkgname.rpartition(':')
 
@@ -69,6 +71,8 @@ class Build(base.Command):
             target = targets.generic.GenericTarget()
         else:
             target = targets.detect_target(self.output)
+
+        target.prepare()
 
         target_capabilities = target.get_capabilities()
         extras = [f'capability-{c}' for c in target_capabilities]
@@ -122,7 +126,7 @@ class Build(base.Command):
                 root_pkg=pkg, deps=packages, build_deps=build_deps,
                 io=self.output, workdir=workdir, outputdir=destination,
                 build_source=build_source, build_debug=build_debug,
-                revision=revision or '1')
+                revision=revision or '1', subdist=subdist)
         finally:
             if not keepwork:
                 tempdir.cleanup()

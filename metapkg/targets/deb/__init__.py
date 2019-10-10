@@ -206,6 +206,9 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
     def __init__(self, distro_info):
         self.distro = distro_info
 
+    def prepare(self):
+        tools.cmd('apt-get', 'update')
+
     def get_package_repository(self):
         return DebRepository()
 
