@@ -514,7 +514,7 @@ class Build(targets.Build):
 
         if self._outputroot is not None:
             if not self._outputroot.exists():
-                self._outputroot.mkdir()
+                self._outputroot.mkdir(parents=True, exist_ok=True)
 
             rpms = self.get_dir('RPMS', relative_to=None) / platform.machine()
             for rpm in glob.glob(str(rpms / '*.rpm')):

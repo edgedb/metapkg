@@ -452,7 +452,7 @@ class Build(targets.Build):
 
         if self._outputroot is not None:
             if not self._outputroot.exists():
-                self._outputroot.mkdir()
+                self._outputroot.mkdir(parents=True, exist_ok=True)
 
             # Ubuntu likes to call their dbgsym packages ddebs,
             # whereas Debian tools, including reprepro like it
