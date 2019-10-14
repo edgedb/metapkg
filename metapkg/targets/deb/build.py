@@ -207,7 +207,7 @@ class Build(targets.Build):
     def _write_changelog(self):
         distro = self._target.distro['codename']
         if self._subdist:
-            distro = f'{distro}-{self._subdist}'
+            distro = f'{distro}.{self._subdist}'
 
         changelog = textwrap.dedent('''\
             {name} ({version}) {distro}; urgency=medium
