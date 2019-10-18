@@ -151,7 +151,11 @@ class Build(generic.Build):
 
         self._outputroot.mkdir(parents=True, exist_ok=True)
 
-        finalname = f'{title}{pkg.slot_suffix}_{version}_{self._revision}.pkg'
+        suffix = self._revision
+        if self._subdist:
+            suffix = f'{suffix}.{self._subdist}'
+
+        finalname = f'{title}{pkg.slot_suffix}_{version}_{suffix}.pkg'
         tools.cmd('productbuild',
                   '--package-path', pkgpath.parent,
                   '--resources', rsrcdir,
