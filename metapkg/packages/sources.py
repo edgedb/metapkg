@@ -141,10 +141,10 @@ class HttpsSource(BaseSource):
 
 class GitSource(BaseSource):
 
-    def __init__(self, url: str, name: str, *, ref=None,
+    def __init__(self, url: str, name: str, *, vcs_version=None,
                  exclude_submodules=None, clone_depth=50):
         super().__init__(url, name)
-        self.ref = ref
+        self.ref = vcs_version
         self.exclude_submodules = exclude_submodules
         self.clone_depth = clone_depth
 
@@ -220,8 +220,8 @@ def source_for_url(url: str,
     elif parts.scheme.startswith('git+'):
         extras = dict(extras)
         version = extras.pop('version', None)
-        if version:
-            extras['ref'] = version
+        if 'vcs_version' not in extras:
+            extras['vcs_version'] = version
         return GitSource(url[4:], name=name, **extras)
     else:
         raise ValueError(f'unsupported source URL scheme: {parts.scheme}')

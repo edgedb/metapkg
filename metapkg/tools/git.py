@@ -68,7 +68,7 @@ def update_repo(repo_url, *, exclude_submodules=None,
         git.run('reset', '--hard', remote)
     else:
         args = (repo_url, repo_dir)
-        if ref and ref.startswith('heads/'):
+        if ref and (ref.startswith('heads/') or ref.startswith('tags/')):
             _, _, branch = ref.partition('/')
             args = ('-b', branch) + args
 

@@ -138,6 +138,9 @@ class BundledPackage(BasePackage):
                 else:
                     extras = {'version': version}
 
+                if 'vcs_version' not in extras:
+                    extras['vcs_version'] = cls.to_vcs_version(version)
+
                 src = af_sources.source_for_url(url, extras)
 
                 csum = source.get('csum')
@@ -158,6 +161,10 @@ class BundledPackage(BasePackage):
             sources.append(src)
 
         return sources
+
+    @classmethod
+    def to_vcs_version(cls, version):
+        return version
 
     @classmethod
     def get_package_repository(cls, target, io):
