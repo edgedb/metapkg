@@ -178,6 +178,7 @@ class Build(targets.Build):
             %global __requires_exclude ^(%{{_privatelibs}}|(/usr)?/bin/.*)$
 
             %define __python python3
+            %define __brp_mangle_shebangs %{{nil}}
 
             {debug_pkg}
 
@@ -208,7 +209,7 @@ class Build(targets.Build):
         ''').format(
             name=self._root_pkg.name_slot,
             revision=self._revision,
-            subdist=self._subdist,
+            subdist=self._subdist if self._subdist else '',
             description=self._root_pkg.description,
             long_description=self._root_pkg.description,
             license=self._root_pkg.license,
@@ -478,16 +479,16 @@ class Build(targets.Build):
             return ''
 
     def _rpmbuild(self):
+        tools.cmd(
+            'yum', 'install', '-y', 'rpm-build', 'rpmlint', 'yum-utils',
+            stdout=self._io.output.stream,
+            stderr=subprocess.STDOUT
+        )
+
         self.target.install_build_deps(
             self, f'{self._root_pkg.name_slot}.spec')
 
         image_root = self.get_image_root(relative_to=None)
-
-        tools.cmd(
-            'yum', 'install', '-y', 'rpm-build', 'rpmlint',
-            stdout=self._io.output.stream,
-            stderr=subprocess.STDOUT
-        )
 
         args = [
             f'{self._root_pkg.name_slot}.spec',
