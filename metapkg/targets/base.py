@@ -190,7 +190,7 @@ class LinuxTarget(PosixTarget):
     def supports_lto(self):
         # LTO more-or-less stabilized in GCC 4.9.0.
         gcc_ver = tools.cmd('gcc', '--version')
-        m = re.match(r'^gcc.*?(\d+(?:\.\d+)+)$', gcc_ver, re.M)
+        m = re.match(r'^gcc.*?(\d+(?:\.\d+)+)', gcc_ver, re.M)
         if not m:
             raise RuntimeError(f'cannot determine gcc version:\n{gcc_ver}')
         return tuple(int(v) for v in m.group(1).split('.')) >= (4, 9)
