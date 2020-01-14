@@ -139,7 +139,8 @@ class BundledPackage(BasePackage):
                     extras = {'version': version}
 
                 if 'vcs_version' not in extras:
-                    extras['vcs_version'] = cls.to_vcs_version(version)
+                    extras['vcs_version'] = cls.to_vcs_version(
+                        extras['version'])
 
                 src = af_sources.source_for_url(url, extras)
 

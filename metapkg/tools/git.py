@@ -48,7 +48,7 @@ def update_repo(repo_url, *, exclude_submodules=None,
     if repo_gitdir.exists():
         args = ('fetch', '-u')
         if ref is not None:
-            args += ('origin', f'{ref}:{ref}',)
+            args += ('origin', f'{ref}',)
         if clone_depth:
             args += (f'--depth={clone_depth}',)
         git.run(*args)
@@ -56,7 +56,7 @@ def update_repo(repo_url, *, exclude_submodules=None,
         tracking = status[1]
 
         if ref:
-            remote = ref
+            remote = 'FETCH_HEAD'
         else:
             local, _, remote = tracking.partition('...')
             if not remote:
