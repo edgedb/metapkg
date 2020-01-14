@@ -26,6 +26,8 @@ class Build(base.Command):
         { --pkg-version= : Override package version. }
         { --pkg-revision= : Override package revision number (defaults to 1). }
         { --pkg-subdist= : Set package sub-distribution (e.g. nightly). }
+        { --extra-optimizations : Enable extra optimization
+                                  (increases build times). }
     """
 
     help = """Builds the specified package on the current platform."""
@@ -43,6 +45,7 @@ class Build(base.Command):
         version = self.option('pkg-version')
         revision = self.option('pkg-revision')
         subdist = self.option('pkg-subdist')
+        extra_opt = self.option('extra-optimizations')
 
         modname, _, clsname = pkgname.rpartition(':')
 
@@ -126,7 +129,7 @@ class Build(base.Command):
                 root_pkg=pkg, deps=packages, build_deps=build_deps,
                 io=self.output, workdir=workdir, outputdir=destination,
                 build_source=build_source, build_debug=build_debug,
-                revision=revision or '1', subdist=subdist)
+                revision=revision or '1', subdist=subdist, extra_opt=extra_opt)
         finally:
             if not keepwork:
                 tempdir.cleanup()

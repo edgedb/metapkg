@@ -52,6 +52,9 @@ class Target:
     def get_full_install_prefix(self, build) -> pathlib.Path:
         return self.get_install_root(build) / self.get_install_prefix(build)
 
+    def supports_lto(self) -> bool:
+        return False
+
 
 class PosixEnsureDirAction(TargetAction):
 
@@ -184,6 +187,14 @@ class LinuxTarget(PosixTarget):
             raise NotImplementedError(
                 'non-systemd linux targets are not supported')
 
+    def supports_lto(self):
+        # LTO more-or-less stabilized in GCC 4.9.0.
+        gcc_ver = tools.cmd('gcc', '--version')
+        m = re.match(r'^gcc.*?(\d+(?:\.\d+)+)$', gcc_ver, re.M)
+        if not m:
+            raise RuntimeError(f'cannot determine gcc version:\n{gcc_ver}')
+        return tuple(int(v) for v in m.group(1).split('.')) >= (4, 9)
+
 
 class FHSTarget(PosixTarget):
 
@@ -242,7 +253,7 @@ class Build:
 
     def __init__(self, target, *, io, root_pkg, deps,
                  build_deps, workdir, outputdir, build_source,
-                 build_debug, revision, subdist):
+                 build_debug, revision, subdist, extra_opt):
         self._droot = pathlib.Path(workdir)
         if outputdir is not None:
             self._outputroot = pathlib.Path(outputdir)
@@ -257,6 +268,7 @@ class Build:
         self._build_debug = build_debug
         self._revision = revision
         self._subdist = subdist
+        self._extra_opt = extra_opt
         self._bundled = [
             pkg for pkg in self._build_deps
             if not isinstance(pkg, (tgt_pkg.SystemPackage,
@@ -293,6 +305,12 @@ class Build:
 
     def is_bundled(self, pkg):
         return pkg in self._bundled
+
+    def extra_optimizations_enabled(self):
+        return self._extra_opt
+
+    def supports_lto(self):
+        return self._target.supports_lto()
 
     def run(self):
         self._io.writeln(f'<info>Building {self._root_pkg} on '
