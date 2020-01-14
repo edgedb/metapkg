@@ -55,6 +55,9 @@ class Target:
     def supports_lto(self) -> bool:
         return False
 
+    def supports_pgo(self) -> bool:
+        return False
+
 
 class PosixEnsureDirAction(TargetAction):
 
@@ -195,6 +198,10 @@ class LinuxTarget(PosixTarget):
             raise RuntimeError(f'cannot determine gcc version:\n{gcc_ver}')
         return tuple(int(v) for v in m.group(1).split('.')) >= (4, 9)
 
+    def supports_pgo(self):
+        # PGO is broken on pre-4.9, similarly to LTO.
+        return self.supports_lto()
+
 
 class FHSTarget(PosixTarget):
 
@@ -311,6 +318,9 @@ class Build:
 
     def supports_lto(self):
         return self._target.supports_lto()
+
+    def supports_pgo(self):
+        return self._target.supports_pgo()
 
     def run(self):
         self._io.writeln(f'<info>Building {self._root_pkg} on '
