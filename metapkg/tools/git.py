@@ -44,6 +44,8 @@ def update_repo(repo_url, *, exclude_submodules=None,
     repo_gitdir = repo_dir / '.git'
 
     git = Git(repo_dir)
+    if ref == 'HEAD':
+        ref = None
 
     if repo_gitdir.exists():
         args = ('fetch', '-u')
