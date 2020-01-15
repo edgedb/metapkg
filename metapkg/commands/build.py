@@ -22,7 +22,7 @@ class Build(base.Command):
         { --generic : Build a generic target. }
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
-        { --source-revision= : VCS revision to build. }
+        { --source-ref= : VCS ref to build. }
         { --pkg-version= : Override package version. }
         { --pkg-revision= : Override package revision number (defaults to 1). }
         { --pkg-subdist= : Set package sub-distribution (e.g. nightly). }
@@ -41,7 +41,7 @@ class Build(base.Command):
         generic = self.option('generic')
         build_source = self.option('build-source')
         build_debug = self.option('build-debug')
-        src_revision = self.option('source-revision')
+        src_ref = self.option('source-ref')
         version = self.option('pkg-version')
         revision = self.option('pkg-revision')
         subdist = self.option('pkg-subdist')
@@ -51,8 +51,8 @@ class Build(base.Command):
 
         mod = importlib.import_module(modname)
         pkgcls = getattr(mod, clsname)
-        if src_revision:
-            pkgcls.sources[0]['extras']['version'] = src_revision
+        if src_ref:
+            pkgcls.sources[0]['extras']['version'] = src_ref
         pkg = pkgcls.resolve(self.output, version=version)
 
         sources = pkg.get_sources()
