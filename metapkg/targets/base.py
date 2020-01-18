@@ -294,6 +294,10 @@ class Build:
         self._patches = []
 
     @property
+    def io(self):
+        return self._io
+
+    @property
     def root_package(self):
         return self._root_pkg
 
