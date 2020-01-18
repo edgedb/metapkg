@@ -19,6 +19,7 @@ setup(
         'distro~=1.4.0',
         'requests~=2.19.0',
         'poetry~=0.11.2',
+        'toml~=0.10.0',
         'distlib~=0.2.7',
         'wheel~=0.32.3',
     ],
