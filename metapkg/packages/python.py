@@ -245,6 +245,7 @@ class PythonMixin:
             _wheeldir=$("{build_python}" -c '{wheeldir_script}')
             _target=$("{build_python}" -c '{sitescript}')
             "{build_python}" -m pip install \\
+                --no-use-pep517 \\
                 --no-warn-script-location \\
                 --no-index --no-deps --upgrade \\
                 -f "file://${{_wheeldir}}" \\
@@ -267,6 +268,7 @@ class PythonMixin:
         wheel_install = textwrap.dedent(f'''\
             _wheeldir=$("{python}" -c '{wheeldir_script}')
             "{python}" -m pip install \\
+                --no-use-pep517 \\
                 --ignore-installed \\
                 --no-index --no-deps --upgrade --force-reinstall \\
                 --no-warn-script-location -f "file://${{_wheeldir}}" \\

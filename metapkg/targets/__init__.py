@@ -23,7 +23,8 @@ def detect_target(io):
         elif like_set & {'debian', 'ubuntu'}:
             target = deb.get_specific_target(distro_info)
         else:
-            io.error(f'Linux distro not supported: {distro_info["id"]}')
+            raise RuntimeError(
+                f'Linux distro not supported: {distro_info["id"]}')
 
     elif system == 'Darwin':
         v, _, _ = platform.mac_ver()
@@ -31,6 +32,7 @@ def detect_target(io):
         return macos.get_specific_target(version)
 
     else:
-        io.error(f'System not supported: {system}')
+        raise RuntimeError(
+            f'System not supported: {system}')
 
     return target

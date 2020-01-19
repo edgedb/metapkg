@@ -1,4 +1,5 @@
 import hashlib
+import os
 import pathlib
 import platform
 import re
@@ -71,7 +72,7 @@ class BaseSource:
 
 
 class HttpsSource(BaseSource):
-    def download(self, io) -> str:
+    def download(self, io) -> pathlib.Path:
         destination_dir = cache.cachedir() / 'distfiles'
         if not destination_dir.exists():
             destination_dir.mkdir()
@@ -89,14 +90,14 @@ class HttpsSource(BaseSource):
 
         return self._download(destination, io)
 
-    def _download(self, destination, io) -> str:
+    def _download(self, destination, io) -> pathlib.Path:
         req = requests.get(self.url, stream=True)
         length = int(req.headers.get('content-length', 0))
 
         progress = io.create_progress_bar(length)
         io.writeln(f'Downloading <info>{self.url}</>')
         if req.status_code < 200 or req.status_code >= 300:
-            io.error(f'download failed: {req.status_code}')
+            raise RuntimeError(f'download failed: {req.status_code}')
 
         progress.start(length)
 
@@ -124,17 +125,36 @@ class HttpsSource(BaseSource):
     def tarball(
             self, pkg, name_tpl: typing.Optional[str] = None, *,
             target_dir: pathlib.Path, io) -> pathlib.Path:
+        if name_tpl is None:
+            name_tpl = f'{pkg.unique_name}{{part}}.tar{{comp}}'
         src = self.download(io)
+        copy = True
         if src.suffix == '.tgz':
             comp = '.gz'
         elif src.suffix == '.tbz2':
             comp = '.bzip2'
-        else:
+        elif src.suffix != '.tar' and '.tar' in src.suffixes:
             comp = src.suffix
-        if name_tpl is None:
-            name_tpl = f'{pkg.unique_name}{{part}}.tar{{comp}}'
-        target_path = target_dir / name_tpl.format(part='', comp=comp)
-        shutil.copy(src, target_path)
+        elif src.suffix == '.zip':
+            comp = '.gz'
+            target_path = target_dir / name_tpl.format(part='', comp=comp)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                destdir = pathlib.Path(tmpdir)
+                unpack(src, dest=destdir, io=io, strip_top=False)
+                subdirs = os.listdir(destdir)
+                if len(subdirs) > 1:
+                    raise RuntimeError(
+                        'multiple top-level directories in source archive')
+                subdir = next(iter(subdirs))
+                with tarfile.open(target_path, 'w:gz') as tf:
+                    tf.add(str(destdir / subdir), arcname=subdir)
+            copy = False
+        else:
+            raise RuntimeError(f'unsupported archive format: {src.suffix}')
+
+        if copy:
+            target_path = target_dir / name_tpl.format(part='', comp=comp)
+            shutil.copy(src, target_path)
 
         return target_path
 
@@ -227,7 +247,13 @@ def source_for_url(url: str,
         raise ValueError(f'unsupported source URL scheme: {parts.scheme}')
 
 
-def unpack(archive: pathlib.Path, dest: pathlib.Path, io) -> None:
+def unpack(
+    archive: pathlib.Path,
+    dest: pathlib.Path,
+    io,
+    *,
+    strip_top: bool = True,
+) -> None:
     parts = archive.name.split('.')
     if len(parts) == 1:
         raise ValueError(f'{archive.name} is not a supported archive')
@@ -250,28 +276,40 @@ def unpack(archive: pathlib.Path, dest: pathlib.Path, io) -> None:
         zf = tarfile.open(archive, f'r:{compression}')
         try:
             for member in zf.getmembers():
-                parts = pathlib.Path(member.name).parts
-                if len(parts) == 1:
-                    continue
+                if strip_top:
+                    parts = pathlib.Path(member.name).parts
+                    if len(parts) == 1:
+                        continue
 
-                path = pathlib.Path(parts[1]).joinpath(*parts[2:])
-                member.name = str(path)
+                    path = pathlib.Path(parts[1]).joinpath(*parts[2:])
+                    member.name = str(path)
                 zf.extract(member, path=dest)
         finally:
             zf.close()
 
     elif parts[-1] == 'zip':
-        zf = zipfile.open(archive)
+        zf = zipfile.ZipFile(archive)
 
         try:
             for member in zf.infolist():
-                parts = pathlib.Path(member.name).parts
-                if len(parts) == 1:
-                    continue
+                if strip_top:
+                    parts = pathlib.Path(member.filename).parts
+                    if len(parts) == 1:
+                        continue
 
-                path = pathlib.Path(parts[1]).joinpath(*parts[2:])
-                member.filename = str(path)
-                zf.extract(member, path=dest)
+                    relpath = pathlib.Path(parts[1]).joinpath(*parts[2:])
+                else:
+                    relpath = pathlib.Path(member.filename)
+                targetpath = dest / relpath
+                if member.is_dir():
+                    targetpath.mkdir(parents=True, exist_ok=True)
+                else:
+                    dirname = targetpath.parent
+                    if not dirname.exists():
+                        dirname.mkdir(parents=True)
+                    with open(targetpath, 'wb') as df, \
+                            zf.open(member) as sf:
+                        shutil.copyfileobj(sf, df)
         finally:
             zf.close()
 
