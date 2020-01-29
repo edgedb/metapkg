@@ -212,12 +212,25 @@ class GitSource(BaseSource):
                     if platform.system() == 'Darwin':
                         with tarfile.open(f.name) as modf, \
                                 tarfile.open(target_path, 'a') as tf:
-                            while True:
-                                m = modf.next()
-                                if m is None:
-                                    break
-                                else:
-                                    tf.addfile(m, modf.extractfile(m))
+                            for m in modf.getmembers():
+                                if m.issym():
+                                    # Skip broken symlinks.
+                                    target = os.path.normpath(
+                                        "/".join(
+                                            filter(
+                                                None,
+                                                (
+                                                    os.path.dirname(m.name),
+                                                    m.linkname,
+                                                )
+                                            )
+                                        )
+                                    )
+                                    try:
+                                        modf.getmember(target)
+                                    except KeyError:
+                                        continue
+                                tf.addfile(m, modf.extractfile(m))
 
                     else:
                         tools.cmd(
