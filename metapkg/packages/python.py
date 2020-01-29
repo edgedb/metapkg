@@ -229,27 +229,38 @@ class PythonMixin:
 
         wheeldir_script = 'import pathlib; print(pathlib.Path(".").resolve())'
 
-        bdist_wheel = ' '.join(
-            shlex.quote(str(c)) for c in self.get_bdist_wheel_command(build))
-
         pkgname = getattr(self, 'dist_name', None)
         if pkgname is None:
             pkgname = self.name
             if pkgname.startswith('pypkg-'):
                 pkgname = pkgname[len('pypkg-'):]
 
+        if pkgname == 'wheel':
+            build_command = 'sdist -d ${_wheeldir}'
+            binary = False
+        else:
+            build_command = ' '.join(
+                shlex.quote(str(c))
+                for c in self.get_bdist_wheel_command(build)
+            )
+            binary = True
+
         return textwrap.dedent(f'''\
-            (cd "{sdir}"; \\
-             env SETUPTOOLS_SCM_PRETEND_VERSION="{self.pretty_version}" \\
-                 "{src_python}" setup.py --verbose {bdist_wheel})
             _wheeldir=$("{build_python}" -c '{wheeldir_script}')
             _target=$("{build_python}" -c '{sitescript}')
+            (cd "{sdir}"; \\
+             env SETUPTOOLS_SCM_PRETEND_VERSION="{self.pretty_version}" \\
+                 "{src_python}" setup.py --verbose {build_command})
             "{build_python}" -m pip install \\
                 --no-use-pep517 \\
                 --no-warn-script-location \\
-                --no-index --no-deps --upgrade \\
+                --no-index \\
+                --no-deps \\
+                --upgrade \\
                 -f "file://${{_wheeldir}}" \\
-                --only-binary :all: "{pkgname}" --target "${{_target}}"
+                {'--only-binary' if binary else '--no-binary'} :all: \\
+                --target "${{_target}}" \\
+                "{pkgname}"
         ''')
 
     def get_build_install_script(self, build) -> str:
@@ -265,14 +276,24 @@ class PythonMixin:
             if pkgname.startswith('pypkg-'):
                 pkgname = pkgname[len('pypkg-'):]
 
+        if pkgname == 'wheel':
+            binary = False
+        else:
+            binary = True
+
         wheel_install = textwrap.dedent(f'''\
             _wheeldir=$("{python}" -c '{wheeldir_script}')
             "{python}" -m pip install \\
                 --no-use-pep517 \\
                 --ignore-installed \\
-                --no-index --no-deps --upgrade --force-reinstall \\
+                --no-index \\
+                --no-deps \\
+                --upgrade \\
+                --force-reinstall \\
                 --no-warn-script-location -f "file://${{_wheeldir}}" \\
-                --only-binary :all: --root "{root}" "{pkgname}"
+                {'--only-binary' if binary else '--no-binary'} :all: \\
+                --root "{root}" \\
+                "{pkgname}"
         ''')
 
         if common_script:
@@ -381,6 +402,11 @@ class BundledPythonPackage(PythonMixin, base.BundledPackage):
         return package
 
     def get_requirements(self) -> typing.List[poetry_pkg.Dependency]:
+        reqs = super().get_requirements()
+        reqs.append(python_dependency)
+        return reqs
+
+    def get_build_requirements(self) -> typing.List[poetry_pkg.Dependency]:
         reqs = super().get_requirements()
         reqs.append(python_dependency)
         reqs.append(wheel_dependency)
