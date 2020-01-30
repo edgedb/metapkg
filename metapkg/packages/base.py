@@ -124,10 +124,14 @@ class BundledPackage(BasePackage):
         if version is None:
             version = 'HEAD'
         underscore_v = version.replace('.', '_')
+        dash_v = version.replace('.', '-')
         for source in cls.sources:
             if isinstance(source, dict):
                 url = source['url'].format(
-                    version=version, underscore_version=underscore_v)
+                    version=version,
+                    underscore_version=underscore_v,
+                    dash_version=dash_v,
+                )
                 extras = source.get('extras')
                 if extras:
                     extras = {k.replace('-', '_'): v
@@ -151,7 +155,10 @@ class BundledPackage(BasePackage):
                 if csum_algo:
                     if csum_url:
                         csum_url = csum_url.format(
-                            version=version, underscore_version=underscore_v)
+                            version=version,
+                            underscore_version=underscore_v,
+                            dash_version=dash_v,
+                        )
                     csum_verify = af_sources.HashVerification(
                         csum_algo, hash_url=csum_url, hash_value=csum)
                     src.add_verification(csum_verify)
