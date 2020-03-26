@@ -26,6 +26,8 @@ class Build(targets.Build):
         self._installroot = pathlib.Path('INSTALL')
 
         self._system_tools['make'] = f'make -j{os.cpu_count()}'
+        self._system_tools['cargo'] = 'cargo'
+        self._system_tools['python'] = 'python'
         self._system_tools['cp'] = 'cp'
         self._system_tools['install'] = 'install'
         self._system_tools['useradd'] = 'useradd'

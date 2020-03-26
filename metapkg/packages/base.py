@@ -293,7 +293,7 @@ class BundledPackage(BasePackage):
         installdest = build.get_install_dir(self, relative_to='pkgbuild')
 
         paths = {}
-        for aspect in ('bin', 'data', 'include', 'lib'):
+        for aspect in ('systembin', 'bin', 'data', 'include', 'lib'):
             path = build.get_install_path(aspect).relative_to('/')
             paths[f'{aspect}dir'] = path
 
