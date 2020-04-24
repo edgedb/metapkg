@@ -234,11 +234,15 @@ class MacOSTarget(generic.GenericTarget):
     def get_package_repository(self):
         return MacOSRepository()
 
-    def get_install_root(self, build) -> pathlib.Path:
+    def get_framework_root(self, build) -> pathlib.Path:
         rpkg = build.root_package
         return pathlib.Path(
-            f'/Library/Frameworks/{rpkg.title}.framework/Versions/{rpkg.slot}'
+            f'/Library/Frameworks/{rpkg.title}.framework'
         )
+
+    def get_install_root(self, build) -> pathlib.Path:
+        rpkg = build.root_package
+        return self.get_framework_root(build) / 'Versions' / rpkg.slot
 
     def get_resource_path(self, build, resource):
         if resource == 'system-daemons':
