@@ -245,7 +245,7 @@ class Build(targets.Build):
                 'after_install', installable_only=True,
                 relative_to='buildroot'),
             temp_root=self.get_temp_root(relative_to='buildroot'),
-            privatelibs=self._get_private_libs_pattern(),
+            privatelibs=self._get_private_libs_pattern() or '%{nil}',
             changelog=self._get_changelog(),
             common_pkg=common_package,
             debug_pkg='%debug_package' if self._build_debug else '',
