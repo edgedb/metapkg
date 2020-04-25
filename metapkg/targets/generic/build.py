@@ -23,7 +23,7 @@ class Build(targets.Build):
             'make MAKELEVEL=0 -j{}'.format(os.cpu_count())
         self._system_tools['cp'] = 'cp'
         self._system_tools['cargo'] = 'cargo'
-        self._system_tools['python'] = 'python'
+        self._system_tools['python'] = 'python3'
         self._system_tools['install'] = 'install'
         self._system_tools['patch'] = 'patch'
         self._system_tools['useradd'] = 'useradd'
