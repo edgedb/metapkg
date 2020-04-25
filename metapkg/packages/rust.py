@@ -19,11 +19,7 @@ class BundledRustPackage(base.BundledPackage):
         return ''
 
     def get_build_script(self, build) -> str:
-        cargo = build.sh_get_command('cargo')
-        src = build.get_source_dir(self, relative_to='pkgbuild')
-        return textwrap.dedent(f'''\
-            {cargo} build --release --manifest-path="{src}/Cargo.toml"
-        ''')
+        return ''
 
     def get_build_install_script(self, build) -> str:
         cargo = build.sh_get_command('cargo')
