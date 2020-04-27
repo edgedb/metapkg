@@ -1,4 +1,5 @@
 import importlib
+import platform
 import tempfile
 
 from poetry import packages as poetry_pkg
@@ -71,7 +72,10 @@ class Build(base.Command):
         af_repo.bundle_repo.add_package(root)
 
         if generic:
-            target = targets.generic.GenericTarget()
+            if platform.system() == 'Linux':
+                target = targets.generic.GenericLinuxTarget()
+            else:
+                target = targets.generic.GenericTarget()
         else:
             target = targets.detect_target(self.output)
 

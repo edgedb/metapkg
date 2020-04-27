@@ -3,7 +3,9 @@ import pathlib
 import shlex
 import subprocess
 import textwrap
+import zipfile
 
+from metapkg import packages
 from metapkg import targets
 from metapkg import tools
 
@@ -136,6 +138,7 @@ class Build(targets.Build):
         self._apply_patches()
         self._write_makefile()
         self._build()
+        self._package()
 
     def _apply_patches(self):
         proot = self.get_patches_root(relative_to=None)
@@ -267,3 +270,56 @@ class Build(targets.Build):
             cwd=str(self._srcroot),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT)
+
+    def _package(self):
+        pkg = self._root_pkg
+        title = pkg.name
+
+        image_root = self.get_image_root(relative_to='sourceroot')
+        files = tools.cmd(
+            'find', image_root, '-type', 'f',
+            cwd=str(self._srcroot),
+        ).strip().split('\n')
+
+        self._outputroot.mkdir(parents=True, exist_ok=True)
+
+        version = pkg.pretty_version
+        suffix = self._revision
+        if self._subdist:
+            suffix = f'{suffix}.{self._subdist}'
+        an = f'{title}{pkg.slot_suffix}_{version}_{suffix}'
+
+        if pkg.get_package_layout(self) is packages.PackageFileLayout.FLAT:
+            if len(files) == 1:
+                fn = pathlib.Path(files[0])
+                tools.cmd(
+                    'cp',
+                    str(self._srcroot / files[0]),
+                    f'{self._outputroot / an}{fn.suffix}',
+                )
+
+                return
+            else:
+                with zipfile.ZipFile(
+                    self._outputroot / f'{an}.zip',
+                    mode='w',
+                    compression=zipfile.ZIP_DEFLATED,
+                ) as z:
+                    for file in files:
+                        z.write(
+                            str(self._srcroot / file),
+                            arcname=pathlib.Path(file).name,
+                        )
+        else:
+            with zipfile.ZipFile(
+                self._outputroot / f'{an}.zip',
+                mode='w',
+                compression=zipfile.ZIP_DEFLATED,
+            ) as z:
+                for file in files:
+                    z.write(
+                        str(self._srcroot / file),
+                        arcname=(
+                            an / pathlib.Path(file).relative_to(image_root)
+                        ),
+                    )

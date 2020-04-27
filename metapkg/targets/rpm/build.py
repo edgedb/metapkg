@@ -154,6 +154,36 @@ class Build(targets.Build):
         else:
             common_package = ''
 
+        rev = f'{self._revision}{self._subdist if self._subdist else ""}'
+        root_version = f'{self._root_pkg.pretty_version}-{rev}%{{?dist}}'
+        meta_pkgs = self._root_pkg.get_meta_packages(self, root_version)
+        meta_pkg_specs = []
+        for meta_pkg in meta_pkgs:
+            meta_pkg_spec = textwrap.dedent('''\
+                %package -n {name}
+                Summary: {description}
+                Group: {group}
+                License: {license}
+                URL: {url}
+                {dependencies}
+
+                %description -n {name}
+                {description}
+
+                %files -n {name}
+            ''').format(
+                name=meta_pkg.name,
+                description=meta_pkg.description,
+                license=self._root_pkg.license,
+                url=self._root_pkg.url,
+                group=self._root_pkg.group,
+                dependencies='\n'.join(
+                    f'Requires: {dep_name}{f" {dep_ver}" if dep_ver else ""}'
+                    for dep_name, dep_ver in meta_pkg.dependencies.items()
+                )
+            )
+            meta_pkg_specs.append(meta_pkg_spec)
+
         rules = textwrap.dedent('''\
             Name: {name}
             Version: {version}
@@ -174,6 +204,8 @@ class Build(targets.Build):
             {long_description}
 
             {common_pkg}
+
+            {meta_pkgs}
 
             %global _privatelibs {privatelibs}
             %global __provides_exclude ^.*\\.so(\\..*)?$
@@ -248,6 +280,7 @@ class Build(targets.Build):
             privatelibs=self._get_private_libs_pattern() or '%{nil}',
             changelog=self._get_changelog(),
             common_pkg=common_package,
+            meta_pkgs='\n\n'.join(meta_pkg_specs),
             debug_pkg='%debug_package' if self._build_debug else '',
         )
 

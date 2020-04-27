@@ -163,3 +163,6 @@ class Build(generic.Build):
                   '--version', version,
                   '--distribution', distribution,
                   self._outputroot / finalname)
+
+    def _package(self):
+        pass

@@ -97,3 +97,10 @@ class GenericTarget(targets.FHSTarget):
 
     def service_scripts_for_package(self, build, package) -> dict:
         return {}
+
+
+class GenericLinuxTarget(GenericTarget, targets.LinuxTarget):
+
+    @property
+    def name(self):
+        return f'Generic Linux'

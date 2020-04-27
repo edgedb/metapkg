@@ -1,4 +1,6 @@
 import textwrap
+
+from metapkg import targets
 from metapkg import tools
 
 from . import base
@@ -29,8 +31,12 @@ class BundledRustPackage(base.BundledPackage):
         install_bindir = (
             build.get_install_dir(self, relative_to='pkgbuild') / bindir
         )
+        if isinstance(build.target, targets.generic.GenericLinuxTarget):
+            target = '--target x86_64-unknown-linux-musl'
+        else:
+            target = ''
         return textwrap.dedent(f'''\
-            {cargo} install --root "{installdest}" --path "{src}"
+            {cargo} install --root "{installdest}" {target} --path "{src}"
             mkdir -p "{install_bindir}"
             cp -a "{installdest}/bin/"* "{install_bindir}/"
         ''')

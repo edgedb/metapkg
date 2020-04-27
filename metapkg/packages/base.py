@@ -1,4 +1,6 @@
 import collections
+import dataclasses
+import enum
 import glob
 import pathlib
 import pprint
@@ -34,6 +36,20 @@ class DummyPackage(poetry_pkg.Package):
             clone.requires.append(dep)
 
         return clone
+
+
+class PackageFileLayout(enum.IntEnum):
+
+    REGULAR = enum.auto()
+    FLAT = enum.auto()
+
+
+@dataclasses.dataclass
+class MetaPackage:
+
+    name: str
+    description: str
+    dependencies: typing.Dict[str, str]
 
 
 class BasePackage(poetry_pkg.Package):
@@ -418,5 +434,15 @@ class BundledPackage(BasePackage):
     def get_bin_shims(self, build) -> dict:
         return self.read_support_files(build, 'shims/*')
 
+    def get_package_layout(self, build) -> PackageFileLayout:
+        return PackageFileLayout.REGULAR
+
     def __repr__(self):
         return "<BundledPackage {}>".format(self.unique_name)
+
+    def get_meta_packages(
+        self,
+        build,
+        root_version,
+    ) -> typing.List[MetaPackage]:
+        return []

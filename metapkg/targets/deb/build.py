@@ -167,6 +167,33 @@ class Build(targets.Build):
         else:
             common_package = ''
 
+        distro = self._target.distro['codename']
+        if self._subdist:
+            distro = f'{distro}.{self._subdist}'
+        root_version = (
+            f'{self._root_pkg.version.text}-{self._revision}~{distro}'
+        )
+
+        meta_pkgs = self._root_pkg.get_meta_packages(self, root_version)
+        meta_pkg_specs = []
+        for meta_pkg in meta_pkgs:
+            meta_pkg_spec = textwrap.dedent('''\
+                Package: {name}
+                Architecture: any
+                Description:
+                 {description}
+                Depends:
+                 {dependencies}
+            ''').format(
+                name=meta_pkg.name,
+                description=meta_pkg.description,
+                dependencies=',\n '.join(
+                    f'{dep_name}{f" ({dep_ver})" if dep_ver else ""}'
+                    for dep_name, dep_ver in meta_pkg.dependencies.items()
+                )
+            )
+            meta_pkg_specs.append(meta_pkg_spec)
+
         control = textwrap.dedent('''\
             Source: {name}
             Priority: optional
@@ -189,6 +216,8 @@ class Build(targets.Build):
              {description}
 
             {common_pkg}
+
+            {meta_pkgs}
         ''').format(
             name=name,
             deps=deps,
@@ -197,6 +226,7 @@ class Build(targets.Build):
             description=self._root_pkg.description,
             maintainer='MagicStack Inc. <hello@magic.io>',
             common_pkg=common_package,
+            meta_pkgs='\n\n'.join(meta_pkg_specs),
         )
 
         with open(self._debroot / 'control', 'w') as f:
