@@ -27,6 +27,20 @@ Prerequisites
 
 MetaPkg requires Python 3.7+.
 
+Installation
+------------
+
+To install, run ``pip install https://github.com/edgedb/metapkg`` or clone
+the repository and install an editable copy with ``pip install -e <checkout>``.
+
+Usage
+-----
+
+MetaPkg currently implements a single command, ``metapkg build``, that runs
+the entire build process and produces package artifacts.  For options and
+usage details use ``metapkg build --help``.
+
+
 License
 -------
 
