@@ -286,7 +286,7 @@ class Build(targets.Build):
         version = pkg.pretty_version
         suffix = self._revision
         if self._subdist:
-            suffix = f'{suffix}.{self._subdist}'
+            suffix = f'{suffix}~{self._subdist}'
         an = f'{title}{pkg.slot_suffix}_{version}_{suffix}'
 
         if pkg.get_package_layout(self) is packages.PackageFileLayout.FLAT:

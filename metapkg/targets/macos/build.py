@@ -153,7 +153,7 @@ class Build(generic.Build):
 
         suffix = self._revision
         if self._subdist:
-            suffix = f'{suffix}.{self._subdist}'
+            suffix = f'{suffix}~{self._subdist}'
 
         finalname = f'{title}{pkg.slot_suffix}_{version}_{suffix}.pkg'
         tools.cmd('productbuild',
