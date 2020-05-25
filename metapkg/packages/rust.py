@@ -36,7 +36,10 @@ class BundledRustPackage(base.BundledPackage):
         else:
             target = ''
         return textwrap.dedent(f'''\
-            {cargo} install --root "{installdest}" {target} --path "{src}"
+            {cargo} install {target} \\
+                --root "{installdest}" \\
+                --path "{src}" \\
+                --locked
             mkdir -p "{install_bindir}"
             cp -a "{installdest}/bin/"* "{install_bindir}/"
         ''')
