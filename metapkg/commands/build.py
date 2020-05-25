@@ -53,6 +53,8 @@ class Build(base.Command):
         mod = importlib.import_module(modname)
         pkgcls = getattr(mod, clsname)
         if src_ref:
+            if 'extras' not in pkgcls.sources[0]:
+                pkgcls.sources[0]['extras'] = {}
             pkgcls.sources[0]['extras']['version'] = src_ref
         pkg = pkgcls.resolve(self.output, version=version)
 
