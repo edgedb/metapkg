@@ -1,4 +1,5 @@
 import importlib
+import os
 import platform
 import tempfile
 
@@ -129,6 +130,8 @@ class Build(base.Command):
         else:
             tempdir = tempfile.TemporaryDirectory(prefix='metapkg.')
             workdir = tempdir.name
+
+        os.chmod(workdir, 0o755)
 
         try:
             target.build(
