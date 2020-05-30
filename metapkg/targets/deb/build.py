@@ -20,11 +20,11 @@ class Build(targets.Build):
         self._srcroot = self._pkgroot / self._root_pkg.name_slot
         self._debroot = self._srcroot / 'debian'
 
-        # MAKELEVEL=0 is required because debian/rules
+        # Undefining MAKELEVEL is required because debian/rules
         # is a Makefile, and some package makefiles have
         # conditions on MAKELEVEL.
         self._system_tools['make'] = \
-            'make MAKELEVEL=0 -j{}'.format(os.cpu_count())
+            'env -u MAKELEVEL make -j{}'.format(os.cpu_count())
         self._system_tools['cargo'] = 'cargo'
         self._system_tools['python'] = 'python3'
         self._system_tools['cp'] = 'cp'

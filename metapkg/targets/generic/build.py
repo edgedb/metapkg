@@ -18,11 +18,11 @@ class Build(targets.Build):
         self._pkgroot = self._droot / self._root_pkg.name_slot
         self._srcroot = self._pkgroot / self._root_pkg.name_slot
 
-        # MAKELEVEL=0 is required because
+        # Undefining MAKELEVEL is required because
         # some package makefiles have
         # conditions on MAKELEVEL.
         self._system_tools['make'] = \
-            'make MAKELEVEL=0 -j{}'.format(os.cpu_count())
+            'env -u MAKELEVEL make -j{}'.format(os.cpu_count())
         self._system_tools['cp'] = 'cp'
         self._system_tools['cargo'] = 'cargo'
         self._system_tools['python'] = 'python3'
