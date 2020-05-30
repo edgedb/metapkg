@@ -158,6 +158,9 @@ class Build(targets.Build):
         makefile = textwrap.dedent('''\
             .PHONY: build install
 
+            export DYLD_LIBRARY_PATH
+            export LD_LIBRARY_PATH
+
             DESTDIR := /
 
             {temp_root}/stamp/build:
