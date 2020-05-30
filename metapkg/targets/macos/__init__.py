@@ -9,6 +9,7 @@ import typing
 from poetry import packages
 from poetry import semver
 
+from metapkg import tools
 from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets import generic
@@ -201,6 +202,11 @@ class MacOSTarget(generic.GenericTarget):
 
     def __init__(self, version):
         self.version = version
+
+    def prepare(self):
+        tools.cmd('brew', 'update')
+        tools.cmd('brew', 'install', 'bash')
+        tools.cmd('brew', 'install', 'make')
 
     @property
     def name(self):

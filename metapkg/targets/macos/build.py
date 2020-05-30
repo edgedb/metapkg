@@ -11,6 +11,14 @@ from metapkg import tools
 
 class Build(generic.Build):
 
+    def prepare(self):
+        super().prepare()
+        self._system_tools['bash'] = '/usr/local/bin/bash'
+        self._system_tools['make'] = (
+            'env -u MAKELEVEL /usr/local/bin/gmake '
+            f'-j{os.cpu_count()} SHELL=/usr/local/bin/bash'
+        )
+
     def _build(self):
         super()._build()
         self._build_installer()

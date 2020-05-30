@@ -158,8 +158,7 @@ class Build(targets.Build):
         makefile = textwrap.dedent('''\
             .PHONY: build install
 
-            export DYLD_LIBRARY_PATH
-            export LD_LIBRARY_PATH
+            export SHELL = {bash}
 
             DESTDIR := /
 
@@ -177,6 +176,7 @@ class Build(targets.Build):
             \t\t"{image_root}/" "$(DESTDIR)"
 
         ''').format(
+            bash=self.sh_get_command('bash'),
             temp_root=temp_root,
             image_root=image_root,
             build_script=self._write_script(

@@ -349,7 +349,8 @@ class Build:
         self.build()
 
     def prepare(self):
-        pass
+        self._system_tools['make'] = 'make'
+        self._system_tools['bash'] = '/bin/bash'
 
     def build(self):
         raise NotImplementedError
@@ -480,12 +481,13 @@ class Build:
 
     def sh_write_bash_helper(
             self, name: str, text: str, *, relative_to: str) -> str:
+        bash = self.sh_get_command('bash')
         script = textwrap.dedent('''\
-            #!/bin/bash
+            #!{bash}
             set -ex
 
             {text}
-        ''').format(text=text)
+        ''').format(text=text, bash=bash)
 
         return self.sh_write_helper(name, script, relative_to=relative_to)
 
@@ -731,7 +733,7 @@ class Build:
 
         env_list = []
         for k, vv in env.items():
-            v = ':'.join(vv + list(extra) + [f'${{{k}:-/usr/lib}}'])
+            v = ':'.join(vv + list(extra) + [f'${{{k}}}'])
             env_list.append(f'{k}="{v}"')
 
         return env_list
