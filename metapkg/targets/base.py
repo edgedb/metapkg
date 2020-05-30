@@ -714,7 +714,12 @@ class Build:
 
         return script
 
-    def get_ld_env(self, deps, wd: str) -> List[str]:
+    def get_ld_env(
+        self,
+        deps,
+        wd: str,
+        extra: Iterable[str] = (),
+    ) -> List[str]:
         env = collections.defaultdict(list)
 
         for pkg in deps:
@@ -726,7 +731,7 @@ class Build:
 
         env_list = []
         for k, vv in env.items():
-            v = ':'.join(vv + [f'${{{k}}}'])
-            env_list.append(f'{k}={v}')
+            v = ':'.join(vv + list(extra) + [f'${{{k}:-/usr/lib}}'])
+            env_list.append(f'{k}="{v}"')
 
         return env_list
