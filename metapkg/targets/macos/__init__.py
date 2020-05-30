@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import *
+
 import pathlib
 import shlex
 import textwrap
@@ -258,6 +261,22 @@ class MacOSTarget(generic.GenericTarget):
     def get_capabilities(self) -> list:
         capabilities = super().get_capabilities()
         return capabilities + ['launchd']
+
+    def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
+        pkg_install_root = build.get_install_dir(
+            package, relative_to='pkgbuild')
+        pkg_lib_path = (
+            pkg_install_root
+            / build.get_install_path('lib').relative_to('/')
+        )
+
+        fw_root = self.get_framework_root(build).parent
+        pkg_fw_root = pkg_install_root / fw_root.relative_to('/')
+
+        return {
+            'DYLD_LIBRARY_PATH': f'{wd}/{pkg_lib_path}',
+            'DYLD_FRAMEWORK_PATH': f'{wd}/{pkg_fw_root}',
+        }
 
 
 class ModernMacOSTarget(MacOSTarget):

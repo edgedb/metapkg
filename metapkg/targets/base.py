@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import *
+
 import collections
 import os
 import pathlib
@@ -48,6 +51,9 @@ class Target:
     def get_package_system_ident(self, build, package,
                                  include_slot: bool = False):
         return package.name_slot if include_slot else package.name
+
+    def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
+        raise NotImplementedError
 
     def get_full_install_prefix(self, build) -> pathlib.Path:
         return self.get_install_root(build) / self.get_install_prefix(build)
@@ -201,6 +207,15 @@ class LinuxTarget(PosixTarget):
     def supports_pgo(self):
         # PGO is broken on pre-4.9, similarly to LTO.
         return self.supports_lto()
+
+    def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
+        pkg_install_root = build.get_install_dir(
+            package, relative_to='pkgbuild')
+        pkg_lib_path = (
+            pkg_install_root
+            / build.get_install_path('lib').relative_to('/')
+        )
+        return {'LD_LIBRARY_PATH': f'{wd}/{pkg_lib_path}'}
 
 
 class FHSTarget(PosixTarget):
@@ -698,3 +713,20 @@ class Build:
             script = ''
 
         return script
+
+    def get_ld_env(self, deps, wd: str) -> List[str]:
+        env = collections.defaultdict(list)
+
+        for pkg in deps:
+            if not self.is_bundled(pkg):
+                continue
+
+            for k, v in self.target.get_package_ld_env(self, pkg, wd).items():
+                env[k].append(v)
+
+        env_list = []
+        for k, vv in env.items():
+            v = ':'.join(vv + [f'${{{k}}}'])
+            env_list.append(f'{k}={v}')
+
+        return env_list
