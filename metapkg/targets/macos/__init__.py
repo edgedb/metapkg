@@ -284,6 +284,9 @@ class MacOSTarget(generic.GenericTarget):
             'DYLD_FRAMEWORK_PATH': f'{wd}/{pkg_fw_root}',
         }
 
+    def get_ld_env_keys(self, build) -> List[str]:
+        return ['DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH']
+
 
 class ModernMacOSTarget(MacOSTarget):
 

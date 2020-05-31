@@ -55,6 +55,9 @@ class Target:
     def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
         raise NotImplementedError
 
+    def get_ld_env_keys(self, build) -> List[str]:
+        raise NotImplementedError
+
     def get_full_install_prefix(self, build) -> pathlib.Path:
         return self.get_install_root(build) / self.get_install_prefix(build)
 
@@ -216,6 +219,9 @@ class LinuxTarget(PosixTarget):
             / build.get_install_path('lib').relative_to('/')
         )
         return {'LD_LIBRARY_PATH': f'{wd}/{pkg_lib_path}'}
+
+    def get_ld_env_keys(self, build) -> List[str]:
+        return ['LD_LIBRARY_PATH']
 
 
 class FHSTarget(PosixTarget):
@@ -723,6 +729,9 @@ class Build:
         extra: Iterable[str] = (),
     ) -> List[str]:
         env = collections.defaultdict(list)
+        keys = self.target.get_ld_env_keys(self)
+        for k in keys:
+            env[k] = []
 
         for pkg in deps:
             if not self.is_bundled(pkg):
