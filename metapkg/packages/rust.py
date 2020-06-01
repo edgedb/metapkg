@@ -12,7 +12,9 @@ class BundledRustPackage(base.BundledPackage):
     def resolve(cls, io, *, ref=None, version=None) -> 'BundledRustPackage':
         repo_dir = cls.resolve_vcs_source(io, ref=ref)
         out = tools.cmd('cargo', 'pkgid', cwd=repo_dir).strip()
-        _, _, version = out.rpartition('#')
+
+        if version is None:
+            _, _, version = out.rpartition('#')
 
         package = cls(version, source_version=ref or 'HEAD')
         return package
