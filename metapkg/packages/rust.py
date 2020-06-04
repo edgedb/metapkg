@@ -1,3 +1,4 @@
+import datetime
 import textwrap
 
 from metapkg import targets
@@ -15,6 +16,10 @@ class BundledRustPackage(base.BundledPackage):
 
         if version is None:
             _, _, version = out.rpartition('#')
+            git_rev = cls.resolve_version(io)
+            curdate = datetime.datetime.now(tz=datetime.timezone.utc)
+            curdate_str = curdate.strftime(r'%Y%m%d')
+            version = f'{version}+g{git_rev[:9]}.d{curdate_str}'
 
         package = cls(version, source_version=ref or 'HEAD')
         return package
@@ -38,6 +43,8 @@ class BundledRustPackage(base.BundledPackage):
         else:
             target = ''
         return textwrap.dedent(f'''\
+            sed -i -e 's/version =.*/version = "{self.version.text}"/' \\
+                "{src}/Cargo.toml"
             {cargo} install {target} \\
                 --root "{installdest}" \\
                 --path "{src}" \\
