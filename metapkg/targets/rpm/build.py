@@ -125,6 +125,9 @@ class Build(targets.Build):
         self._write_spec()
         self._rpmbuild()
 
+    def _format_version(self, ver):
+        return ver.replace('-', '_')
+
     def _write_spec(self):
         sysreqs = self.get_extra_system_requirements()
         base_name = self._root_pkg.name
@@ -155,7 +158,8 @@ class Build(targets.Build):
             common_package = ''
 
         rev = f'{self._revision}{self._subdist if self._subdist else ""}'
-        root_version = f'{self._root_pkg.pretty_version}-{rev}%{{?dist}}'
+        root_v = self._format_version(self._root_pkg.pretty_version)
+        root_version = f'{root_v}-{rev}%{{?dist}}'
         meta_pkgs = self._root_pkg.get_meta_packages(self, root_version)
         meta_pkg_specs = []
         for meta_pkg in meta_pkgs:
@@ -178,7 +182,8 @@ class Build(targets.Build):
                 url=self._root_pkg.url,
                 group=self._root_pkg.group,
                 dependencies='\n'.join(
-                    f'Requires: {dep_name}{f" {dep_ver}" if dep_ver else ""}'
+                    f'Requires: {dep_name}'
+                    + (f" {self._format_version(dep_ver)}" if dep_ver else "")
                     for dep_name, dep_ver in meta_pkg.dependencies.items()
                 )
             )
@@ -249,7 +254,7 @@ class Build(targets.Build):
             license=self._root_pkg.license,
             url=self._root_pkg.url,
             group=self._root_pkg.group,
-            version=self._root_pkg.pretty_version,
+            version=self._format_version(self._root_pkg.pretty_version),
             build_reqs=self._get_build_reqs_spec(),
             runtime_reqs=self._get_runtime_reqs_spec(sysreqs),
             source_spec=self._get_source_spec(),
@@ -289,12 +294,13 @@ class Build(targets.Build):
             f.write(rules)
 
     def _get_changelog(self):
+        root_v = self._format_version(self._root_pkg.version.text)
         changelog = textwrap.dedent('''\
             * {date} {maintainer} {version}
             - New version.
         ''').format(
             maintainer='MagicStack Inc. <hello@magic.io>',
-            version=f'{self._root_pkg.version.text}-{self._revision}',
+            version=f'{root_v}-{self._revision}',
             date=datetime.datetime.now(datetime.timezone.utc).strftime(
                 '%a %b %d %Y'
             )
@@ -329,9 +335,9 @@ class Build(targets.Build):
             lines.append(f'Requires: {pkg.system_name}')
 
         if self._bin_shims:
-            pkg = self._root_pkg
+            root_v = self._format_version(self._root_pkg.pretty_version)
             lines.append(
-                f'Requires: {pkg.name}-common >= {pkg.pretty_version}')
+                f'Requires: {self._root_pkg.name}-common >= {root_v}')
 
         categorymap = {
             'before-install': 'pre',
