@@ -182,9 +182,8 @@ class Build(targets.Build):
                 url=self._root_pkg.url,
                 group=self._root_pkg.group,
                 dependencies='\n'.join(
-                    f'Requires: {dep_name}'
-                    + (f" {self._format_version(dep_ver)}" if dep_ver else "")
-                    for dep_name, dep_ver in meta_pkg.dependencies.items()
+                    f'Requires: {d_name}{" " if d_ver else ""}{d_ver or ""}'
+                    for d_name, d_ver in meta_pkg.dependencies.items()
                 )
             )
             meta_pkg_specs.append(meta_pkg_spec)
