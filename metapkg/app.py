@@ -29,7 +29,7 @@ class App(cleo.Application):
     def get_default_commands(self) -> list:
         commands = super().get_default_commands()
 
-        for cmd in metapkg_commands.__all__:
+        for cmd in metapkg_commands.commands:
             commands.append(cmd())
 
         return commands
