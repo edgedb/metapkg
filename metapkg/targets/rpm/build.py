@@ -422,9 +422,10 @@ class Build(targets.Build):
         ignored_dep_script = self.sh_write_bash_helper(
             f'_gen_ignored_deps_{pkg.unique_name}.sh', ignored_dep_text,
             relative_to='sourceroot')
-
         trim_install = self.sh_get_command(
             'trim-install', relative_to='sourceroot')
+        copy_tree = self.sh_get_command(
+            'copy-tree', relative_to='sourceroot')
 
         return textwrap.dedent(f'''
             pushd "{source_root}" >/dev/null
@@ -438,7 +439,7 @@ class Build(targets.Build):
                 "{temp_dir}/not-installed" "{temp_dir}/ignored" \\
                 "{install_dir}" > "{temp_dir}/install.final"
 
-            rsync -av "{install_dir}/" "{image_root}/"
+            {copy_tree} -v "{install_dir}/" "{image_root}/"
 
             while IFS= read -r path; do
                 if [ -d "{install_dir}/${{path}}" ]; then

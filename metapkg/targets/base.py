@@ -504,7 +504,7 @@ class Build:
         )
 
     def get_tool_list(self):
-        return ['trim-install.py']
+        return ['trim-install.py', 'copy-tree.py']
 
     def get_su_script(self, script, user):
         return self.target.get_su_script(self, script, user)
