@@ -171,9 +171,7 @@ class Build(targets.Build):
             build: {temp_root}/stamp/build
 
             install: build
-            \trsync -arv --omit-dir-times --relative --no-perms --no-owner \\
-            \t\t--no-group --executability \\
-            \t\t"{image_root}/" "$(DESTDIR)"
+            \t{copy_tree} -v "{image_root}/" "$(DESTDIR)"
 
         ''').format(
             bash=self.sh_get_command('bash'),
@@ -183,6 +181,8 @@ class Build(targets.Build):
                 'complete', relative_to='sourceroot'),
             install_script=self._write_script(
                 'install', relative_to='sourceroot', installable_only=True),
+            copy_tree=self.sh_get_command(
+                'copy-tree', relative_to='sourceroot'),
         )
 
         with open(self._srcroot / 'Makefile', 'w') as f:
@@ -219,9 +219,10 @@ class Build(targets.Build):
         extras_script = self.sh_write_bash_helper(
             f'_install_extras_{pkg.unique_name}.sh', extras_text,
             relative_to='sourceroot')
-
         trim_install = self.sh_get_command(
             'trim-install', relative_to='sourceroot')
+        copy_tree = self.sh_get_command(
+            'copy-tree', relative_to='sourceroot')
 
         return textwrap.dedent(f'''
             pushd "{source_root}" >/dev/null
@@ -237,7 +238,7 @@ class Build(targets.Build):
 
             {extras_script} >> "{temp_dir}/install.list"
 
-            rsync -av --files-from="{temp_dir}/install.list" --relative \\
+            {copy_tree} -v --files-from="{temp_dir}/install.list" \\
                 "{install_dir}/" "{image_root}/"
 
             popd >/dev/null
