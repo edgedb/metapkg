@@ -47,6 +47,7 @@ def main(src: str, dest: str, *, files_from: Optional[str]) -> None:
     if files_from:
         p = pathlib.Path(files_from)
         relative_files = list(ensure_relative(p.read_text().splitlines(), src))
+        relative_files = add_missing_directory_entries(relative_files)
         logger.info(
             f"Using file list in {p} with {len(relative_files)} entries"
         )
@@ -163,6 +164,20 @@ def warn_about_excluded_files(
             logger.warning(f"Not in file list: {last_seen}")
         last_seen = file
     logger.warning(f"Not in file list: {last_seen}")
+
+
+def add_missing_directory_entries(files: Iterable[str]) -> List[str]:
+    dirs: Set[pathlib.Path] = {pathlib.Path('.')}
+    result: Set[str] = set()
+    for file in files:
+        if file.endswith("/"):
+            file = file[:-1]
+        for parent in reversed(pathlib.Path(file).parents):
+            if parent not in dirs:
+                dirs.add(parent)
+                result.add(str(parent))
+        result.add(file)
+    return list(sorted(result))
 
 
 if __name__ == "__main__":
