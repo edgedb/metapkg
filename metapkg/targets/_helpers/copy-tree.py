@@ -86,10 +86,13 @@ def get_paths_in(directory: str) -> Iterator[str]:
 
 
 def ensure_relative(files: Iterable[str], root: str) -> Iterator[str]:
-    root_p = pathlib.Path(root)
+    root_p = pathlib.Path(root).resolve()
     for path in files:
         p = pathlib.Path(path)
         if p.is_absolute():
+            p_treated_as_relative = root_p / str(p)[1:]
+            if p_treated_as_relative.exists():
+                p = p_treated_as_relative
             yield str(p.relative_to(root_p))
         else:
             if (root_p / p).exists():
