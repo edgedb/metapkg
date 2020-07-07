@@ -122,12 +122,17 @@ def copy_files(src: str, dest: str, files: Iterable[str]) -> None:
         path_from = src_dir / file
         path_to = dest_dir / file
         if path_from.is_dir():
-            try:
-                os.makedirs(path_to)
-            except OSError as ose:
-                logger.error(f"Failed making the {path_to} directory: {ose}")
+            if path_to.is_dir():
+                logger.warning(f"Directory {path_to} already exists")
             else:
-                logger.info(f"mkdir {path_to}")
+                try:
+                    os.makedirs(path_to)
+                except OSError as ose:
+                    logger.error(
+                        f"Failed making the {path_to} directory: {ose}"
+                    )
+                else:
+                    logger.info(f"mkdir {path_to}")
         else:
             if path_to.exists():
                 logger.warning(
@@ -179,7 +184,7 @@ def warn_about_excluded_files(
 
 
 def add_missing_directory_entries(files: Iterable[str]) -> List[str]:
-    dirs: Set[pathlib.Path] = {pathlib.Path('.')}
+    dirs: Set[pathlib.Path] = {pathlib.Path(".")}
     result: Set[str] = set()
     for file in files:
         if file.endswith("/"):
