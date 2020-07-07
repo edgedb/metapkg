@@ -94,15 +94,21 @@ def ensure_relative(files: Iterable[str], root: str) -> Iterator[str]:
             if p_treated_as_relative.exists():
                 p = p_treated_as_relative
             yield str(p.relative_to(root_p))
-        else:
-            if (root_p / p).exists():
-                yield path
-            else:
-                lose_one_level = p.relative_to(root_p.name)
-                if (root_p / lose_one_level).exists():
-                    yield str(lose_one_level)
-                else:
-                    logger.error(f"File in file list doesn't exist: {path}")
+            continue
+
+        if (root_p / p).exists():
+            yield path
+            continue
+
+        if p.parts[0] == root_p.name:
+            # file list element looks "off-by-one", created
+            # outside of the directory given as `src` to the tool
+            lose_one_level = p.relative_to(root_p.name)
+            if (root_p / lose_one_level).exists():
+                yield str(lose_one_level)
+                continue
+
+        logger.error(f"File in file list doesn't exist: {path}")
 
 
 def copy_files(src: str, dest: str, files: Iterable[str]) -> None:
