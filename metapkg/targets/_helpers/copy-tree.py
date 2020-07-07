@@ -70,8 +70,7 @@ def ensure_destination(src: str, dest: str) -> str:
         if not dest_p.is_dir():
             raise ValueError(f"{dest} is not a directory, cannot continue")
         if os.listdir(dest):
-            # We don't want to replicate rsync here.
-            raise ValueError(f"{dest} is not empty, cannot continue")
+            logger.warning(f"Directory {dest} is not empty")
     else:
         os.makedirs(dest_p)  # no error handling, irrecoverable
     return str(dest_p)
@@ -121,6 +120,10 @@ def copy_files(src: str, dest: str, files: Iterable[str]) -> None:
             else:
                 logger.info(f"mkdir {path_to}")
         else:
+            if path_to.exists():
+                logger.warning(
+                    f"File {path_to} already exists and will be overwritten"
+                )
             try:
                 shutil.copyfile(path_from, path_to, follow_symlinks=False)
             except Exception as e:
