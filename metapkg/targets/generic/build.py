@@ -252,7 +252,7 @@ class Build(targets.Build):
         lines.append(f'mkdir -p "{install_dir / bindir}"')
         for cmd in pkg.get_exposed_commands(self):
             cmdname = f'{cmd.name}{pkg.slot_suffix}'
-            lines.append(f'ln -sf "{cmd}" "{install_dir / bindir}/{cmdname}"')
+            lines.append(f'ln -vsf "{cmd}" "{install_dir / bindir}/{cmdname}"')
             lines.append(f'echo {bindir / cmdname}')
 
         extras_dir = self.get_extras_root(relative_to=None)
