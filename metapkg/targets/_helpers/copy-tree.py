@@ -96,7 +96,9 @@ def ensure_relative(files: Iterable[str], root: str) -> Iterator[str]:
             yield str(p.relative_to(root_p))
             continue
 
-        if (root_p / p).exists():
+        abs_p = root_p / p
+        if abs_p.is_symlink() or abs_p.exists():
+            # a symlink might point to a non-existent file
             yield path
             continue
 
