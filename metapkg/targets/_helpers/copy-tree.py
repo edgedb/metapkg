@@ -80,7 +80,7 @@ def get_paths_in(directory: str) -> Iterator[str]:
     for root, dirs, files in os.walk(directory):
         root_p = pathlib.Path(root).relative_to(directory)
         for name in dirs:
-            yield str(root_p / name) + "/"
+            yield str(root_p / name)
         for name in files:
             yield str(root_p / name)
 
@@ -175,12 +175,17 @@ def warn_about_excluded_files(
     included: Collection[str], all_files: Collection[str]
 ) -> None:
     last_seen = ""
+
+    def maybe_warn():
+        if last_seen != "":
+            logger.warning(f"Not in file list: {last_seen}")
+
     for file in sorted(set(all_files) - set(included)):
         skip = last_seen.endswith("/") and file.startswith(last_seen)
-        if not skip and last_seen != "":
-            logger.warning(f"Not in file list: {last_seen}")
+        if not skip:
+            maybe_warn()
         last_seen = file
-    logger.warning(f"Not in file list: {last_seen}")
+    maybe_warn()
 
 
 def add_missing_directory_entries(files: Iterable[str]) -> List[str]:
