@@ -19,7 +19,7 @@ class BundledRustPackage(base.BundledPackage):
             git_rev = cls.resolve_version(io)
             curdate = datetime.datetime.now(tz=datetime.timezone.utc)
             curdate_str = curdate.strftime(r'%Y%m%d')
-            version = f'{version}+g{git_rev[:9]}.d{curdate_str}'
+            version = f'{version}+d{curdate_str}.g{git_rev[:9]}'
 
         package = cls(version, source_version=ref or 'HEAD')
         return package
