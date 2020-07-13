@@ -205,8 +205,12 @@ class MacOSTarget(generic.GenericTarget):
 
     def prepare(self):
         tools.cmd('brew', 'update')
-        tools.cmd('brew', 'install', 'bash')
-        tools.cmd('brew', 'install', 'make')
+        brew_inst = (
+            'if brew ls --versions "$1"; then brew upgrade "$1"; '
+            'else brew install "$1"; fi'
+        )
+        tools.cmd('/bin/sh', '-c', brew_inst, '--', 'bash')
+        tools.cmd('/bin/sh', '-c', brew_inst, '--', 'make')
 
     @property
     def name(self):
