@@ -688,6 +688,11 @@ class Build:
 
                 script = '\n'.join(script_lines)
 
+        script = (
+            f'if [ -z "${{_EDGEDB_INSTALL_SKIP_BOOTSTRAP}}" ]; then '
+            f'{script}; fi'
+        )
+
         return script
 
     def _get_package_script(
