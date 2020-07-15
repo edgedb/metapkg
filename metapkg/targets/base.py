@@ -688,10 +688,11 @@ class Build:
 
                 script = '\n'.join(script_lines)
 
-        script = (
-            f'if [ -z "${{_EDGEDB_INSTALL_SKIP_BOOTSTRAP}}" ]; then '
-            f'{script}; fi'
-        )
+        if script:
+            script = (
+                f'if [ -z "${{_EDGEDB_INSTALL_SKIP_BOOTSTRAP}}" ]; then\n'
+                f'{script}\nfi'
+            )
 
         return script
 
