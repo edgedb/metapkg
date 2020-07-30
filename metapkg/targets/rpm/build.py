@@ -188,6 +188,8 @@ class Build(targets.Build):
             )
             meta_pkg_specs.append(meta_pkg_spec)
 
+        conflicts = self._root_pkg.get_conflict_packages(self, root_version)
+
         rules = textwrap.dedent('''\
             Name: {name}
             Version: {version}
@@ -200,6 +202,7 @@ class Build(targets.Build):
             BuildRequires: bash
             {build_reqs}
             {runtime_reqs}
+            {conflicts}
 
             {source_spec}
             {patch_spec}
@@ -256,6 +259,7 @@ class Build(targets.Build):
             version=self._format_version(self._root_pkg.pretty_version),
             build_reqs=self._get_build_reqs_spec(),
             runtime_reqs=self._get_runtime_reqs_spec(sysreqs),
+            conflicts=self._get_conflict_spec(conflicts),
             source_spec=self._get_source_spec(),
             patch_spec=self._get_patch_spec(),
             patch_script=self._get_patch_script(),
@@ -348,6 +352,15 @@ class Build(targets.Build):
         for cat, reqs in extrareqs.items():
             cat = categorymap[cat]
             lines.append(f'Requires({cat}): {" ".join(reqs)}')
+
+        return '\n'.join(lines)
+
+    def _get_conflict_spec(self, conflicts):
+        lines = []
+
+        for conflict in conflicts:
+            lines.append(f'Obsoletes: {conflict}')
+            lines.append(f'Conflicts: {conflict}')
 
         return '\n'.join(lines)
 

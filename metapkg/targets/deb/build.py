@@ -194,6 +194,20 @@ class Build(targets.Build):
             )
             meta_pkg_specs.append(meta_pkg_spec)
 
+        conflicts = self._root_pkg.get_conflict_packages(self, root_version)
+        if conflicts:
+            conflicts_list = ',\n '.join(conflicts)
+            conflicts_spec = '\n' + textwrap.dedent('''\
+                Conflicts:
+                 {conflicts_list}
+                Replaces:
+                 {conflicts_list}
+            ''').format(
+                conflicts_list=conflicts_list,
+            ).rstrip()
+        else:
+            conflicts_spec = ''
+
         control = textwrap.dedent('''\
             Source: {name}
             Priority: optional
@@ -211,7 +225,7 @@ class Build(targets.Build):
             Depends:
              {deps},
              ${{misc:Depends}},
-             ${{shlibs:Depends}}
+             ${{shlibs:Depends}}{conflicts_spec}
             Description:
              {description}
 
@@ -222,6 +236,7 @@ class Build(targets.Build):
             name=name,
             deps=deps,
             build_deps=build_deps,
+            conflicts_spec=conflicts_spec,
             section=self._target.get_package_group(self._root_pkg),
             description=self._root_pkg.description,
             maintainer='MagicStack Inc. <hello@magic.io>',

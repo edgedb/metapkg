@@ -446,3 +446,10 @@ class BundledPackage(BasePackage):
         root_version,
     ) -> typing.List[MetaPackage]:
         return []
+
+    def get_conflict_packages(
+        self,
+        build,
+        root_version,
+    ) -> typing.List[str]:
+        return []
