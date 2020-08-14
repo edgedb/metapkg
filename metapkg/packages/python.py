@@ -102,8 +102,6 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         package.source_type = 'pypi'
         package.source_url = package.source.url
         package.build_requires = self._get_build_requires(package)
-        if package.name != wheel_dependency.name:
-            package.build_requires.append(wheel_dependency)
 
         return package
 
