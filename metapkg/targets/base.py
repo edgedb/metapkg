@@ -58,6 +58,9 @@ class Target:
     def get_ld_env_keys(self, build) -> List[str]:
         raise NotImplementedError
 
+    def get_exe_suffix(self) -> str:
+        raise NotImplementedError
+
     def get_full_install_prefix(self, build) -> pathlib.Path:
         return self.get_install_root(build) / self.get_install_prefix(build)
 
@@ -102,6 +105,9 @@ class PosixTarget(Target):
             return PosixEnsureDirAction(build)
         else:
             return super().get_action(name, build)
+
+    def get_exe_suffix(self) -> str:
+        return ''
 
 
 class LinuxAddUserAction(TargetAction):
@@ -357,6 +363,7 @@ class Build:
     def prepare(self):
         self._system_tools['make'] = 'make'
         self._system_tools['bash'] = '/bin/bash'
+        self._system_tools['find'] = 'find'
 
     def build(self):
         raise NotImplementedError
@@ -376,6 +383,9 @@ class Build:
 
     def get_full_install_prefix(self):
         return self._target.get_full_install_prefix(self)
+
+    def get_exe_suffix(self):
+        return self._target.get_exe_suffix()
 
     def sh_get_command(self, command, *, package=None, relative_to='pkgbuild'):
         path = self._tools.get(command)
@@ -466,7 +476,12 @@ class Build:
 
         with open(helpers_abs / name, 'w') as f:
             print(text, file=f)
-            os.fchmod(f.fileno(), 0o755)
+            try:
+                os.fchmod(f.fileno(), 0o755)
+            except AttributeError:
+                # no fchmod on Windows and that's fine, because
+                # there's no such thing as executable bit on Windows
+                pass
 
         return f'{helpers_rel / name}'
 
