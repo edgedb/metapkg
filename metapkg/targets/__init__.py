@@ -4,7 +4,7 @@ import platform
 from .base import Build, Target  # noqa
 from .package import SystemPackage  # noqa
 
-from . import deb, rpm, macos, generic  # noqa
+from . import deb, rpm, macos, generic, win  # noqa
 
 
 def detect_target(io):
@@ -30,6 +30,11 @@ def detect_target(io):
         v, _, _ = platform.mac_ver()
         version = tuple(int(p) for p in v.split('.'))
         return macos.get_specific_target(version)
+
+    elif system == 'Windows':
+        v = platform.version()
+        version = tuple(int(p) for p in v.split('.'))
+        return win.get_specific_target(version)
 
     else:
         raise RuntimeError(

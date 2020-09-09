@@ -280,8 +280,9 @@ class Build(targets.Build):
         title = pkg.name
 
         image_root = self.get_image_root(relative_to='sourceroot')
+        find = self.sh_get_command('find', relative_to='sourceroot')
         files = tools.cmd(
-            'find', image_root, '-type', 'f',
+            find, image_root, '-type', 'f',
             cwd=str(self._srcroot),
         ).strip().split('\n')
 

@@ -2,6 +2,7 @@ import collections
 import dataclasses
 import enum
 import glob
+import os
 import pathlib
 import pprint
 import sys
@@ -314,16 +315,19 @@ class BundledPackage(BasePackage):
             paths[f'{aspect}dir'] = path
 
         paths['prefix'] = build.get_full_install_prefix().relative_to('/')
+        paths['exesuffix'] = build.get_exe_suffix()
 
         processed_entries = []
         for entry in entries:
-            processed_entries.append(entry.strip().format(**paths))
+            processed_entries.append(
+                entry.strip().format(**paths).replace('/', os.sep)
+            )
 
         pyscript = textwrap.dedent('''\
             import glob
             import pathlib
 
-            tmp = pathlib.Path('{installdest}')
+            tmp = pathlib.Path({installdest!r})
 
             patterns = {patterns}
 
@@ -333,7 +337,7 @@ class BundledPackage(BasePackage):
                     if p.exists():
                         print(p.relative_to(tmp))
         ''').format(
-            installdest=installdest,
+            installdest=str(installdest),
             patterns=pprint.pformat(processed_entries)
         )
 

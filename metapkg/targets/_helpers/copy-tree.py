@@ -6,11 +6,13 @@ import argparse
 import logging
 import os
 import pathlib
+import platform
 import shutil
 import stat
 
 
 logger = logging.getLogger("copy-tree")
+system = platform.system()
 
 
 def parse_args():
@@ -161,16 +163,18 @@ def copy_files(src: str, dest: str, files: Iterable[str]) -> None:
                 )
             else:
                 logger.info(f"chmod {oct(new_mode)} {path_to}")
-        try:
-            os.utime(
-                path_to,
-                (stat_from.st_atime, stat_from.st_mtime),
-                follow_symlinks=False,
-            )
-        except OSError as ose:
-            logger.error(f"Failed setting times on {path_to}: {ose}")
-        else:
-            pass  # logging `touch -t` is overly verbose
+
+        if system != 'Windows':
+            try:
+                os.utime(
+                    path_to,
+                    (stat_from.st_atime, stat_from.st_mtime),
+                    follow_symlinks=False,
+                )
+            except (OSError, NotImplementedError) as ose:
+                logger.error(f"Failed setting times on {path_to}: {ose}")
+            else:
+                pass  # logging `touch -t` is overly verbose
 
 
 def warn_about_excluded_files(
