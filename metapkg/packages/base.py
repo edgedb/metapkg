@@ -457,3 +457,10 @@ class BundledPackage(BasePackage):
         root_version,
     ) -> typing.List[str]:
         return []
+
+    def get_provided_packages(
+        self,
+        build,
+        root_version,
+    ) -> typing.List[typing.Tuple[str, str]]:
+        return []

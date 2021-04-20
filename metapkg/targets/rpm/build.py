@@ -121,6 +121,7 @@ class Build(targets.Build):
     def build(self):
         self.prepare_tools()
         self.prepare_tarballs()
+        self.unpack_sources()
         self.prepare_patches()
         self._write_spec()
         self._rpmbuild()
@@ -189,6 +190,7 @@ class Build(targets.Build):
             meta_pkg_specs.append(meta_pkg_spec)
 
         conflicts = self._root_pkg.get_conflict_packages(self, root_version)
+        provides = self._root_pkg.get_provided_packages(self, root_version)
 
         rules = textwrap.dedent('''\
             Name: {name}
@@ -203,6 +205,7 @@ class Build(targets.Build):
             {build_reqs}
             {runtime_reqs}
             {conflicts}
+            {provides}
 
             {source_spec}
             {patch_spec}
@@ -260,6 +263,7 @@ class Build(targets.Build):
             build_reqs=self._get_build_reqs_spec(),
             runtime_reqs=self._get_runtime_reqs_spec(sysreqs),
             conflicts=self._get_conflict_spec(conflicts),
+            provides=self._get_provides_spec(provides),
             source_spec=self._get_source_spec(),
             patch_spec=self._get_patch_spec(),
             patch_script=self._get_patch_script(),
@@ -361,6 +365,14 @@ class Build(targets.Build):
         for conflict in conflicts:
             lines.append(f'Obsoletes: {conflict}')
             lines.append(f'Conflicts: {conflict}')
+
+        return '\n'.join(lines)
+
+    def _get_provides_spec(self, provides):
+        lines = []
+
+        for pkg, ver in provides:
+            lines.append(f'Provides: {pkg} = {ver}')
 
         return '\n'.join(lines)
 

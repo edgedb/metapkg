@@ -208,6 +208,19 @@ class Build(targets.Build):
         else:
             conflicts_spec = ''
 
+        provides = self._root_pkg.get_provided_packages(self, root_version)
+        if provides:
+            provides_list = ',\n '.join(
+                f'{pkg} (= {ver})' for pkg, ver in provides)
+            provides_spec = '\n' + textwrap.dedent('''\
+                Provides:
+                 {provides_list}
+            ''').format(
+                provides_list=provides_list,
+            ).rstrip()
+        else:
+            provides_spec = ''
+
         control = textwrap.dedent('''\
             Source: {name}
             Priority: optional
@@ -225,7 +238,7 @@ class Build(targets.Build):
             Depends:
              {deps},
              ${{misc:Depends}},
-             ${{shlibs:Depends}}{conflicts_spec}
+             ${{shlibs:Depends}}{conflicts_spec}{provides_spec}
             Description:
              {description}
 
@@ -237,6 +250,7 @@ class Build(targets.Build):
             deps=deps,
             build_deps=build_deps,
             conflicts_spec=conflicts_spec,
+            provides_spec=provides_spec,
             section=self._target.get_package_group(self._root_pkg),
             description=self._root_pkg.description,
             maintainer='MagicStack Inc. <hello@magic.io>',
