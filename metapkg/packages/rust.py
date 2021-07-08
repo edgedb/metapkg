@@ -43,9 +43,9 @@ class BundledRustPackage(base.BundledPackage):
         else:
             target = ''
         return textwrap.dedent(f'''\
-            sed -i -e '/\[package\]/,/\[.*\]/{
-                    s/^version\s*=.*/version = "{self.version.text}"/;
-                }' \\
+            sed -i -e '/\\[package\\]/,/\\[.*\\]/{{
+                    s/^version\\s*=.*/version = "{self.version.text}"/;
+                }}' \\
                 "{src}/Cargo.toml"
             {cargo} install {target} \\
                 --root "{installdest}" \\
