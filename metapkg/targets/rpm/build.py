@@ -14,24 +14,23 @@ from metapkg import tools
 
 
 class Build(targets.Build):
-
     def prepare(self):
         super().prepare()
 
         self._pkgroot = self._droot / self._root_pkg.name_slot
         self._srcroot = self._pkgroot / self._root_pkg.name_slot
 
-        self._buildroot = pathlib.Path('BUILD')
-        self._tmproot = pathlib.Path('TEMP')
-        self._installroot = pathlib.Path('INSTALL')
+        self._buildroot = pathlib.Path("BUILD")
+        self._tmproot = pathlib.Path("TEMP")
+        self._installroot = pathlib.Path("INSTALL")
 
-        self._system_tools['make'] = f'make -j{os.cpu_count()}'
-        self._system_tools['cargo'] = 'cargo'
-        self._system_tools['python'] = 'python3'
-        self._system_tools['cp'] = 'cp'
-        self._system_tools['install'] = 'install'
-        self._system_tools['useradd'] = 'useradd'
-        self._system_tools['groupadd'] = 'groupadd'
+        self._system_tools["make"] = f"make -j{os.cpu_count()}"
+        self._system_tools["cargo"] = "cargo"
+        self._system_tools["python"] = "python3"
+        self._system_tools["cp"] = "cp"
+        self._system_tools["install"] = "install"
+        self._system_tools["useradd"] = "useradd"
+        self._system_tools["groupadd"] = "groupadd"
 
         self._bin_shims = self._root_pkg.get_bin_shims(self)
 
@@ -55,68 +54,71 @@ class Build(targets.Build):
             Path relative to the specified location.
         """
 
-        if relative_to == 'sourceroot':
+        if relative_to == "sourceroot":
             return pathlib.Path(path)
-        elif relative_to == 'buildroot':
-            return pathlib.Path('..') / path
-        elif relative_to == 'pkgsource':
-            return pathlib.Path('..') / '..' / path
-        elif relative_to == 'pkgbuild':
-            return pathlib.Path('..') / '..' / path
+        elif relative_to == "buildroot":
+            return pathlib.Path("..") / path
+        elif relative_to == "pkgsource":
+            return pathlib.Path("..") / ".." / path
+        elif relative_to == "pkgbuild":
+            return pathlib.Path("..") / ".." / path
         elif relative_to is None:
             return (self.get_source_abspath() / path).resolve()
         else:
-            raise ValueError(f'invalid relative_to argument: {relative_to}')
+            raise ValueError(f"invalid relative_to argument: {relative_to}")
 
-    def get_helpers_root(self, *, relative_to='sourceroot'):
+    def get_helpers_root(self, *, relative_to="sourceroot"):
         return self.get_dir(
-            self.get_tarball_root() / 'helpers', relative_to=relative_to)
+            self.get_tarball_root() / "helpers", relative_to=relative_to
+        )
 
-    def get_source_root(self, *, relative_to='sourceroot'):
-        return self.get_dir(pathlib.Path('.'), relative_to=relative_to)
+    def get_source_root(self, *, relative_to="sourceroot"):
+        return self.get_dir(pathlib.Path("."), relative_to=relative_to)
 
-    def get_tarball_root(self, *, relative_to='sourceroot'):
-        return self.get_dir(pathlib.Path('SOURCES'), relative_to=relative_to)
+    def get_tarball_root(self, *, relative_to="sourceroot"):
+        return self.get_dir(pathlib.Path("SOURCES"), relative_to=relative_to)
 
-    def get_patches_root(self, *, relative_to='sourceroot'):
+    def get_patches_root(self, *, relative_to="sourceroot"):
         return self.get_tarball_root(relative_to=relative_to)
 
-    def get_extras_root(self, *, relative_to='sourceroot'):
-        return self.get_tarball_root(relative_to=relative_to) / 'extras'
+    def get_extras_root(self, *, relative_to="sourceroot"):
+        return self.get_tarball_root(relative_to=relative_to) / "extras"
 
-    def get_spec_root(self, *, relative_to='sourceroot'):
-        return self.get_dir(pathlib.Path('SPECS'), relative_to=relative_to)
+    def get_spec_root(self, *, relative_to="sourceroot"):
+        return self.get_dir(pathlib.Path("SPECS"), relative_to=relative_to)
 
-    def get_source_dir(self, package, *, relative_to='sourceroot'):
+    def get_source_dir(self, package, *, relative_to="sourceroot"):
         return self.get_dir(
-            pathlib.Path('BUILD') / package.name, relative_to=relative_to)
+            pathlib.Path("BUILD") / package.name, relative_to=relative_to
+        )
 
-    def get_temp_dir(self, package, *, relative_to='sourceroot'):
+    def get_temp_dir(self, package, *, relative_to="sourceroot"):
         return self.get_dir(
-            self._tmproot / package.name, relative_to=relative_to)
+            self._tmproot / package.name, relative_to=relative_to
+        )
 
-    def get_temp_root(self, *, relative_to='sourceroot'):
-        return self.get_dir(
-            self._tmproot, relative_to=relative_to)
+    def get_temp_root(self, *, relative_to="sourceroot"):
+        return self.get_dir(self._tmproot, relative_to=relative_to)
 
-    def get_image_root(self, *, relative_to='sourceroot'):
+    def get_image_root(self, *, relative_to="sourceroot"):
         return self.get_dir(
-            pathlib.Path('BUILDROOT') / self._root_pkg.name_slot,
-            relative_to=relative_to)
+            pathlib.Path("BUILDROOT") / self._root_pkg.name_slot,
+            relative_to=relative_to,
+        )
 
-    def get_build_dir(self, package, *, relative_to='sourceroot'):
+    def get_build_dir(self, package, *, relative_to="sourceroot"):
         return self.get_dir(
-            self._buildroot / package.name, relative_to=relative_to)
+            self._buildroot / package.name, relative_to=relative_to
+        )
 
-    def get_install_dir(self, package, *, relative_to='sourceroot'):
+    def get_install_dir(self, package, *, relative_to="sourceroot"):
         return self.get_dir(
-            self._installroot / package.name, relative_to=relative_to)
+            self._installroot / package.name, relative_to=relative_to
+        )
 
     def _get_tarball_tpl(self, package):
         rp = self._root_pkg
-        return (
-            f'{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}'
-        )
+        return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
 
     def build(self):
         self.prepare_tools()
@@ -127,14 +129,15 @@ class Build(targets.Build):
         self._rpmbuild()
 
     def _format_version(self, ver):
-        return ver.replace('-', '_')
+        return ver.replace("-", "_")
 
     def _write_spec(self):
         sysreqs = self.get_extra_system_requirements()
         base_name = self._root_pkg.name
 
         if self._bin_shims:
-            common_package = textwrap.dedent('''\
+            common_package = textwrap.dedent(
+                """\
                 %package -n {name}-common
                 Summary: Support files for {title}.
                 Group: {group}
@@ -146,7 +149,8 @@ class Build(targets.Build):
 
                 %files -n {name}-common
                 {common_files}
-            ''').format(
+            """
+            ).format(
                 name=base_name,
                 title=self._root_pkg.title,
                 long_description=self._root_pkg.description,
@@ -156,15 +160,16 @@ class Build(targets.Build):
                 common_files=self._get_common_files(),
             )
         else:
-            common_package = ''
+            common_package = ""
 
         rev = f'{self._revision}{self._subdist if self._subdist else ""}'
         root_v = self._format_version(self._root_pkg.pretty_version)
-        root_version = f'{root_v}-{rev}%{{?dist}}'
+        root_version = f"{root_v}-{rev}%{{?dist}}"
         meta_pkgs = self._root_pkg.get_meta_packages(self, root_version)
         meta_pkg_specs = []
         for meta_pkg in meta_pkgs:
-            meta_pkg_spec = textwrap.dedent('''\
+            meta_pkg_spec = textwrap.dedent(
+                """\
                 %package -n {name}
                 Summary: {description}
                 Group: {group}
@@ -176,23 +181,25 @@ class Build(targets.Build):
                 {description}
 
                 %files -n {name}
-            ''').format(
+            """
+            ).format(
                 name=meta_pkg.name,
                 description=meta_pkg.description,
                 license=self._root_pkg.license,
                 url=self._root_pkg.url,
                 group=self._root_pkg.group,
-                dependencies='\n'.join(
+                dependencies="\n".join(
                     f'Requires: {d_name}{" " if d_ver else ""}{d_ver or ""}'
                     for d_name, d_ver in meta_pkg.dependencies.items()
-                )
+                ),
             )
             meta_pkg_specs.append(meta_pkg_spec)
 
         conflicts = self._root_pkg.get_conflict_packages(self, root_version)
         provides = self._root_pkg.get_provided_packages(self, root_version)
 
-        rules = textwrap.dedent('''\
+        rules = textwrap.dedent(
+            """\
             Name: {name}
             Version: {version}
             Release: {revision}{subdist}%{{?dist}}
@@ -250,10 +257,11 @@ class Build(targets.Build):
 
             %changelog
             {changelog}
-        ''').format(
+        """
+        ).format(
             name=self._root_pkg.name_slot,
             revision=self._revision,
-            subdist=self._subdist if self._subdist else '',
+            subdist=self._subdist if self._subdist else "",
             description=self._root_pkg.description,
             long_description=self._root_pkg.description,
             license=self._root_pkg.license,
@@ -268,49 +276,53 @@ class Build(targets.Build):
             patch_spec=self._get_patch_spec(),
             patch_script=self._get_patch_script(),
             unpack_script=self._write_script(
-                'unpack', relative_to='buildroot'),
+                "unpack", relative_to="buildroot"
+            ),
             configure_script=self._write_script(
-                'configure', relative_to='buildroot'),
-            build_script=self._write_script(
-                'build', relative_to='buildroot'),
+                "configure", relative_to="buildroot"
+            ),
+            build_script=self._write_script("build", relative_to="buildroot"),
             build_install_script=self._write_script(
-                'build_install', installable_only=True,
-                relative_to='buildroot'),
+                "build_install", installable_only=True, relative_to="buildroot"
+            ),
             install_script=self._write_script(
-                'install', installable_only=True,
-                relative_to='buildroot'),
-            install_extras=textwrap.indent(
-                self._get_install_extras(), '\t'),
+                "install", installable_only=True, relative_to="buildroot"
+            ),
+            install_extras=textwrap.indent(self._get_install_extras(), "\t"),
             files_extras=self._get_files_extras(),
             pre_script=self.get_script(
-                'before_install', installable_only=True,
-                relative_to='buildroot'),
+                "before_install",
+                installable_only=True,
+                relative_to="buildroot",
+            ),
             post_script=self.get_script(
-                'after_install', installable_only=True,
-                relative_to='buildroot'),
-            temp_root=self.get_temp_root(relative_to='buildroot'),
-            privatelibs=self._get_private_libs_pattern() or '%{nil}',
+                "after_install", installable_only=True, relative_to="buildroot"
+            ),
+            temp_root=self.get_temp_root(relative_to="buildroot"),
+            privatelibs=self._get_private_libs_pattern() or "%{nil}",
             changelog=self._get_changelog(),
             common_pkg=common_package,
-            meta_pkgs='\n\n'.join(meta_pkg_specs),
-            debug_pkg='%debug_package' if self._build_debug else '',
+            meta_pkgs="\n\n".join(meta_pkg_specs),
+            debug_pkg="%debug_package" if self._build_debug else "",
         )
 
         spec_root = self.get_spec_root(relative_to=None)
-        with open(spec_root / f'{self._root_pkg.name_slot}.spec', 'w') as f:
+        with open(spec_root / f"{self._root_pkg.name_slot}.spec", "w") as f:
             f.write(rules)
 
     def _get_changelog(self):
         root_v = self._format_version(self._root_pkg.version.text)
-        changelog = textwrap.dedent('''\
+        changelog = textwrap.dedent(
+            """\
             * {date} {maintainer} {version}
             - New version.
-        ''').format(
-            maintainer='MagicStack Inc. <hello@magic.io>',
-            version=f'{root_v}-{self._revision}',
+        """
+        ).format(
+            maintainer="MagicStack Inc. <hello@magic.io>",
+            version=f"{root_v}-{self._revision}",
             date=datetime.datetime.now(datetime.timezone.utc).strftime(
-                '%a %b %d %Y'
-            )
+                "%a %b %d %Y"
+            ),
         )
 
         return changelog
@@ -321,138 +333,152 @@ class Build(targets.Build):
         for pkg in self._installable:
             private_libs.update(pkg.get_private_libraries(self))
 
-        return '|'.join(private_libs)
+        return "|".join(private_libs)
 
     def _get_build_reqs_spec(self):
         lines = []
 
-        deps = (pkg for pkg in self._build_deps
-                if isinstance(pkg, targets.SystemPackage))
+        deps = (
+            pkg
+            for pkg in self._build_deps
+            if isinstance(pkg, targets.SystemPackage)
+        )
         for pkg in deps:
-            lines.append(f'BuildRequires: {pkg.system_name}')
+            lines.append(f"BuildRequires: {pkg.system_name}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_runtime_reqs_spec(self, extrareqs):
         lines = []
 
-        deps = (pkg for pkg in self._deps
-                if isinstance(pkg, targets.SystemPackage))
+        deps = (
+            pkg for pkg in self._deps if isinstance(pkg, targets.SystemPackage)
+        )
         for pkg in deps:
-            lines.append(f'Requires: {pkg.system_name}')
+            lines.append(f"Requires: {pkg.system_name}")
 
         if self._bin_shims:
             root_v = self._format_version(self._root_pkg.pretty_version)
-            lines.append(
-                f'Requires: {self._root_pkg.name}-common >= {root_v}')
+            lines.append(f"Requires: {self._root_pkg.name}-common >= {root_v}")
 
         categorymap = {
-            'before-install': 'pre',
-            'after-install': 'post',
-            'before-uninstall': 'preun',
-            'after-uninstall': 'postun'
+            "before-install": "pre",
+            "after-install": "post",
+            "before-uninstall": "preun",
+            "after-uninstall": "postun",
         }
 
         for cat, reqs in extrareqs.items():
             cat = categorymap[cat]
             lines.append(f'Requires({cat}): {" ".join(reqs)}')
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_conflict_spec(self, conflicts):
         lines = []
 
         for conflict in conflicts:
-            lines.append(f'Obsoletes: {conflict}')
-            lines.append(f'Conflicts: {conflict}')
+            lines.append(f"Obsoletes: {conflict}")
+            lines.append(f"Conflicts: {conflict}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_provides_spec(self, provides):
         lines = []
 
         for pkg, ver in provides:
-            lines.append(f'Provides: {pkg} = {ver}')
+            lines.append(f"Provides: {pkg} = {ver}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_source_spec(self):
         lines = []
 
         for i, tarball in enumerate(self._tarballs.values()):
-            lines.append(f'Source{i}: {tarball.name}')
+            lines.append(f"Source{i}: {tarball.name}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_patch_spec(self):
         lines = []
 
         for i, patch in enumerate(self._patches):
-            lines.append(f'Patch{i}: {patch}')
+            lines.append(f"Patch{i}: {patch}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_patch_script(self):
         lines = []
 
         for i, patch in enumerate(self._patches):
-            lines.append(f'%patch -P {i} -p1')
+            lines.append(f"%patch -P {i} -p1")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_package_unpack_script(self, pkg) -> str:
-        tarball_root = self.get_tarball_root(relative_to='pkgbuild')
+        tarball_root = self.get_tarball_root(relative_to="pkgbuild")
         tarball = tarball_root / self._tarballs[pkg]
         ext = tarball.suffix
-        if ext == '.bz2':
-            compflag = 'j'
-        elif ext == '.gz':
-            compflag = 'z'
-        elif ext == '.tar':
-            compflag = ''
+        if ext == ".bz2":
+            compflag = "j"
+        elif ext == ".gz":
+            compflag = "z"
+        elif ext == ".tar":
+            compflag = ""
         else:
-            raise NotImplementedError(f'tar{ext} files are not supported')
+            raise NotImplementedError(f"tar{ext} files are not supported")
 
-        src_dir = self.get_source_dir(pkg, relative_to='pkgbuild')
+        src_dir = self.get_source_dir(pkg, relative_to="pkgbuild")
 
-        return textwrap.dedent(f'''
+        return textwrap.dedent(
+            f"""
             pushd "{src_dir}" >/dev/null
             /usr/bin/tar -x{compflag} -f {tarball} --strip-components=1
             popd >/dev/null
-        ''')
+        """
+        )
 
     def _get_package_install_script(self, pkg) -> str:
-        source_root = self.get_source_root(relative_to='pkgbuild')
-        install_dir = self.get_install_dir(pkg, relative_to='sourceroot')
-        image_root = self.get_image_root(relative_to='sourceroot')
-        temp_root = self.get_temp_root(relative_to='sourceroot')
-        temp_dir = self.get_temp_dir(pkg, relative_to='sourceroot')
+        source_root = self.get_source_root(relative_to="pkgbuild")
+        install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
+        image_root = self.get_image_root(relative_to="sourceroot")
+        temp_root = self.get_temp_root(relative_to="sourceroot")
+        temp_dir = self.get_temp_dir(pkg, relative_to="sourceroot")
 
-        il_script_text = self._get_package_script(pkg, 'install_list')
+        il_script_text = self._get_package_script(pkg, "install_list")
         il_script = self.sh_write_bash_helper(
-            f'_gen_install_list_{pkg.unique_name}.sh', il_script_text,
-            relative_to='sourceroot')
+            f"_gen_install_list_{pkg.unique_name}.sh",
+            il_script_text,
+            relative_to="sourceroot",
+        )
 
-        nil_script_text = self._get_package_script(pkg, 'no_install_list')
+        nil_script_text = self._get_package_script(pkg, "no_install_list")
         nil_script = self.sh_write_bash_helper(
-            f'_gen_no_install_list_{pkg.unique_name}.sh', nil_script_text,
-            relative_to='sourceroot')
+            f"_gen_no_install_list_{pkg.unique_name}.sh",
+            nil_script_text,
+            relative_to="sourceroot",
+        )
 
-        ignore_script_text = self._get_package_script(pkg, 'ignore_list')
+        ignore_script_text = self._get_package_script(pkg, "ignore_list")
         ignore_script = self.sh_write_bash_helper(
-            f'_gen_ignore_list_{pkg.unique_name}.sh', ignore_script_text,
-            relative_to='sourceroot')
+            f"_gen_ignore_list_{pkg.unique_name}.sh",
+            ignore_script_text,
+            relative_to="sourceroot",
+        )
 
-        ignored_dep_text = self._get_package_script(pkg, 'ignored_dependency')
+        ignored_dep_text = self._get_package_script(pkg, "ignored_dependency")
         ignored_dep_script = self.sh_write_bash_helper(
-            f'_gen_ignored_deps_{pkg.unique_name}.sh', ignored_dep_text,
-            relative_to='sourceroot')
+            f"_gen_ignored_deps_{pkg.unique_name}.sh",
+            ignored_dep_text,
+            relative_to="sourceroot",
+        )
         trim_install = self.sh_get_command(
-            'trim-install', relative_to='sourceroot')
-        copy_tree = self.sh_get_command(
-            'copy-tree', relative_to='sourceroot')
+            "trim-install", relative_to="sourceroot"
+        )
+        copy_tree = self.sh_get_command("copy-tree", relative_to="sourceroot")
 
-        return textwrap.dedent(f'''
+        return textwrap.dedent(
+            f"""
             pushd "{source_root}" >/dev/null
 
             {il_script} > "{temp_dir}/install"
@@ -475,24 +501,25 @@ class Build(targets.Build):
             done < <(cat "{temp_dir}/install.final")
 
             popd >/dev/null
-        ''')
+        """
+        )
 
     def _get_install_extras(self) -> str:
         lines = []
         symlinks = []
 
         extras_dir = self.get_extras_root(relative_to=None)
-        extras_dir_rel = self.get_extras_root(relative_to='buildroot')
+        extras_dir_rel = self.get_extras_root(relative_to="buildroot")
 
         for pkg in self._installable:
             for path, content in pkg.get_service_scripts(self).items():
-                directory = extras_dir / path.parent.relative_to('/')
+                directory = extras_dir / path.parent.relative_to("/")
                 directory.mkdir(parents=True)
-                with open(directory / path.name, 'w') as f:
+                with open(directory / path.name, "w") as f:
                     print(content, file=f)
 
             for cmd in pkg.get_exposed_commands(self):
-                symlinks.append((cmd, f'{cmd.name}{pkg.slot_suffix}'))
+                symlinks.append((cmd, f"{cmd.name}{pkg.slot_suffix}"))
 
         if symlinks:
             lines.append(r'install -m755 -d "${RPM_BUILD_ROOT}/%{_bindir}"')
@@ -500,95 +527,113 @@ class Build(targets.Build):
             for src, tgt in symlinks:
                 lines.append(
                     f'ln -sf "{src}" '
-                    f'"${{RPM_BUILD_ROOT}}/%{{_bindir}}/{tgt}"')
+                    f'"${{RPM_BUILD_ROOT}}/%{{_bindir}}/{tgt}"'
+                )
 
         if self._bin_shims:
-            sysbindir = self.get_install_path('systembin')
+            sysbindir = self.get_install_path("systembin")
 
             for path, data in self._bin_shims.items():
-                relpath = (sysbindir / path).relative_to('/')
+                relpath = (sysbindir / path).relative_to("/")
                 inst_path = extras_dir / relpath
                 inst_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(inst_path, 'w') as f:
+                with open(inst_path, "w") as f:
                     f.write(data)
-                os.chmod(inst_path,
-                         stat.S_IRWXU | stat.S_IRGRP
-                         | stat.S_IXGRP | stat.S_IROTH
-                         | stat.S_IXOTH)
+                os.chmod(
+                    inst_path,
+                    stat.S_IRWXU
+                    | stat.S_IRGRP
+                    | stat.S_IXGRP
+                    | stat.S_IROTH
+                    | stat.S_IXOTH,
+                )
 
                 src_path = extras_dir_rel / relpath
                 src = shlex.quote(str(src_path))
 
-                broot_path = f'%{{_bindir}}/{path}'
+                broot_path = f"%{{_bindir}}/{path}"
 
                 lines.append(
-                    f'mkdir -p "$(dirname ${{RPM_BUILD_ROOT}}/{broot_path})"')
+                    f'mkdir -p "$(dirname ${{RPM_BUILD_ROOT}}/{broot_path})"'
+                )
                 lines.append(f'cp -p {src} "${{RPM_BUILD_ROOT}}/{broot_path}"')
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_files_extras(self) -> str:
         lines = []
 
         for pkg in self._installable:
             for cmd in pkg.get_exposed_commands(self):
-                cmdname = f'{cmd.name}{pkg.slot_suffix}'
-                lines.append(f'%{{_bindir}}/{cmdname}')
+                cmdname = f"{cmd.name}{pkg.slot_suffix}"
+                lines.append(f"%{{_bindir}}/{cmdname}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _get_common_files(self) -> str:
         if self._bin_shims:
-            return '\n'.join(
-                f'%{{_bindir}}/{path}' for path in self._bin_shims)
+            return "\n".join(
+                f"%{{_bindir}}/{path}" for path in self._bin_shims
+            )
         else:
-            return ''
+            return ""
 
     def _rpmbuild(self):
         tools.cmd(
-            'yum', 'install', '-y', 'rpm-build', 'rpmlint', 'yum-utils',
+            "yum",
+            "install",
+            "-y",
+            "rpm-build",
+            "rpmlint",
+            "yum-utils",
             stdout=self._io.output.stream,
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
         )
 
         self.target.install_build_deps(
-            self, f'{self._root_pkg.name_slot}.spec')
+            self, f"{self._root_pkg.name_slot}.spec"
+        )
 
         image_root = self.get_image_root(relative_to=None)
 
         args = [
-            f'{self._root_pkg.name_slot}.spec',
-            f'--define=%_topdir {self._srcroot}',
-            f'--buildroot={image_root}',
-            '--verbose',
+            f"{self._root_pkg.name_slot}.spec",
+            f"--define=%_topdir {self._srcroot}",
+            f"--buildroot={image_root}",
+            "--verbose",
         ]
         if self._build_source:
-            args.append('-ba')
+            args.append("-ba")
         else:
-            args.append('-bb')
+            args.append("-bb")
 
         tools.cmd(
-            'rpmbuild', *args,
+            "rpmbuild",
+            *args,
             cwd=str(self.get_spec_root(relative_to=None)),
             stdout=self._io.output.stream,
-            stderr=subprocess.STDOUT)
+            stderr=subprocess.STDOUT,
+        )
 
         tools.cmd(
-            'rpmlint', '-i', f'{self._root_pkg.name_slot}.spec',
+            "rpmlint",
+            "-i",
+            f"{self._root_pkg.name_slot}.spec",
             cwd=str(self.get_spec_root(relative_to=None)),
             stdout=self._io.output.stream,
-            stderr=subprocess.STDOUT)
+            stderr=subprocess.STDOUT,
+        )
 
         if self._outputroot is not None:
             if not self._outputroot.exists():
                 self._outputroot.mkdir(parents=True, exist_ok=True)
 
-            rpms = self.get_dir('RPMS', relative_to=None) / platform.machine()
-            for rpm in glob.glob(str(rpms / '*.rpm')):
+            rpms = self.get_dir("RPMS", relative_to=None) / platform.machine()
+            for rpm in glob.glob(str(rpms / "*.rpm")):
                 rpm = pathlib.Path(rpm)
                 shutil.copy2(rpm, self._outputroot / rpm.name)
 
-            srpms = self.get_dir('SRPMS', relative_to=None)
-            for rpm in glob.glob(str(srpms / '*.rpm')):
+            srpms = self.get_dir("SRPMS", relative_to=None)
+            for rpm in glob.glob(str(srpms / "*.rpm")):
                 rpm = pathlib.Path(rpm)
                 shutil.copy2(rpm, self._outputroot / rpm.name)

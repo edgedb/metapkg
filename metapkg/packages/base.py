@@ -21,7 +21,6 @@ class Dependency(poetry_pkg.Dependency):
 
 
 class DummyPackage(poetry_pkg.Package):
-
     def clone(self):
         clone = self.__class__(self.pretty_name, self.version)
         clone.category = self.category
@@ -54,34 +53,34 @@ class MetaPackage:
 
 
 class BasePackage(poetry_pkg.Package):
-
     def get_configure_script(self, build) -> str:
-        raise NotImplementedError(f'{self}.configure()')
+        raise NotImplementedError(f"{self}.configure()")
 
     def get_build_script(self, build) -> str:
-        raise NotImplementedError(f'{self}.build()')
+        raise NotImplementedError(f"{self}.build()")
 
     def get_build_install_script(self, build) -> str:
-        return ''
+        return ""
 
     def get_install_script(self, build) -> str:
-        return ''
+        return ""
 
     def get_build_tools(self, build) -> dict:
         return {}
 
-    def get_patches(self) -> \
-            typing.Dict[str, typing.List[typing.Tuple[str, str]]]:
+    def get_patches(
+        self,
+    ) -> typing.Dict[str, typing.List[typing.Tuple[str, str]]]:
         return {}
 
     def get_install_list_script(self, build) -> str:
-        return ''
+        return ""
 
     def get_no_install_list_script(self, build) -> str:
-        return ''
+        return ""
 
     def get_ignore_list_script(self, build) -> str:
-        return ''
+        return ""
 
     def get_private_libraries(self, build) -> list:
         return []
@@ -90,10 +89,10 @@ class BasePackage(poetry_pkg.Package):
         return {}
 
     def get_before_install_script(self, build) -> str:
-        return ''
+        return ""
 
     def get_after_install_script(self, build) -> str:
-        return ''
+        return ""
 
     def get_service_scripts(self, build) -> dict:
         return {}
@@ -121,53 +120,55 @@ class BundledPackage(BasePackage):
 
     @property
     def slot(self) -> str:
-        return ''
+        return ""
 
     @property
     def slot_suffix(self) -> str:
         if self.slot:
-            return f'-{self.slot}'
+            return f"-{self.slot}"
         else:
-            return ''
+            return ""
 
     @property
     def name_slot(self):
-        return f'{self.name}{self.slot_suffix}'
+        return f"{self.name}{self.slot_suffix}"
 
     @classmethod
     def _get_sources(cls, version: str) -> typing.List[af_sources.BaseSource]:
         sources = []
 
         if version is None:
-            version = 'HEAD'
-        underscore_v = version.replace('.', '_')
-        dash_v = version.replace('.', '-')
+            version = "HEAD"
+        underscore_v = version.replace(".", "_")
+        dash_v = version.replace(".", "-")
         for source in cls.sources:
             if isinstance(source, dict):
-                url = source['url'].format(
+                url = source["url"].format(
                     version=version,
                     underscore_version=underscore_v,
                     dash_version=dash_v,
                 )
-                extras = source.get('extras')
+                extras = source.get("extras")
                 if extras:
-                    extras = {k.replace('-', '_'): v
-                              for k, v in extras.items()}
+                    extras = {
+                        k.replace("-", "_"): v for k, v in extras.items()
+                    }
 
-                    if 'version' not in extras:
-                        extras['version'] = version
+                    if "version" not in extras:
+                        extras["version"] = version
                 else:
-                    extras = {'version': version}
+                    extras = {"version": version}
 
-                if 'vcs_version' not in extras:
-                    extras['vcs_version'] = cls.to_vcs_version(
-                        extras['version'])
+                if "vcs_version" not in extras:
+                    extras["vcs_version"] = cls.to_vcs_version(
+                        extras["version"]
+                    )
 
                 src = af_sources.source_for_url(url, extras)
 
-                csum = source.get('csum')
-                csum_url = source.get('csum_url')
-                csum_algo = source.get('csum_algo')
+                csum = source.get("csum")
+                csum_url = source.get("csum_url")
+                csum_algo = source.get("csum_algo")
 
                 if csum_algo:
                     if csum_url:
@@ -177,7 +178,8 @@ class BundledPackage(BasePackage):
                             dash_version=dash_v,
                         )
                     csum_verify = af_sources.HashVerification(
-                        csum_algo, hash_url=csum_url, hash_value=csum)
+                        csum_algo, hash_url=csum_url, hash_value=csum
+                    )
                     src.add_verification(csum_verify)
 
             else:
@@ -201,17 +203,17 @@ class BundledPackage(BasePackage):
         if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
             repo_dir = sources[0].download(io)
         else:
-            raise ValueError('Unable to resolve non-git bundled package')
+            raise ValueError("Unable to resolve non-git bundled package")
 
         return repo_dir
 
     @classmethod
     def resolve_version(cls, io) -> str:
         repo_dir = cls.resolve_vcs_source(io)
-        return vcs.Git(repo_dir).rev_parse('HEAD').strip()
+        return vcs.Git(repo_dir).rev_parse("HEAD").strip()
 
     @classmethod
-    def resolve(cls, io, *, version=None) -> 'BundledPackage':
+    def resolve(cls, io, *, version=None) -> "BundledPackage":
         if version is None:
             version = cls.resolve_version(io)
         return cls(version=version)
@@ -219,16 +221,17 @@ class BundledPackage(BasePackage):
     def get_sources(self) -> typing.List[af_sources.BaseSource]:
         return self._get_sources(version=self.source_version)
 
-    def get_patches(self) -> \
-            typing.Dict[str, typing.List[typing.Tuple[str, str]]]:
+    def get_patches(
+        self,
+    ) -> typing.Dict[str, typing.List[typing.Tuple[str, str]]]:
         modpath = pathlib.Path(sys.modules[self.__module__].__path__[0])
-        patches_dir = modpath / 'patches'
+        patches_dir = modpath / "patches"
 
         patches = collections.defaultdict(list)
         if patches_dir.exists():
-            for path in patches_dir.glob('*.patch'):
-                with open(path, 'r') as f:
-                    pkg, _, rest = path.stem.partition('__')
+            for path in patches_dir.glob("*.patch"):
+                with open(path, "r") as f:
+                    pkg, _, rest = path.stem.partition("__")
                     patches[pkg].append((rest, f.read()))
 
             for pkg, plist in patches.items():
@@ -236,16 +239,22 @@ class BundledPackage(BasePackage):
 
         return patches
 
-    def __init__(self, version: str,
-                 pretty_version: typing.Optional[str]=None, *,
-                 source_version: typing.Optional[str]=None,
-                 requires=None,
-                 name: typing.Optional[str]=None,
-                 aliases: typing.Optional[typing.List[str]]=None) -> None:
+    def __init__(
+        self,
+        version: str,
+        pretty_version: typing.Optional[str] = None,
+        *,
+        source_version: typing.Optional[str] = None,
+        requires=None,
+        name: typing.Optional[str] = None,
+        aliases: typing.Optional[typing.List[str]] = None,
+    ) -> None:
 
         if self.title is None:
-            raise RuntimeError(f'{type(self)!r} does not define the required '
-                               f'title attribute')
+            raise RuntimeError(
+                f"{type(self)!r} does not define the required "
+                f"title attribute"
+            )
 
         if name is not None:
             self.name = name
@@ -307,23 +316,24 @@ class BundledPackage(BasePackage):
         return False
 
     def write_file_list_script(self, build, listname, entries) -> str:
-        installdest = build.get_install_dir(self, relative_to='pkgbuild')
+        installdest = build.get_install_dir(self, relative_to="pkgbuild")
 
         paths = {}
-        for aspect in ('systembin', 'bin', 'data', 'include', 'lib'):
-            path = build.get_install_path(aspect).relative_to('/')
-            paths[f'{aspect}dir'] = path
+        for aspect in ("systembin", "bin", "data", "include", "lib"):
+            path = build.get_install_path(aspect).relative_to("/")
+            paths[f"{aspect}dir"] = path
 
-        paths['prefix'] = build.get_full_install_prefix().relative_to('/')
-        paths['exesuffix'] = build.get_exe_suffix()
+        paths["prefix"] = build.get_full_install_prefix().relative_to("/")
+        paths["exesuffix"] = build.get_exe_suffix()
 
         processed_entries = []
         for entry in entries:
             processed_entries.append(
-                entry.strip().format(**paths).replace('/', os.sep)
+                entry.strip().format(**paths).replace("/", os.sep)
             )
 
-        pyscript = textwrap.dedent('''\
+        pyscript = textwrap.dedent(
+            """\
             import glob
             import pathlib
 
@@ -336,15 +346,17 @@ class BundledPackage(BasePackage):
                     p = pathlib.Path(path)
                     if p.exists():
                         print(p.relative_to(tmp))
-        ''').format(
+        """
+        ).format(
             installdest=str(installdest),
-            patterns=pprint.pformat(processed_entries)
+            patterns=pprint.pformat(processed_entries),
         )
 
-        scriptfile_name = f'_gen_{listname}_list_{self.unique_name}.py'
+        scriptfile_name = f"_gen_{listname}_list_{self.unique_name}.py"
 
         return build.sh_write_python_helper(
-            scriptfile_name, pyscript, relative_to='pkgbuild')
+            scriptfile_name, pyscript, relative_to="pkgbuild"
+        )
 
     def read_support_files(self, build, file_glob, binary=False) -> dict:
 
@@ -355,69 +367,71 @@ class BundledPackage(BasePackage):
 
         for pathname in glob.glob(str(path)):
             path = pathlib.Path(pathname)
-            mode = 'rb' if binary else 'r'
+            mode = "rb" if binary else "r"
             with open(path, mode) as f:
                 content = f.read()
                 name = path.name
-                if not binary and name.endswith('.in'):
+                if not binary and name.endswith(".in"):
                     content = build.format_package_template(content, self)
                     name = name[:-3]
+                    name = name.replace("SLOT", self.slot)
                     name = name.replace(
-                        'SLOT',
-                        self.slot)
-                    name = name.replace(
-                        'IDENTIFIER',
-                        build.target.get_package_system_ident(build, self))
+                        "IDENTIFIER",
+                        build.target.get_package_system_ident(build, self),
+                    )
                 result[name] = content
 
         return result
 
     def _get_file_list_script(
-            self, build, listname, *, extra_files=None) -> str:
+        self, build, listname, *, extra_files=None
+    ) -> str:
         mod = sys.modules[type(self).__module__]
-        path = pathlib.Path(mod.__file__).parent / f'{listname}.list'
+        path = pathlib.Path(mod.__file__).parent / f"{listname}.list"
 
         entries = []
 
         if path.exists():
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 entries.extend(f)
 
         if extra_files:
-            entries.extend(str(p.relative_to('/')) for p in extra_files)
+            entries.extend(str(p.relative_to("/")) for p in extra_files)
 
         if entries:
             script = self.write_file_list_script(build, listname, entries)
         else:
-            script = ''
+            script = ""
 
         return script
 
     def get_install_list_script(self, build) -> str:
         extra_files = list(self.get_service_scripts(build))
         return self._get_file_list_script(
-            build, 'install', extra_files=extra_files)
+            build, "install", extra_files=extra_files
+        )
 
     def get_no_install_list_script(self, build) -> str:
-        return self._get_file_list_script(build, 'no_install')
+        return self._get_file_list_script(build, "no_install")
 
     def get_ignore_list_script(self, build) -> str:
-        return self._get_file_list_script(build, 'ignore')
+        return self._get_file_list_script(build, "ignore")
 
     def get_build_install_script(self, build) -> str:
         service_scripts = self.get_service_scripts(build)
         if service_scripts:
-            install = build.sh_get_command('cp', relative_to='pkgbuild')
-            extras_dir = build.get_extras_root(relative_to='pkgbuild')
-            install_dir = build.get_install_dir(self, relative_to='pkgbuild')
-            ensuredir = build.target.get_action('ensuredir', build)
+            install = build.sh_get_command("cp", relative_to="pkgbuild")
+            extras_dir = build.get_extras_root(relative_to="pkgbuild")
+            install_dir = build.get_install_dir(self, relative_to="pkgbuild")
+            ensuredir = build.target.get_action("ensuredir", build)
 
             commands = []
 
             for path, content in service_scripts.items():
-                path = path.relative_to('/')
-                commands.append(ensuredir.get_script(
-                    path=(install_dir / path).parent))
+                path = path.relative_to("/")
+                commands.append(
+                    ensuredir.get_script(path=(install_dir / path).parent)
+                )
                 args = {
                     str(extras_dir / path): None,
                     str(install_dir / path): None,
@@ -425,18 +439,18 @@ class BundledPackage(BasePackage):
                 cmd = build.sh_format_command(install, args)
                 commands.append(cmd)
 
-            return '\n'.join(commands)
+            return "\n".join(commands)
         else:
-            return ''
+            return ""
 
     def get_resources(self, build) -> dict:
-        return self.read_support_files(build, 'resources/*', binary=True)
+        return self.read_support_files(build, "resources/*", binary=True)
 
     def get_service_scripts(self, build) -> dict:
         return build.target.service_scripts_for_package(build, self)
 
     def get_bin_shims(self, build) -> dict:
-        return self.read_support_files(build, 'shims/*')
+        return self.read_support_files(build, "shims/*")
 
     def get_package_layout(self, build) -> PackageFileLayout:
         return PackageFileLayout.REGULAR

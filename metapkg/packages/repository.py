@@ -14,7 +14,6 @@ class PackageNotFoundError(LookupError):
 
 
 class Pool(poetry_repo.Pool):
-
     def package(self, name, version, extras=None):
         for repository in self.repositories:
             try:
@@ -27,20 +26,18 @@ class Pool(poetry_repo.Pool):
 
                 return package
 
-        raise PackageNotFoundError(f'package not found: {name}-{version}')
+        raise PackageNotFoundError(f"package not found: {name}-{version}")
 
 
 class Repository(poetry_repo.Repository):
-
     def package(self, name, version, extras=None):
         package = super().package(name, version)
         if package is None:
-            raise PackageNotFoundError(f'package not found: {name}-{version}')
+            raise PackageNotFoundError(f"package not found: {name}-{version}")
         return package
 
 
 class BundleRepository(Repository):
-
     def add_package(self, package):
         if not self.has_package(package):
             super().add_package(package)
@@ -50,16 +47,16 @@ bundle_repo = BundleRepository()
 
 
 class Provider(poetry_provider.Provider):
-
-    def __init__(self, package, pool, io, *,
-                 include_build_reqs=False, extras=None) -> None:
+    def __init__(
+        self, package, pool, io, *, include_build_reqs=False, extras=None
+    ) -> None:
         super().__init__(package, pool, io)
         self.include_build_reqs = include_build_reqs
         self._active_extras = set(extras) if extras else set()
 
     def search_for_vcs(self, dependency):
         path = tools.git.repodir(dependency.source)
-        setup_py = path / 'setup.py'
+        setup_py = path / "setup.py"
 
         if setup_py.exists():
             dist = tools.python.get_dist(path)
@@ -76,18 +73,16 @@ class Provider(poetry_provider.Provider):
                 package.requires.append(dep)
 
         else:
-            raise RuntimeError('non-Python git packages are not supported')
+            raise RuntimeError("non-Python git packages are not supported")
 
         return [package]
 
-    def incompatibilities_for(
-            self,
-            package: poetry_pkg.Package):
+    def incompatibilities_for(self, package: poetry_pkg.Package):
         if self.include_build_reqs:
             old_requires = list(package.requires)
 
             try:
-                breqs = list(getattr(package, 'build_requires', []))
+                breqs = list(getattr(package, "build_requires", []))
                 breqs = [req for req in breqs if req.is_activated()]
                 package.requires = old_requires + breqs
                 return super().incompatibilities_for(package)
@@ -98,7 +93,7 @@ class Provider(poetry_provider.Provider):
 
     def complete_package(self, package) -> poetry_pkg.Package:
         chain = [package.requires]
-        build_requires = getattr(package, 'build_requires', None)
+        build_requires = getattr(package, "build_requires", None)
         if build_requires:
             chain.append(build_requires)
 

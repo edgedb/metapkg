@@ -18,8 +18,10 @@ def sort(graph):
                 adj[item_name][dep] = True
             else:
                 raise UnresolvedReferenceError(
-                    'reference to an undefined item {} in {}'.format(
-                        dep, item_name))
+                    "reference to an undefined item {} in {}".format(
+                        dep, item_name
+                    )
+                )
 
     visiting = set()
     visited = set()

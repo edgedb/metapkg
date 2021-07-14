@@ -1,5 +1,3 @@
 from .build import Build
 
-__all__ = [
-    Build
-]
+__all__ = [Build]

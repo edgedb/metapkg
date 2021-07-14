@@ -11,13 +11,10 @@ from . import build as winbuild
 
 
 class WindowsRepository(repository.Repository):
-
     def find_packages(
         self,
         name: str,
-        constraint: Optional[
-            Union[semver.VersionConstraint, str]
-        ] = None,
+        constraint: Optional[Union[semver.VersionConstraint, str]] = None,
         extras: Optional[list] = None,
         allow_prereleases: bool = False,
     ) -> List[packages.Package]:
@@ -25,7 +22,6 @@ class WindowsRepository(repository.Repository):
 
 
 class WindowsTarget(generic.GenericTarget):
-
     def __init__(self, version):
         self.version = version
 
@@ -33,10 +29,11 @@ class WindowsTarget(generic.GenericTarget):
     def name(self):
         return f'Windows {".".join(str(v) for v in self.version)}'
 
-    def get_package_system_ident(self, build, package,
-                                 include_slot: bool = False):
+    def get_package_system_ident(
+        self, build, package, include_slot: bool = False
+    ):
         if include_slot:
-            return f'{package.identifier}{package.slot_suffix}'
+            return f"{package.identifier}{package.slot_suffix}"
         else:
             return package.identifier
 
@@ -44,11 +41,10 @@ class WindowsTarget(generic.GenericTarget):
         return WindowsRepository()
 
     def get_exe_suffix(self) -> str:
-        return '.exe'
+        return ".exe"
 
 
 class ModernWindowsTarget(WindowsTarget):
-
     def build(self, **kwargs):
         return winbuild.Build(self, **kwargs).run()
 
@@ -59,4 +55,5 @@ def get_specific_target(version):
         return ModernWindowsTarget(version)
     else:
         raise NotImplementedError(
-            f'Windows version {".".join(version)} is not supported')
+            f'Windows version {".".join(version)} is not supported'
+        )

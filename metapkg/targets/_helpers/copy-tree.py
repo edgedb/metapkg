@@ -164,7 +164,7 @@ def copy_files(src: str, dest: str, files: Iterable[str]) -> None:
             else:
                 logger.info(f"chmod {oct(new_mode)} {path_to}")
 
-        if system != 'Windows':
+        if system != "Windows":
             try:
                 os.utime(
                     path_to,

@@ -1,0 +1,10 @@
+# You can use the ignore list file by running:
+#
+# $ git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Add new entries by adding the output of the following to the top of the file:
+#
+# $ git log --pretty=format:"%H # %cd %n# %s" <commitish> -1 --date=iso
+
+9dbf4475c0c7cf152b02b0dc0ae9bf58fabfb3e1 # 2021-07-14 14:17:29 -0700
+# Blackify

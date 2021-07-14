@@ -2,8 +2,8 @@ import os
 import pathlib
 
 
-CACHEHOME = os.environ.get('XDG_CACHE_HOME', pathlib.Path.home() / '.cache')
-CACHEDIR = pathlib.Path(CACHEHOME) / 'metapkg'
+CACHEHOME = os.environ.get("XDG_CACHE_HOME", pathlib.Path.home() / ".cache")
+CACHEDIR = pathlib.Path(CACHEHOME) / "metapkg"
 
 
 def cachedir():

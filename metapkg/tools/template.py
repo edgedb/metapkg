@@ -2,7 +2,7 @@ import string
 
 
 class Template(string.Template):
-    delimiter = '@@'
+    delimiter = "@@"
 
 
 def format_template(tpltext, **kwargs):

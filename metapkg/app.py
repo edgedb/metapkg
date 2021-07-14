@@ -12,7 +12,7 @@ class App(cleo.Application):
     def __init__(self):
         super().__init__(metapkg.__name__, metapkg.__version__)
         self._formatter = cleo.formatters.Formatter(True)
-        self._formatter.add_style('error', 'red', options=['bold'])
+        self._formatter.add_style("error", "red", options=["bold"])
         self.set_catch_exceptions(False)
 
     def run(self, i=None, o=None) -> int:
