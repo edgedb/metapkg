@@ -1,7 +1,12 @@
+from __future__ import annotations
+from typing import *
+
 import itertools
 
-from poetry import packages as poetry_pkg
 from poetry import repositories as poetry_repo
+from poetry.core.packages import dependency as poetry_dep
+from poetry.core.packages import dependency_group as poetry_depgroup
+from poetry.core.packages import package as poetry_pkg
 from poetry.puzzle import provider as poetry_provider
 
 from metapkg import tools
@@ -14,10 +19,16 @@ class PackageNotFoundError(LookupError):
 
 
 class Pool(poetry_repo.Pool):
-    def package(self, name, version, extras=None):
-        for repository in self.repositories:
+    def package(
+        self,
+        name: str,
+        version: str,
+        extras: Optional[list[str]] = None,
+        repository: Optional[str] = None,
+    ):
+        for repo in self.repositories:
             try:
-                package = repository.package(name, version, extras=extras)
+                package = repo.package(name, version, extras=extras)
             except PackageNotFoundError:
                 continue
 
@@ -27,6 +38,16 @@ class Pool(poetry_repo.Pool):
                 return package
 
         raise PackageNotFoundError(f"package not found: {name}-{version}")
+
+    def find_packages(
+        self, dependency: poetry_dep.Dependency
+    ) -> list[poetry_pkg.Package]:
+        for repo in self.repositories:
+            packages = repo.find_packages(dependency)
+            if packages:
+                return packages
+
+        return []
 
 
 class Repository(poetry_repo.Repository):
@@ -41,6 +62,12 @@ class BundleRepository(Repository):
     def add_package(self, package):
         if not self.has_package(package):
             super().add_package(package)
+
+    def package(self, name, version, extras=None):
+        package = super().package(name, version)
+        if package is None:
+            raise PackageNotFoundError(f"package not found: {name}-{version}")
+        return package
 
 
 bundle_repo = BundleRepository()
@@ -74,22 +101,32 @@ class Provider(poetry_provider.Provider):
                 dep = utils.python_dependency_from_pep_508(req)
                 package.requires.append(dep)
 
+            return [package]
         else:
-            raise RuntimeError("non-Python git packages are not supported")
-
-        return [package]
+            if dependency.name.startswith("pypkg-"):
+                pep508 = dependency.to_pep_508().replace("pypkg-", "")
+                dependency = type(dependency).create_from_pep_508(pep508)
+            return super().search_for_vcs(dependency)
 
     def incompatibilities_for(self, package: poetry_pkg.Package):
         if self.include_build_reqs:
-            old_requires = list(package.requires)
+            if "default" in package._dependency_groups:
+                old_requires = package._dependency_groups["default"]
+            else:
+                old_requires = None
 
             try:
                 breqs = list(getattr(package, "build_requires", []))
                 breqs = [req for req in breqs if req.is_activated()]
-                package.requires = old_requires + breqs
+                dep_group = poetry_depgroup.DependencyGroup("default")
+                reqs = old_requires.dependencies if old_requires else []
+                for req in reqs + breqs:
+                    dep_group.add_dependency(req)
+                package._dependency_groups["default"] = dep_group
                 return super().incompatibilities_for(package)
             finally:
-                package.requires = old_requires
+                if old_requires is not None:
+                    package._dependency_groups["default"] = old_requires
         else:
             return super().incompatibilities_for(package)
 

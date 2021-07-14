@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import *
 
 import collections
+import copy
 import dataclasses
 import enum
 import glob
@@ -10,35 +11,23 @@ import pathlib
 import pprint
 import sys
 import textwrap
-import typing
 
-from poetry import packages as poetry_pkg
-from poetry import vcs
+from poetry.core.packages import dependency as poetry_dep
+from poetry.core.packages import dependency_group as poetry_depgroup
+from poetry.core.packages import package as poetry_pkg
+from poetry.core import vcs
 
 from . import repository
 from . import sources as af_sources
 
 
-class Dependency(poetry_pkg.Dependency):
+class Dependency(poetry_dep.Dependency):
     pass
 
 
 class DummyPackage(poetry_pkg.Package):
-    def clone(self):
-        clone = self.__class__(self.pretty_name, self.version)
-        clone.category = self.category
-        clone.optional = self.optional
-        clone.python_versions = self.python_versions
-        clone.platform = self.platform
-        clone.extras = self.extras
-        clone.source_type = self.source_type
-        clone.source_url = self.source_url
-        clone.source_reference = self.source_reference
-
-        for dep in self.requires:
-            clone.requires.append(dep)
-
-        return clone
+    def __repr__(self) -> str:
+        return "<DummyPackage {}>".format(self.unique_name)
 
 
 class PackageFileLayout(enum.IntEnum):
@@ -52,7 +41,7 @@ class MetaPackage:
 
     name: str
     description: str
-    dependencies: typing.Dict[str, str]
+    dependencies: dict[str, str]
 
 
 class BasePackage(poetry_pkg.Package):
@@ -79,7 +68,7 @@ class BasePackage(poetry_pkg.Package):
 
     def get_patches(
         self,
-    ) -> typing.Dict[str, typing.List[typing.Tuple[str, str]]]:
+    ) -> dict[str, list[tuple[str, str]]]:
         return {}
 
     def get_install_list_script(self, build) -> str:
@@ -130,8 +119,11 @@ class BundledPackage(BasePackage):
     url = None
     identifier = None
 
-    artifact_requirements = []
-    artifact_build_requirements = []
+    build_required: list[poetry_dep.Dependency]
+    source_version: str
+
+    artifact_requirements: list[Union[str, poetry_dep.Dependency]] = []
+    artifact_build_requirements: list[Union[str, poetry_dep.Dependency]] = []
 
     @property
     def slot(self) -> str:
@@ -149,11 +141,11 @@ class BundledPackage(BasePackage):
         return f"{self.name}{self.slot_suffix}"
 
     @classmethod
-    def get_source_url_variables(cls, version: str) -> typing.Dict[str, str]:
+    def get_source_url_variables(cls, version: str) -> dict[str, str]:
         return {}
 
     @classmethod
-    def _get_sources(cls, version: str) -> typing.List[af_sources.BaseSource]:
+    def _get_sources(cls, version: str) -> list[af_sources.BaseSource]:
         sources = []
 
         if version is None:
@@ -218,7 +210,7 @@ class BundledPackage(BasePackage):
         return repository.bundle_repo
 
     @classmethod
-    def resolve_vcs_source(cls, io, *, ref=None) -> str:
+    def resolve_vcs_source(cls, io, *, ref=None) -> pathlib.Path:
         sources = cls._get_sources(version=ref)
         if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
             repo_dir = sources[0].download(io)
@@ -238,12 +230,12 @@ class BundledPackage(BasePackage):
             version = cls.resolve_version(io)
         return cls(version=version)
 
-    def get_sources(self) -> typing.List[af_sources.BaseSource]:
+    def get_sources(self) -> list[af_sources.BaseSource]:
         return self._get_sources(version=self.source_version)
 
     def get_patches(
         self,
-    ) -> typing.Dict[str, typing.List[typing.Tuple[str, str]]]:
+    ) -> dict[str, list[tuple[str, str]]]:
         modpath = pathlib.Path(sys.modules[self.__module__].__path__[0])
         patches_dir = modpath / "patches"
 
@@ -262,12 +254,12 @@ class BundledPackage(BasePackage):
     def __init__(
         self,
         version: str,
-        pretty_version: typing.Optional[str] = None,
+        pretty_version: Optional[str] = None,
         *,
-        source_version: typing.Optional[str] = None,
+        source_version: Optional[str] = None,
         requires=None,
-        name: typing.Optional[str] = None,
-        aliases: typing.Optional[typing.List[str]] = None,
+        name: Optional[str] = None,
+        aliases: Optional[list[str]] = None,
     ) -> None:
 
         if self.title is None:
@@ -287,12 +279,20 @@ class BundledPackage(BasePackage):
         super().__init__(self.name, version)
 
         if requires is not None:
-            self.requires = set(requires)
+            reqs = list(requires)
         else:
-            self.requires = set()
+            reqs = []
 
-        extra_requires = self.get_requirements()
-        self.requires.update(extra_requires)
+        reqs.extend(self.get_requirements())
+
+        if reqs:
+            if "default" not in self._dependency_groups:
+                self._dependency_groups[
+                    "default"
+                ] = poetry_depgroup.DependencyGroup("default")
+        for req in reqs:
+            self._dependency_groups["default"].add_dependency(req)
+
         self.build_requires = self.get_build_requirements()
         self.description = type(self).description
         if source_version is None:
@@ -305,31 +305,32 @@ class BundledPackage(BasePackage):
         if self.aliases:
             for alias in self.aliases:
                 pkg = DummyPackage(name=alias, version=self.version)
-                pkg.add_dependency(self.name, self.version)
+                pkg.add_dependency(
+                    poetry_dep.Dependency(self.name, self.version)
+                )
                 repository.bundle_repo.add_package(pkg)
 
-    def get_requirements(self) -> typing.List[Dependency]:
+    def get_requirements(self) -> list[Dependency]:
         reqs = []
         for item in self.artifact_requirements:
             if isinstance(item, str):
-                reqs.append(poetry_pkg.dependency_from_pep_508(item))
+                reqs.append(poetry_dep.Dependency.create_from_pep_508(item))
             else:
                 reqs.append(item)
         return reqs
 
-    def get_build_requirements(self) -> typing.List[Dependency]:
+    def get_build_requirements(self) -> list[Dependency]:
         reqs = []
         for item in self.artifact_build_requirements:
             if isinstance(item, str):
-                reqs.append(poetry_pkg.dependency_from_pep_508(item))
+                reqs.append(poetry_dep.Dependency.create_from_pep_508(item))
             else:
                 reqs.append(item)
         return reqs
 
     def clone(self):
-        clone = self.__class__(self.version, requires=self.requires)
-        clone.build_requires.extend(self.build_requires)
-        clone.source_version = self.source_version
+        clone = self.__class__(self.version)
+        clone.__dict__ = copy.deepcopy(self.__dict__)
         return clone
 
     def is_root(self):
@@ -409,7 +410,7 @@ class BundledPackage(BasePackage):
         mod = sys.modules[type(self).__module__]
         path = pathlib.Path(mod.__file__).parent / f"{listname}.list"
 
-        entries = []
+        entries: list[str] = []
 
         if path.exists():
             with open(path, "r") as f:
@@ -482,21 +483,21 @@ class BundledPackage(BasePackage):
         self,
         build,
         root_version,
-    ) -> typing.List[MetaPackage]:
+    ) -> list[MetaPackage]:
         return []
 
     def get_conflict_packages(
         self,
         build,
         root_version,
-    ) -> typing.List[str]:
+    ) -> list[str]:
         return []
 
     def get_provided_packages(
         self,
         build,
         root_version,
-    ) -> typing.List[typing.Tuple[str, str]]:
+    ) -> list[tuple[str, str]]:
         return []
 
     def get_artifact_metadata(self, build) -> typing.Dict[str, str]:

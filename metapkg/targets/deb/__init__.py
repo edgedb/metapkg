@@ -6,10 +6,8 @@ import re
 import subprocess
 import textwrap
 
-from typing import Any, Optional, Union
-
-from poetry import packages
-from poetry import semver
+from poetry.core.packages import dependency as poetry_dep
+from poetry.core.packages import package as poetry_pkg
 
 from metapkg import tools
 from metapkg.packages import repository
@@ -106,26 +104,18 @@ class DebRepository(repository.Repository):
 
     def find_packages(
         self,
-        name: str,
-        constraint: Union[semver.VersionConstraint, str, None] = None,
-        extras: Optional[List[str]] = None,
-        allow_prereleases: bool = False,
-    ) -> List[packages.Package]:
+        dependency: poetry_dep.Dependency,
+    ) -> list[poetry_pkg.Package]:
 
-        if name not in self._parsed:
-            packages = self.apt_get_packages(name)
+        if dependency.name not in self._parsed:
+            packages = self.apt_get_packages(dependency.name)
             for package in packages:
                 self.add_package(package)
-            self._parsed.add(name)
+            self._parsed.add(dependency.name)
 
-        return super().find_packages(
-            name,
-            constraint,
-            extras=extras,
-            allow_prereleases=allow_prereleases,
-        )
+        return super().find_packages(dependency)
 
-    def apt_get_packages(self, name: str) -> List[packages.Package]:
+    def apt_get_packages(self, name: str) -> list[poetry_pkg.Package]:
         system_name = PACKAGE_MAP.get(name, name)
 
         try:

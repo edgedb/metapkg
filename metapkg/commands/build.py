@@ -1,12 +1,17 @@
 import importlib
 import os
+import pathlib
 import platform
+import sys
 import tempfile
 
-from poetry import packages as poetry_pkg
 from poetry.puzzle import solver as poetry_solver
+from poetry.core.packages import dependency as poetry_dep
+from poetry.core.packages import project_package
+from poetry.utils import env as poetry_env
 
 from metapkg import targets
+from metapkg.packages import python as af_python
 from metapkg.packages import repository as af_repo
 from metapkg.packages import sources as af_sources
 from metapkg.packages import topological
@@ -57,7 +62,7 @@ class Build(base.Command):
             if "extras" not in pkgcls.sources[0]:
                 pkgcls.sources[0]["extras"] = {}
             pkgcls.sources[0]["extras"]["version"] = src_ref
-        pkg = pkgcls.resolve(self.output, version=version)
+        pkg = pkgcls.resolve(self.io, version=version)
 
         sources = pkg.get_sources()
 
@@ -70,8 +75,9 @@ class Build(base.Command):
             self.error("Only single-source git packages are supported")
             return 1
 
-        root = poetry_pkg.ProjectPackage("__root__", "1")
-        root.add_dependency(pkg.name, pkg.version.text)
+        root = project_package.ProjectPackage("__root__", "1")
+        root.python_versions = af_python.python_dependency.pretty_constraint
+        root.add_dependency(poetry_dep.Dependency(pkg.name, pkg.version))
         af_repo.bundle_repo.add_package(root)
 
         if generic:
@@ -80,7 +86,7 @@ class Build(base.Command):
             else:
                 target = targets.generic.GenericTarget()
         else:
-            target = targets.detect_target(self.output)
+            target = targets.detect_target(self.io)
 
         target.prepare()
 
@@ -89,40 +95,56 @@ class Build(base.Command):
 
         repo_pool = af_repo.Pool()
         repo_pool.add_repository(target.get_package_repository())
-        repo_pool.add_repository(af_repo.bundle_repo)
+        repo_pool.add_repository(af_repo.bundle_repo, secondary=True)
 
-        item_repo = pkg.get_package_repository(target, io=self.output)
+        item_repo = pkg.get_package_repository(target, io=self.io)
         if item_repo is not None:
-            repo_pool.add_repository(item_repo)
+            repo_pool.add_repository(item_repo, secondary=True)
 
-        provider = af_repo.Provider(
-            root, repo_pool, self.output, extras=extras
-        )
+        provider = af_repo.Provider(root, repo_pool, self.io, extras=extras)
         resolution = poetry_solver.resolve_version(root, provider)
 
+        env = poetry_env.SystemEnv(pathlib.Path(sys.executable))
+
         graph = {}
-        for package in resolution.packages:
-            deps = {req.name for req in package.requires}
-            graph[package.name] = {"item": package, "deps": deps}
+        for dep_package in resolution.packages:
+            package = dep_package.package
+            if env.is_valid_for_marker(dep_package.dependency.marker):
+                deps = {
+                    req.name
+                    for req in package.requires
+                    if env.is_valid_for_marker(req.marker)
+                }
+                graph[package.name] = {"item": package, "deps": deps}
         packages = list(topological.sort(graph))
 
         # Build a separate package list for build deps.
         build_deps = {}
-        build_root = poetry_pkg.ProjectPackage("__build_root__", "1")
-        build_root.add_dependency(pkg.name, pkg.version.text)
+        build_root = project_package.ProjectPackage("__build_root__", "1")
+        build_root.python_versions = (
+            af_python.python_dependency.pretty_constraint
+        )
+        build_root.add_dependency(poetry_dep.Dependency(pkg.name, pkg.version))
         build_root.build_requires = []
         provider = af_repo.Provider(
-            build_root, repo_pool, self.output, include_build_reqs=True
+            build_root, repo_pool, self.io, include_build_reqs=True
         )
         resolution = poetry_solver.resolve_version(build_root, provider)
 
         graph = {}
-        for package in resolution.packages:
-            reqs = set(package.requires) | set(
-                getattr(package, "build_requires", [])
-            )
-            deps = {req.name for req in reqs if req.is_activated()}
-            graph[package.name] = {"item": package, "deps": deps}
+        for dep_package in resolution.packages:
+            package = dep_package.package
+            if env.is_valid_for_marker(dep_package.dependency.marker):
+                reqs = set(package.requires) | set(
+                    getattr(package, "build_requires", [])
+                )
+                deps = {
+                    req.name
+                    for req in reqs
+                    if req.is_activated()
+                    and env.is_valid_for_marker(req.marker)
+                }
+                graph[package.name] = {"item": package, "deps": deps}
 
         build_deps = list(topological.sort(graph))
 
@@ -139,7 +161,7 @@ class Build(base.Command):
                 root_pkg=pkg,
                 deps=packages,
                 build_deps=build_deps,
-                io=self.output,
+                io=self.io,
                 workdir=workdir,
                 outputdir=destination,
                 build_source=build_source,

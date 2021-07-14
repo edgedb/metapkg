@@ -1,16 +1,15 @@
 from __future__ import annotations
 from typing import *
 
+import copy
 import pathlib
 import shlex
 import sys
 import tempfile
 import textwrap
-import typing
 
-from poetry import semver
-from poetry import packages as poetry_pkg
-from poetry.packages.constraints import generic_constraint as poetry_genconstr
+from poetry.core.packages import dependency as poetry_dep
+from poetry.core.packages import package as poetry_pkg
 from poetry.repositories import pypi_repository
 
 from metapkg import tools
@@ -21,9 +20,8 @@ from . import sources as af_sources
 from .utils import python_dependency_from_pep_508
 
 
-platform_constraint = poetry_genconstr.GenericConstraint("=", sys.platform)
-python_dependency = poetry_pkg.Dependency(name="python", constraint=">=3.10")
-wheel_dependency = poetry_pkg.Dependency(name="pypkg-wheel", constraint="*")
+python_dependency = poetry_dep.Dependency(name="python", constraint=">=3.7")
+wheel_dependency = poetry_dep.Dependency(name="pypkg-wheel", constraint="*")
 
 
 def set_python_runtime_dependency(dep):
@@ -46,22 +44,16 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
     def find_packages(
         self,
-        name: str,
-        constraint: typing.Optional[
-            typing.Union[semver.VersionConstraint, str]
-        ] = None,
-        extras: typing.Optional[list] = None,
-        allow_prereleases: bool = False,
-    ) -> typing.List[poetry_pkg.Package]:
+        dependency: poetry_dep.Dependency,
+    ) -> list[poetry_pkg.Package]:
 
-        if name.startswith("pypkg-"):
-            name = name[len("pypkg-") :]
+        if dependency.name.startswith("pypkg-"):
+            pep508 = dependency.to_pep_508().replace("pypkg-", "")
+            dependency = type(dependency).create_from_pep_508(pep508)
         else:
             return []
 
-        packages = super().find_packages(
-            name, constraint, extras, allow_prereleases
-        )
+        packages = super().find_packages(dependency)
 
         for package in packages:
             package._name = f"pypkg-{package._name}"
@@ -70,7 +62,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         return packages
 
     def package(
-        self, name: str, version: str, extras=None
+        self, name: str, version: str, extras: Optional[list[str]] = None
     ) -> poetry_pkg.Package:
 
         if name.startswith("pypkg-"):
@@ -86,6 +78,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             ) from e
 
         pypi_info = self.get_pypi_info(name, version)
+        source = self.get_sdist_source(pypi_info)
 
         impl_cls = self._pkg_impls.get(name, PythonPackage)
 
@@ -93,24 +86,20 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             f"pypkg-{pypi_info['info']['name']}",
             orig_package.version,
             pretty_version=pypi_info["info"]["version"],
+            source_type="pypi",
+            source_url=source.url,
         )
 
-        for attr in (
-            "category",
-            "optional",
-            "python_versions",
-            "platform",
-            "extras",
-            "source_type",
-            "source_url",
-            "source_reference",
-            "description",
-            "hashes",
-        ):
-            v = getattr(orig_package, attr)
-            setattr(package, attr, v)
+        package.__dict__.update(
+            {
+                k: copy.deepcopy(v)
+                for k, v in orig_package.__dict__.items()
+                if k
+                not in {"_name", "_pretty_name", "_source_url", "_source_type"}
+            }
+        )
 
-        for dep in orig_package.requires:
+        for dep in list(package.requires):
             # Some packages like to hard-depend on PyPI version
             # of typing, which is out-of-date at this moment, so
             # filter it out.
@@ -120,8 +109,6 @@ class PyPiRepository(pypi_repository.PyPiRepository):
                 python_dependency.constraint
             ):
                 continue
-            if not dep.platform_constraint.matches(platform_constraint):
-                continue
             dep._name = f"pypkg-{dep.name}"
             dep._pretty_name = f"pypkg-{dep.pretty_name}"
             package.requires.append(dep)
@@ -129,8 +116,6 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         package.requires.append(python_dependency)
         package.requires.extend(package.get_requirements())
         package.source = self.get_sdist_source(pypi_info)
-        package.source_type = "pypi"
-        package.source_url = package.source.url
         package.build_requires = self._get_build_requires(package)
 
         return package
@@ -205,10 +190,10 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         return sdist_info
 
-    def _get_build_requires(
-        self, package
-    ) -> typing.List[poetry_pkg.Dependency]:
-        with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as tardir:
+    def _get_build_requires(self, package) -> list[poetry_dep.Dependency]:
+        with tempfile.TemporaryDirectory() as t, tempfile.TemporaryDirectory() as tardir:
+            tmpdir = pathlib.Path(t)
+
             tarball = package.source.tarball(
                 package, target_dir=pathlib.Path(tardir), io=self._io
             )
@@ -452,7 +437,7 @@ class BasePythonPackage(base.BasePackage):
 
 
 class PythonPackage(BasePythonPackage):
-    def get_sources(self) -> typing.List[af_sources.BaseSource]:
+    def get_sources(self) -> list[af_sources.BaseSource]:
         if getattr(self, "source", None) is None:
             raise RuntimeError(f"no source information for {self!r}")
 
@@ -493,13 +478,13 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
 
         return package
 
-    def get_requirements(self) -> typing.List[poetry_pkg.Dependency]:
+    def get_requirements(self) -> list[poetry_dep.Dependency]:
         reqs = super().get_requirements()
         reqs.append(python_dependency)
         return reqs
 
-    def get_build_requirements(self) -> typing.List[poetry_pkg.Dependency]:
-        reqs = super().get_build_requirements()
+    def get_build_requirements(self) -> list[poetry_dep.Dependency]:
+        reqs = super().get_requirements()
         reqs.append(python_dependency)
         return reqs
 
@@ -511,10 +496,3 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
             return f"{static_list}\n{wheel_list}"
         else:
             return wheel_list
-
-    def clone(self):
-        clone = super().clone()
-        dist_name = getattr(self, "dist_name", None)
-        if dist_name:
-            clone.dist_name = dist_name
-        return clone

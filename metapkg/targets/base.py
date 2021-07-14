@@ -426,7 +426,7 @@ class Build:
         return self._target.uses_modern_gcc()
 
     def run(self):
-        self._io.writeln(
+        self._io.write_line(
             f"<info>Building {self._root_pkg} on "
             f"{self._target.name}</info>"
         )
@@ -674,7 +674,7 @@ class Build:
 
     def unpack_sources(self):
         for pkg, tarball in self._tarballs.items():
-            self._io.writeln(f"<info>Extracting {tarball.name}...</>")
+            self._io.write_line(f"<info>Extracting {tarball.name}...</>")
             mpkg_sources.unpack(
                 tarball,
                 dest=self.get_source_dir(pkg, relative_to=None),

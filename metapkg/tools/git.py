@@ -3,7 +3,7 @@ import pathlib
 import subprocess
 import urllib.parse
 
-from poetry import vcs
+from poetry.core import vcs
 
 from metapkg import cache
 
@@ -39,7 +39,7 @@ def repo(repo_url):
 
 def update_repo(
     repo_url, *, exclude_submodules=None, clone_depth=50, ref=None, io
-) -> str:
+) -> pathlib.Path:
     repo_dir = repodir(repo_url)
     repo_gitdir = repo_dir / ".git"
 

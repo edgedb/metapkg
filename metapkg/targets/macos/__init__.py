@@ -4,10 +4,6 @@ from typing import *
 import pathlib
 import shlex
 import textwrap
-import typing
-
-from poetry import packages
-from poetry import semver
 
 from metapkg import tools
 from metapkg.packages import repository
@@ -16,6 +12,10 @@ from metapkg.targets import generic
 from metapkg.targets.package import SystemPackage
 
 from . import build as macbuild
+
+if TYPE_CHECKING:
+    from poetry.core.packages import package as poetry_pkg
+    from poetry.core.packages import dependency as poetry_dep
 
 
 PACKAGE_WHITELIST = [
@@ -201,17 +201,15 @@ class MacOSAddUserAction(targets.TargetAction):
 class MacOSRepository(repository.Repository):
     def find_packages(
         self,
-        name: str,
-        constraint: typing.Optional[
-            typing.Union[semver.VersionConstraint, str]
-        ] = None,
-        extras: typing.Optional[list] = None,
-        allow_prereleases: bool = False,
-    ) -> typing.List[packages.Package]:
+        dependency: poetry_dep.Dependency,
+    ) -> list[poetry_pkg.Package]:
 
-        if name in PACKAGE_WHITELIST:
+        if dependency.name in PACKAGE_WHITELIST:
             pkg = SystemPackage(
-                name, version="1.0", pretty_version="1.0", system_name=name
+                dependency.name,
+                version="1.0",
+                pretty_version="1.0",
+                system_name=dependency.name,
             )
             self.add_package(pkg)
 

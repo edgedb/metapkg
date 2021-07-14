@@ -1,10 +1,9 @@
+from __future__ import annotations
+from typing import *
+
 import pathlib
 import re
 import subprocess
-import typing
-
-from poetry import packages
-from poetry import semver
 
 from metapkg import tools
 from metapkg.packages import repository
@@ -12,6 +11,10 @@ from metapkg.targets import base as targets
 from metapkg.targets.package import SystemPackage
 
 from . import build as rpmbuild
+
+if TYPE_CHECKING:
+    from poetry.core.packages import package as poetry_pkg
+    from poetry.core.packages import dependency as poetry_dep
 
 
 PACKAGE_MAP = {
@@ -94,28 +97,18 @@ class RPMRepository(repository.Repository):
 
     def find_packages(
         self,
-        name: str,
-        constraint: typing.Optional[
-            typing.Union[semver.VersionConstraint, str]
-        ] = None,
-        extras: typing.Optional[list] = None,
-        allow_prereleases: bool = False,
-    ) -> typing.List[packages.Package]:
+        dependency: poetry_dep.Dependency,
+    ) -> list[poetry_pkg.Package]:
 
-        if name not in self._parsed:
-            packages = self.apt_get_packages(name)
+        if dependency.name not in self._parsed:
+            packages = self.apt_get_packages(dependency.name)
             for package in packages:
                 self.add_package(package)
-            self._parsed.add(name)
+            self._parsed.add(dependency.name)
 
-        return super().find_packages(
-            name,
-            constraint,
-            extras=extras,
-            allow_prereleases=allow_prereleases,
-        )
+        return super().find_packages(dependency)
 
-    def apt_get_packages(self, name: str) -> list:
+    def apt_get_packages(self, name: str) -> list[poetry_pkg.Package]:
         system_name = PACKAGE_MAP.get(name, name)
 
         try:
@@ -147,7 +140,7 @@ class RPMRepository(repository.Repository):
 
                 return packages
 
-    def _parse_yum_list_output(self, output: str) -> dict:
+    def _parse_yum_list_output(self, output: str) -> dict[str, Any]:
         if not output:
             return {}
 

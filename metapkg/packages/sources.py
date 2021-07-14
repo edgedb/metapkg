@@ -15,6 +15,9 @@ from metapkg import cache
 from metapkg import tools
 
 
+from cleo.ui import progress_bar
+
+
 class BaseVerification:
     pass
 
@@ -84,7 +87,7 @@ class HttpsSource(BaseSource):
             try:
                 self.verify(destination)
             except Exception:
-                io.writeln(
+                io.write_line(
                     f"<warning>Cached {self.name} exists, but does pass "
                     f"verification.  Downloading anew."
                 )
@@ -97,8 +100,8 @@ class HttpsSource(BaseSource):
         req = requests.get(self.url, stream=True)
         length = int(req.headers.get("content-length", 0))
 
-        progress = io.create_progress_bar(length)
-        io.writeln(f"Downloading <info>{self.url}</>")
+        progress = progress_bar.ProgressBar(io, max=length)
+        io.write_line(f"Downloading <info>{self.url}</>")
         if req.status_code < 200 or req.status_code >= 300:
             raise RuntimeError(f"download failed: {req.status_code}")
 
@@ -115,7 +118,7 @@ class HttpsSource(BaseSource):
                 destination.unlink()
         finally:
             progress.finish()
-            io.writeln("")
+            io.write_line("")
 
         try:
             self.verify(destination)
@@ -183,7 +186,7 @@ class GitSource(BaseSource):
         self.exclude_submodules = exclude_submodules
         self.clone_depth = clone_depth
 
-    def download(self, io) -> str:
+    def download(self, io) -> pathlib.Path:
         return tools.git.update_repo(
             self.url,
             exclude_submodules=self.exclude_submodules,

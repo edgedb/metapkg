@@ -1,14 +1,17 @@
-import pathlib
-import typing
+from __future__ import annotations
+from typing import *
 
-from poetry import packages
-from poetry import semver
+import pathlib
 
 from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets.package import SystemPackage
 
 from .build import Build
+
+if TYPE_CHECKING:
+    from poetry.core.packages import dependency as poetry_dep
+    from poetry.core.packages import package as poetry_pkg
 
 
 PACKAGE_WHITELIST = [
@@ -27,17 +30,15 @@ PACKAGE_WHITELIST = [
 class GenericRepository(repository.Repository):
     def find_packages(
         self,
-        name: str,
-        constraint: typing.Optional[
-            typing.Union[semver.VersionConstraint, str]
-        ] = None,
-        extras: typing.Optional[list] = None,
-        allow_prereleases: bool = False,
-    ) -> typing.List[packages.Package]:
+        dependency: poetry_dep.Dependency,
+    ) -> list[poetry_pkg.Package]:
 
-        if name in PACKAGE_WHITELIST:
+        if dependency.name in PACKAGE_WHITELIST:
             pkg = SystemPackage(
-                name, version="1.0", pretty_version="1.0", system_name=name
+                dependency.name,
+                version="1.0",
+                pretty_version="1.0",
+                system_name=dependency.name,
             )
             self.add_package(pkg)
 
