@@ -2,7 +2,8 @@ import pathlib
 import re
 import subprocess
 import textwrap
-import typing
+
+from typing import Any, Optional, Union
 
 from poetry import packages
 from poetry import semver
@@ -63,17 +64,21 @@ def _debian_version_to_pep440(debver: str) -> str:
             version += part.translate(_version_trans)
         else:
             part_m = re.match(r'^([0-9]*)(.*)$', part)
-            if part_m.group(1):
-                if i > 0:
-                    version += '.'
-                version += part_m.group(1)
+            if part_m:
+                if part_m.group(1):
+                    if i > 0:
+                        version += '.'
+                    version += part_m.group(1)
 
-            rest = part_m.group(2)
-            if rest:
-                if rest[0] in '+-~':
-                    rest = rest[1:]
-                version += f'+{rest.translate(_version_trans)}'
-                is_extra = True
+                rest = part_m.group(2)
+                if rest:
+                    if rest[0] in '+-~':
+                        rest = rest[1:]
+                    version += f'+{rest.translate(_version_trans)}'
+                    is_extra = True
+            else:
+                raise ValueError(
+                    f'unexpected upstream version format: {upstream_ver}')
 
     debian_part = m.group('debian')
     if debian_part:
@@ -93,14 +98,12 @@ class DebRepository(repository.Repository):
         self._parsed = set()
 
     def find_packages(
-            self,
-            name: str,
-            constraint: typing.Optional[
-                typing.Union[semver.VersionConstraint, str]
-            ] = None,
-            extras: typing.Optional[list] = None,
-            allow_prereleases: bool = False) \
-            -> typing.List[packages.Package]:
+        self,
+        name: str,
+        constraint: Union[semver.VersionConstraint, str, None] = None,
+        extras: Optional[list[str]] = None,
+        allow_prereleases: bool = False,
+    ) -> list[packages.Package]:
 
         if name not in self._parsed:
             packages = self.apt_get_packages(name)
@@ -109,10 +112,13 @@ class DebRepository(repository.Repository):
             self._parsed.add(name)
 
         return super().find_packages(
-            name, constraint, extras=extras,
-            allow_prereleases=allow_prereleases)
+            name,
+            constraint,
+            extras=extras,
+            allow_prereleases=allow_prereleases,
+        )
 
-    def apt_get_packages(self, name: str) -> list:
+    def apt_get_packages(self, name: str) -> list[packages.Package]:
         system_name = PACKAGE_MAP.get(name, name)
 
         try:
@@ -136,7 +142,7 @@ class DebRepository(repository.Repository):
 
                 return packages
 
-    def _parse_apt_policy_output(self, output: str) -> dict:
+    def _parse_apt_policy_output(self, output: str) -> list[dict[str, Any]]:
         if not output:
             return []
 
@@ -145,7 +151,7 @@ class DebRepository(repository.Repository):
         lines = output.split('\n')
 
         while lines:
-            meta = {}
+            meta: dict[str, Any] = {}
             seen_name = False
 
             for no, line in enumerate(lines):
@@ -179,17 +185,20 @@ class DebRepository(repository.Repository):
 
             for vno, line in enumerate(lines):
                 m = re.match(r'^((?:\s|\*)*)(.*)$', line)
-                indent = len(m.group(1))
-                content = m.group(2)
+                if m is not None:
+                    indent = len(m.group(1))
+                    content = m.group(2)
 
-                if indent == 0:
-                    break
+                    if indent == 0:
+                        break
 
-                if last_indent == -1 or indent < last_indent:
-                    version = content.split(' ')[0]
-                    versions.append(version)
+                    if last_indent == -1 or indent < last_indent:
+                        version = content.split(' ')[0]
+                        versions.append(version)
 
-                last_indent = indent
+                    last_indent = indent
+                else:
+                    raise RuntimeError('cannot parse apt-cache policy output')
 
             meta['versions'] = versions
             if versions:
@@ -203,13 +212,13 @@ class DebRepository(repository.Repository):
 
 class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
 
-    def __init__(self, distro_info):
+    def __init__(self, distro_info: dict[str, Any]):
         self.distro = distro_info
 
-    def prepare(self):
+    def prepare(self) -> None:
         tools.cmd('apt-get', 'update')
 
-    def get_package_repository(self):
+    def get_package_repository(self) -> repository.Repository:
         return DebRepository()
 
     def get_package_group(self, pkg):
@@ -219,10 +228,10 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
         arch = tools.cmd('dpkg-architecture', '-qDEB_HOST_MULTIARCH').strip()
         return pathlib.Path('/usr/lib') / arch
 
-    def build(self, **kwargs):
-        return debuild.Build(self, **kwargs).run()
+    def build(self, **kwargs: Any) -> None:
+        debuild.Build(self, **kwargs).run()
 
-    def get_capabilities(self) -> list:
+    def get_capabilities(self) -> list[str]:
         capabilities = super().get_capabilities()
         return capabilities + ['systemd', 'libffi', 'tzdata']
 
@@ -232,7 +241,7 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
         else:
             return super().get_resource_path(build, resource)
 
-    def get_global_rules(self):
+    def get_global_rules(self) -> str:
         return textwrap.dedent('''\
             export DH_VERBOSE=1
             export SHELL = /bin/bash
@@ -244,7 +253,7 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
 
 class ModernDebianTarget(BaseDebTarget):
 
-    def get_global_rules(self):
+    def get_global_rules(self) -> str:
         return textwrap.dedent('''\
             export DH_VERBOSE=1
             export SHELL = /bin/bash
@@ -265,7 +274,7 @@ class UbuntuXenialOrNewerTarget(BaseDebTarget):
 
 class UbuntuBionicOrNewerTarget(ModernDebianTarget):
 
-    def __init__(self, distro_info):
+    def __init__(self, distro_info: dict[str, Any]) -> None:
         self.distro = distro_info
         if ' ' in self.distro['codename']:
             # distro described in full, e,g, "Bionic Beaver",
@@ -275,7 +284,7 @@ class UbuntuBionicOrNewerTarget(ModernDebianTarget):
             self.distro['codename'] = c
 
 
-def get_specific_target(distro_info):
+def get_specific_target(distro_info: dict[str, Any]) -> targets.Target:
     if distro_info['id'] == 'debian':
         ver = int(distro_info['version_parts']['major'])
         if ver >= 9:
