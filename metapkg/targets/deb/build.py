@@ -348,7 +348,6 @@ class Build(targets.Build):
 
             stamp/configure-build:
             \tmkdir -p stamp _artifacts
-            {configure_steps}
             \ttouch "$@"
 
             stamp/build: stamp/configure-build
@@ -356,7 +355,6 @@ class Build(targets.Build):
             \ttouch "$@"
 
             override_dh_auto_install-arch:
-            {build_install_steps}
             {install_extras}
 
             override_dh_strip:
@@ -371,11 +369,7 @@ class Build(targets.Build):
         ).format(
             name=self._root_pkg.name_slot,
             target_global_rules=self._target.get_global_rules(),
-            configure_steps=self._write_script("configure"),
-            build_steps=self._write_script("build"),
-            build_install_steps=self._write_script(
-                "build_install", installable_only=True
-            ),
+            build_steps=self._write_script("complete"),
             install_extras=textwrap.indent(self._get_install_extras(), "\t"),
             install_steps=self._write_script("install", installable_only=True),
             strip_steps=(

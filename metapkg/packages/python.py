@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import *
+
 import pathlib
 import shlex
 import tempfile
@@ -16,9 +19,6 @@ from . import sources as af_sources
 from .utils import python_dependency_from_pep_508
 
 
-PythonPackage = poetry_pkg.Package
-
-
 python_dependency = poetry_pkg.Dependency(name="python", constraint=">=3.7")
 wheel_dependency = poetry_pkg.Dependency(name="pypkg-wheel", constraint="*")
 
@@ -32,6 +32,14 @@ class PyPiRepository(pypi_repository.PyPiRepository):
     def __init__(self, io) -> None:
         super().__init__()
         self._io = io
+        self._pkg_impls: Dict[str, Type[PythonPackage]] = {}
+
+    def register_package_impl(
+        self,
+        name: str,
+        impl_cls: Type[PythonPackage],
+    ) -> None:
+        self._pkg_impls[name] = impl_cls
 
     def find_packages(
         self,
@@ -76,7 +84,9 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         pypi_info = self.get_pypi_info(name, version)
 
-        package = PythonPackage(
+        impl_cls = self._pkg_impls.get(name, PythonPackage)
+
+        package = impl_cls(
             f"pypkg-{pypi_info['info']['name']}",
             orig_package.version,
             pretty_version=pypi_info["info"]["version"],
@@ -216,9 +226,12 @@ class PythonMixin:
     def get_configure_script(self, build) -> str:
         return ""
 
-    def get_bdist_wheel_command(self, build) -> list:
+    def get_bdist_wheel_command(self, build) -> List[str]:
         bdir = build.get_build_dir(self, relative_to="pkgsource")
         return ["bdist_wheel", "-d", bdir]
+
+    def get_bdist_wheel_env(self, build) -> Dict[str, str]:
+        return {}
 
     def get_build_script(self, build) -> str:
         sdir = build.get_source_dir(self, relative_to="pkgbuild")
@@ -242,6 +255,10 @@ class PythonMixin:
             if pkgname.startswith("pypkg-"):
                 pkgname = pkgname[len("pypkg-") :]
 
+        env = {
+            "SETUPTOOLS_SCM_PRETEND_VERSION": self.pretty_version,
+        }
+
         if pkgname == "wheel":
             build_command = "sdist -d ${_wheeldir}"
             binary = False
@@ -250,14 +267,17 @@ class PythonMixin:
                 shlex.quote(str(c))
                 for c in self.get_bdist_wheel_command(build)
             )
+            env.update(self.get_bdist_wheel_env(build))
             binary = True
+
+        env_str = build.sh_format_command("env", env, force_args_eq=True)
 
         return textwrap.dedent(
             f"""\
             _wheeldir=$("{build_python}" -c '{wheeldir_script}')
             _target=$("{build_python}" -c '{sitescript}')
             (cd "{sdir}"; \\
-             env SETUPTOOLS_SCM_PRETEND_VERSION="{self.pretty_version}" \\
+             {env_str} \\
                  "{src_python}" setup.py --verbose {build_command})
             "{build_python}" -m pip install \\
                 --no-use-pep517 \\

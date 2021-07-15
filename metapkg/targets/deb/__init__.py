@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import *
+
 import pathlib
 import re
 import subprocess
@@ -105,9 +108,9 @@ class DebRepository(repository.Repository):
         self,
         name: str,
         constraint: Union[semver.VersionConstraint, str, None] = None,
-        extras: Optional[list[str]] = None,
+        extras: Optional[List[str]] = None,
         allow_prereleases: bool = False,
-    ) -> list[packages.Package]:
+    ) -> List[packages.Package]:
 
         if name not in self._parsed:
             packages = self.apt_get_packages(name)
@@ -122,7 +125,7 @@ class DebRepository(repository.Repository):
             allow_prereleases=allow_prereleases,
         )
 
-    def apt_get_packages(self, name: str) -> list[packages.Package]:
+    def apt_get_packages(self, name: str) -> List[packages.Package]:
         system_name = PACKAGE_MAP.get(name, name)
 
         try:
@@ -150,7 +153,7 @@ class DebRepository(repository.Repository):
 
                 return packages
 
-    def _parse_apt_policy_output(self, output: str) -> list[dict[str, Any]]:
+    def _parse_apt_policy_output(self, output: str) -> List[Dict[str, Any]]:
         if not output:
             return []
 
@@ -159,7 +162,7 @@ class DebRepository(repository.Repository):
         lines = output.split("\n")
 
         while lines:
-            meta: dict[str, Any] = {}
+            meta: Dict[str, Any] = {}
             seen_name = False
 
             for no, line in enumerate(lines):
@@ -220,7 +223,7 @@ class DebRepository(repository.Repository):
 
 
 class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
-    def __init__(self, distro_info: dict[str, Any]):
+    def __init__(self, distro_info: Dict[str, Any]):
         self.distro = distro_info
 
     def prepare(self) -> None:
@@ -239,7 +242,7 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
     def build(self, **kwargs: Any) -> None:
         debuild.Build(self, **kwargs).run()
 
-    def get_capabilities(self) -> list[str]:
+    def get_capabilities(self) -> List[str]:
         capabilities = super().get_capabilities()
         return capabilities + ["systemd", "libffi", "tzdata"]
 
@@ -284,7 +287,7 @@ class UbuntuXenialOrNewerTarget(BaseDebTarget):
 
 
 class UbuntuBionicOrNewerTarget(ModernDebianTarget):
-    def __init__(self, distro_info: dict[str, Any]) -> None:
+    def __init__(self, distro_info: Dict[str, Any]) -> None:
         self.distro = distro_info
         if " " in self.distro["codename"]:
             # distro described in full, e,g, "Bionic Beaver",
@@ -294,7 +297,7 @@ class UbuntuBionicOrNewerTarget(ModernDebianTarget):
             self.distro["codename"] = c
 
 
-def get_specific_target(distro_info: dict[str, Any]) -> targets.Target:
+def get_specific_target(distro_info: Dict[str, Any]) -> targets.Target:
     if distro_info["id"] == "debian":
         ver = int(distro_info["version_parts"]["major"])
         if ver >= 9:

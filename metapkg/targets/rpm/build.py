@@ -238,9 +238,7 @@ class Build(targets.Build):
             {patch_script}
 
             %build
-            {configure_script}
             {build_script}
-            {build_install_script}
 
             %install
             {install_script}
@@ -278,12 +276,8 @@ class Build(targets.Build):
             unpack_script=self._write_script(
                 "unpack", relative_to="buildroot"
             ),
-            configure_script=self._write_script(
-                "configure", relative_to="buildroot"
-            ),
-            build_script=self._write_script("build", relative_to="buildroot"),
-            build_install_script=self._write_script(
-                "build_install", installable_only=True, relative_to="buildroot"
+            build_script=self._write_script(
+                "complete", relative_to="buildroot"
             ),
             install_script=self._write_script(
                 "install", installable_only=True, relative_to="buildroot"
