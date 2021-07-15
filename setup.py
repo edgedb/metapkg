@@ -22,5 +22,6 @@ setup(
         "toml~=0.10.0",
         "distlib~=0.2.7",
         "wheel>=0.32.3",
+        "setuptools-rust>=0.11.4",
     ],
 )
