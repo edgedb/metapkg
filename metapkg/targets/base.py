@@ -18,6 +18,9 @@ from metapkg.packages import sources as mpkg_sources
 from . import _helpers as helpers_pkg
 from . import package as tgt_pkg
 
+if TYPE_CHECKING:
+    from poetry import packages as poetry_pkg
+
 
 class TargetAction:
     def __init__(self, build) -> None:
@@ -55,6 +58,12 @@ class Target:
         raise NotImplementedError
 
     def get_ld_env_keys(self, build) -> List[str]:
+        raise NotImplementedError
+
+    def get_shlib_path_link_time_ldflags(self, build, path) -> List[str]:
+        raise NotImplementedError
+
+    def get_shlib_path_run_time_ldflags(self, build, path) -> List[str]:
         raise NotImplementedError
 
     def get_exe_suffix(self) -> str:
@@ -252,6 +261,12 @@ class LinuxTarget(PosixTarget):
     def get_ld_env_keys(self, build) -> List[str]:
         return ["LD_LIBRARY_PATH"]
 
+    def get_shlib_path_link_time_ldflags(self, build, path) -> List[str]:
+        return [f"-L{path}", f"-Wl,-rpath-link,{path}"]
+
+    def get_shlib_path_run_time_ldflags(self, build, path) -> List[str]:
+        return [f"-Wl,-rpath,{path}"]
+
 
 class FHSTarget(PosixTarget):
     def get_arch_libdir(self):
@@ -377,6 +392,14 @@ class Build:
             if pkg.name == name:
                 return pkg
 
+    def get_packages(self, names):
+        packages = []
+        for name in names:
+            package = self.get_package(name)
+            if package is not None:
+                packages.append(package)
+        return packages
+
     def is_bundled(self, pkg):
         return pkg in self._bundled
 
@@ -412,6 +435,9 @@ class Build:
             absolute_path.mkdir(parents=True)
 
         return self.get_path(path, relative_to=relative_to, package=package)
+
+    def get_install_dir(self, package, *, relative_to="sourceroot"):
+        raise NotImplementedError
 
     def get_install_path(self, aspect):
         return self._target.get_install_path(self, aspect)
@@ -846,3 +872,54 @@ class Build:
             env_list.append(f'{k}="{v}"')
 
         return env_list
+
+    def sh_get_bundled_shlibs_ldflags(
+        self,
+        deps: Iterable[poetry_pkg.Package],
+        relative_to: str = "pkgbuild",
+    ) -> str:
+        flags = []
+
+        for pkg in deps:
+            if not self.is_bundled(pkg):
+                continue
+
+            root_path = self.get_install_dir(pkg, relative_to=relative_to)
+            for shlib_path in pkg.get_shlib_paths(self):
+                # link-time dependency
+                link_time = root_path / shlib_path.relative_to("/")
+                flags.extend(
+                    self.target.get_shlib_path_link_time_ldflags(
+                        self,
+                        f"$(pwd)/{shlex.quote(str(link_time))}",
+                    ),
+                )
+
+                if pkg not in self._build_only:
+                    # run-time dependency
+                    flags.extend(
+                        self.target.get_shlib_path_run_time_ldflags(
+                            self,
+                            shlex.quote(str(shlib_path)),
+                        ),
+                    )
+
+        return '" "'.join(flags)
+
+    def sh_get_bundled_shlibs_cflags(
+        self,
+        deps: Iterable[poetry_pkg.Package],
+        relative_to: str = "pkgbuild",
+    ) -> str:
+        flags = []
+
+        for pkg in deps:
+            if not self.is_bundled(pkg):
+                continue
+
+            root_path = self.get_install_dir(pkg, relative_to=relative_to)
+            for include_path in pkg.get_include_paths(self):
+                inc_path = root_path / include_path.relative_to("/")
+                flags.append(f"-I$(pwd)/{shlex.quote(str(inc_path))}")
+
+        return '" "'.join(flags)

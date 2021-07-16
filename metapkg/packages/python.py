@@ -118,6 +118,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             package.requires.append(dep)
 
         package.requires.append(python_dependency)
+        package.requires.extend(package.get_requirements())
         package.source = self.get_sdist_source(pypi_info)
         package.source_type = "pypi"
         package.source_url = package.source.url
@@ -219,10 +220,12 @@ class PyPiRepository(pypi_repository.PyPiRepository):
                 dep = python_dependency_from_pep_508(breq)
                 build_requires.append(dep)
 
+        build_requires.extend(package.get_build_requirements())
+
         return build_requires
 
 
-class PythonMixin:
+class BasePythonPackage(base.BasePackage):
     def get_configure_script(self, build) -> str:
         return ""
 
@@ -268,6 +271,33 @@ class PythonMixin:
                 for c in self.get_bdist_wheel_command(build)
             )
             env.update(self.get_bdist_wheel_env(build))
+
+            cflags = build.sh_get_bundled_shlibs_cflags(
+                build.get_packages(
+                    dep.name for dep in self.build_requires
+                ),
+                relative_to="pkgsource",
+            )
+
+            if cflags:
+                if "CFLAGS" in env:
+                    env["CFLAGS"] = f"!{cflags}' '{env['CFLAGS']}"
+                else:
+                    env["CFLAGS"] = f"!{cflags}"
+
+            ldflags = build.sh_get_bundled_shlibs_ldflags(
+                build.get_packages(
+                    dep.name for dep in self.build_requires
+                ),
+                relative_to="pkgsource",
+            )
+
+            if ldflags:
+                if "LDFLAGS" in env:
+                    env["LDFLAGS"] = f"!{ldflags}' '{env['CFLAGS']}"
+                else:
+                    env["LDFLAGS"] = f"!{ldflags}"
+
             binary = True
 
         env_str = build.sh_format_command("env", env, force_args_eq=True)
@@ -388,7 +418,7 @@ class PythonMixin:
             return wheel_files
 
 
-class PythonPackage(PythonMixin, base.BasePackage):
+class PythonPackage(BasePythonPackage):
     def get_sources(self) -> typing.List[af_sources.BaseSource]:
         if getattr(self, "source", None) is None:
             raise RuntimeError(f"no source information for {self!r}")
@@ -399,7 +429,7 @@ class PythonPackage(PythonMixin, base.BasePackage):
         return "<PythonPackage {}>".format(self.unique_name)
 
 
-class BundledPythonPackage(PythonMixin, base.BundledPackage):
+class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
     @classmethod
     def get_package_repository(cls, target, io):
         return PyPiRepository(io=io)

@@ -311,6 +311,12 @@ class MacOSTarget(generic.GenericTarget):
     def get_ld_env_keys(self, build) -> List[str]:
         return ["DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH"]
 
+    def get_shlib_path_link_time_ldflags(self, build, path) -> List[str]:
+        return [f"-L{path}"]
+
+    def get_shlib_path_run_time_ldflags(self, build, path) -> List[str]:
+        return []
+
 
 class ModernMacOSTarget(MacOSTarget):
     def build(self, **kwargs):

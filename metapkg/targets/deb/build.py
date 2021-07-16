@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import *
+
 import datetime
 import os
 import pathlib
@@ -320,6 +323,15 @@ class Build(targets.Build):
             f.write(changelog)
 
     def _write_rules(self):
+        shlib_paths = self._get_bundled_shlib_paths()
+        if shlib_paths:
+            shlib_paths_spec = ':'.join(
+                shlex.quote(str(p)) for p in shlib_paths
+            )
+            shlib_paths_opt = f"-l {shlib_paths_spec}"
+        else:
+            shlib_paths_opt = ""
+
         rules = textwrap.dedent(
             """\
             #!/usr/bin/make -f
@@ -365,6 +377,9 @@ class Build(targets.Build):
 
             override_dh_auto_clean:
             \trm -rf stamp
+
+            override_dh_shlibdeps:
+            \tdh_shlibdeps {shlib_paths}
         """
         ).format(
             name=self._root_pkg.name_slot,
@@ -377,6 +392,7 @@ class Build(targets.Build):
                 if self._build_debug
                 else "dh_strip --no-automatic-dbgsym"
             ),
+            shlib_paths=shlib_paths_opt,
         )
 
         with open(self._debroot / "rules", "w") as f:
@@ -448,6 +464,14 @@ class Build(targets.Build):
             popd >/dev/null
         """
         )
+
+    def _get_bundled_shlib_paths(self) -> List[str]:
+        paths = []
+
+        for pkg in self._installable:
+            paths.extend(pkg.get_shlib_paths(self))
+
+        return paths
 
     def _get_install_extras(self) -> str:
         lines = []

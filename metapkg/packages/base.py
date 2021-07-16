@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import *
+
 import collections
 import dataclasses
 import enum
@@ -53,6 +56,12 @@ class MetaPackage:
 
 
 class BasePackage(poetry_pkg.Package):
+    def get_requirements(self) -> typing.List[Dependency]:
+        return []
+
+    def get_build_requirements(self) -> typing.List[Dependency]:
+        return []
+
     def get_configure_script(self, build) -> str:
         raise NotImplementedError(f"{self}.configure()")
 
@@ -101,6 +110,12 @@ class BasePackage(poetry_pkg.Package):
         return {}
 
     def get_exposed_commands(self, build) -> list:
+        return []
+
+    def get_shlib_paths(self, build) -> List[pathlib.Path]:
+        return []
+
+    def get_include_paths(self, build) -> List[pathlib.Path]:
         return []
 
 
