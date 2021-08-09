@@ -91,8 +91,11 @@ class Build(base.Command):
 
         target: targets.Target
         if generic:
-            if platform.system() == "Linux":
+            current_system = platform.system()
+            if current_system == "Linux":
                 target = targets.generic.GenericLinuxTarget()
+            elif current_system == "Darwin":
+                target = targets.macos.GenericMacOSTarget()
             else:
                 target = targets.generic.GenericTarget()
         else:

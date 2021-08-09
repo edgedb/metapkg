@@ -36,6 +36,7 @@ class Build(targets.Build):
         self._system_tools["patch"] = "patch"
         self._system_tools["useradd"] = "useradd"
         self._system_tools["groupadd"] = "groupadd"
+        self._system_tools["sed"] = "sed"
 
         self._artifactroot = pathlib.Path("_artifacts")
         self._buildroot = self._artifactroot / "build"
@@ -426,3 +427,14 @@ class Build(targets.Build):
                             an / pathlib.Path(file).relative_to(image_root)
                         ),
                     )
+
+
+class GenericMacOSBuild(Build):
+    def prepare(self) -> None:
+        super().prepare()
+        self._system_tools["bash"] = "/usr/local/bin/bash"
+        self._system_tools["make"] = (
+            "env -u MAKELEVEL /usr/local/bin/gmake "
+            f"-j{os.cpu_count()} SHELL=/usr/local/bin/bash"
+        )
+        self._system_tools["sed"] = "/usr/local/bin/gsed"
