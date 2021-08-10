@@ -149,6 +149,10 @@ class BundledPackage(BasePackage):
         return f"{self.name}{self.slot_suffix}"
 
     @classmethod
+    def get_source_url_variables(cls, version: str) -> typing.Dict[str, str]:
+        return {}
+
+    @classmethod
     def _get_sources(cls, version: str) -> typing.List[af_sources.BaseSource]:
         sources = []
 
@@ -162,6 +166,7 @@ class BundledPackage(BasePackage):
                     version=version,
                     underscore_version=underscore_v,
                     dash_version=dash_v,
+                    **cls.get_source_url_variables(version),
                 )
                 extras = source.get("extras")
                 if extras:
