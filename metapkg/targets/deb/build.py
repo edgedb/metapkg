@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import *
 
 import datetime
+import json
 import os
 import pathlib
 import shlex
@@ -542,6 +543,13 @@ class Build(targets.Build):
         return "\n".join(lines)
 
     def _dpkg_buildpackage(self):
+        if self._outputroot is not None:
+            if not self._outputroot.exists():
+                self._outputroot.mkdir(parents=True, exist_ok=True)
+            elif tuple(self._outputroot.iterdir()):
+                raise RuntimeError(
+                    f"target directory {self._outputroot} is not empty")
+
         env = os.environ.copy()
         env["DEBIAN_FRONTEND"] = "noninteractive"
 
@@ -592,9 +600,6 @@ class Build(targets.Build):
         )
 
         if self._outputroot is not None:
-            if not self._outputroot.exists():
-                self._outputroot.mkdir(parents=True, exist_ok=True)
-
             # Ubuntu likes to call their dbgsym packages ddebs,
             # whereas Debian tools, including reprepro like it
             # to just be a .deb.
@@ -612,3 +617,17 @@ class Build(targets.Build):
                     else:
                         output_name = entry.name
                     shutil.copy2(entry, self._outputroot / output_name)
+
+            distro = self._target.distro["codename"]
+            if self._subdist:
+                distro = f"{distro}.{self._subdist}"
+            root_version = (
+                f"{self._root_pkg.version.text}-{self._revision}~{distro}")
+            with open(self._outputroot / "package-version.json", "w") as f:
+                json.dump(
+                    {
+                        "installref": f"{self._root_pkg.name}={root_version}",
+                        **self._root_pkg.get_artifact_metadata(self),
+                    },
+                    f,
+                )

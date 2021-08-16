@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import shlex
@@ -322,13 +323,27 @@ class Build(targets.Build):
             .split("\n")
         )
 
-        self._outputroot.mkdir(parents=True, exist_ok=True)
+        if self._outputroot is not None:
+            if not self._outputroot.exists():
+                self._outputroot.mkdir(parents=True, exist_ok=True)
+            elif tuple(self._outputroot.iterdir()):
+                raise RuntimeError(
+                    f"target directory {self._outputroot} is not empty")
 
         version = pkg.pretty_version
         suffix = self._revision
         if self._subdist:
             suffix = f"{suffix}~{self._subdist}"
         an = f"{title}{pkg.slot_suffix}_{version}_{suffix}"
+
+        with open(self._outputroot / "package-version.json", "w") as f:
+            json.dump(
+                {
+                    "installref": an,
+                    **self._root_pkg.get_artifact_metadata(self),
+                },
+                f,
+            )
 
         if pkg.get_package_layout(self) is packages.PackageFileLayout.FLAT:
             if len(files) == 1:

@@ -1,5 +1,6 @@
 import datetime
 import glob
+import json
 import os
 import pathlib
 import platform
@@ -573,6 +574,13 @@ class Build(targets.Build):
             return ""
 
     def _rpmbuild(self):
+        if self._outputroot is not None:
+            if not self._outputroot.exists():
+                self._outputroot.mkdir(parents=True, exist_ok=True)
+            elif tuple(self._outputroot.iterdir()):
+                raise RuntimeError(
+                    f"target directory {self._outputroot} is not empty")
+
         tools.cmd(
             "yum",
             "install",
@@ -619,9 +627,6 @@ class Build(targets.Build):
         )
 
         if self._outputroot is not None:
-            if not self._outputroot.exists():
-                self._outputroot.mkdir(parents=True, exist_ok=True)
-
             rpms = self.get_dir("RPMS", relative_to=None) / platform.machine()
             for rpm in glob.glob(str(rpms / "*.rpm")):
                 rpm = pathlib.Path(rpm)
@@ -631,3 +636,16 @@ class Build(targets.Build):
             for rpm in glob.glob(str(srpms / "*.rpm")):
                 rpm = pathlib.Path(rpm)
                 shutil.copy2(rpm, self._outputroot / rpm.name)
+
+            distro = self._target.distro["codename"]
+            rev = f'{self._revision}{self._subdist if self._subdist else ""}'
+            root_v = self._format_version(self._root_pkg.pretty_version)
+            root_version = f"{root_v}-{rev}.{distro}"
+            with open(self._outputroot / "package-version.json", "w") as f:
+                json.dump(
+                    {
+                        "installref": f"{self._root_pkg.name}-{root_version}",
+                        **self._root_pkg.get_artifact_metadata(self),
+                    },
+                    f,
+                )

@@ -498,3 +498,9 @@ class BundledPackage(BasePackage):
         root_version,
     ) -> typing.List[typing.Tuple[str, str]]:
         return []
+
+    def get_artifact_metadata(self, build) -> typing.Dict[str, str]:
+        if self.slot:
+            return {"version_slot": self.slot}
+        else:
+            return {}

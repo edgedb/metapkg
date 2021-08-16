@@ -1,3 +1,4 @@
+import json
 import mimetypes
 import os
 import pathlib
@@ -23,6 +24,13 @@ class Build(generic.Build):
         self._build_installer()
 
     def _build_installer(self):
+        if self._outputroot is not None:
+            if not self._outputroot.exists():
+                self._outputroot.mkdir(parents=True, exist_ok=True)
+            elif tuple(self._outputroot.iterdir()):
+                raise RuntimeError(
+                    f"target directory {self._outputroot} is not empty")
+
         pkg = self._root_pkg
         title = pkg.name
         version = pkg.pretty_version
@@ -190,8 +198,6 @@ class Build(generic.Build):
         with open(distribution, "w") as f:
             f.write(dist_xml.toprettyxml())
 
-        self._outputroot.mkdir(parents=True, exist_ok=True)
-
         suffix = self._revision
         if self._subdist:
             suffix = f"{suffix}~{self._subdist}"
@@ -211,6 +217,15 @@ class Build(generic.Build):
             distribution,
             self._outputroot / finalname,
         )
+
+        with open(self._outputroot / "package-version.json", "w") as f:
+            json.dump(
+                {
+                    "installref": finalname,
+                    **self._root_pkg.get_artifact_metadata(self),
+                },
+                f,
+            )
 
     def _package(self):
         pass

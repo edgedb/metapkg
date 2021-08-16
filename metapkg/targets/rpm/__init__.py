@@ -208,6 +208,10 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
 
 
 class RHEL7OrNewerTarget(BaseRPMTarget):
+    def __init__(self, distro_info):
+        super().__init__(distro_info)
+        self.distro["codename"] = f'el{self.distro["version_parts"]["major"]}'
+
     def get_capabilities(self) -> list:
         capabilities = super().get_capabilities()
         return capabilities + ["systemd", "libffi", "tzdata"]
@@ -222,6 +226,10 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
 
 
 class FedoraTarget(RHEL7OrNewerTarget):
+    def __init__(self, distro_info):
+        super().__init__(distro_info)
+        self.distro["codename"] = f'fc{self.distro["version_parts"]["major"]}'
+
     def install_build_deps(self, build, spec):
         tools.cmd(
             "dnf",
