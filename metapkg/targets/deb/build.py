@@ -624,9 +624,10 @@ class Build(targets.Build):
             root_version = (
                 f"{self._root_pkg.version.text}-{self._revision}~{distro}")
             with open(self._outputroot / "package-version.json", "w") as f:
+                installref = f"{self._root_pkg.name_slot}={root_version}"
                 json.dump(
                     {
-                        "installref": f"{self._root_pkg.name}={root_version}",
+                        "installref": installref,
                         **self._root_pkg.get_artifact_metadata(self),
                     },
                     f,
