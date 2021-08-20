@@ -146,7 +146,7 @@ class Build(targets.Build):
         with open(debsource / "format", "w") as f:
             f.write("3.0 (quilt)\n")
         with open(self._debroot / "compat", "w") as f:
-            f.write("9\n")
+            f.write("10\n")
 
     def _write_control(self):
         build_deps = ",\n ".join(
@@ -259,9 +259,9 @@ class Build(targets.Build):
             Maintainer: {maintainer}
             Standards-Version: 4.1.5
             Build-Depends:
-             debhelper (>= 9~),
-             dh-exec (>= 0.13~),
-             dpkg-dev (>= 1.16.1~),
+             debhelper (>= 10~),
+             dh-exec (>= 0.23~),
+             dpkg-dev (>= 1.18.0~),
              {build_deps}
 
             Package: {name}
@@ -456,9 +456,13 @@ class Build(targets.Build):
             {nil_script} > "{temp_dir}/not-installed"
             {ignore_script} > "{temp_dir}/ignored"
 
-            {trim_install} "{temp_dir}/install" \\
-                "{temp_dir}/not-installed" "{temp_dir}/ignored" \\
-                "{install_dir}" > "debian/{self._root_pkg.name_slot}.install"
+            {trim_install} \\
+                "{temp_dir}/install" \\
+                "{temp_dir}/not-installed" \\
+                "{temp_dir}/ignored" \\
+                "{install_dir}" \\
+                | sed -e "s/ /?/g" \\
+                > "debian/{self._root_pkg.name_slot}.install"
 
             dh_install --sourcedir="{install_dir}" --fail-missing
 

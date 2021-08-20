@@ -489,9 +489,9 @@ class Build(targets.Build):
 
             while IFS= read -r path; do
                 if [ -d "{install_dir}/${{path}}" ]; then
-                    echo %dir /${{path}} >> "{temp_root}/install.list"
+                    echo %dir \\"/${{path}}\\" >> "{temp_root}/install.list"
                 else
-                    echo /${{path}} >> "{temp_root}/install.list"
+                    echo \\"/${{path}}\\" >> "{temp_root}/install.list"
                 fi
             done < <(cat "{temp_dir}/install.final")
 
