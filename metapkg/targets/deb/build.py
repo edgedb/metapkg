@@ -146,7 +146,7 @@ class Build(targets.Build):
         with open(debsource / "format", "w") as f:
             f.write("3.0 (quilt)\n")
         with open(self._debroot / "compat", "w") as f:
-            f.write("10\n")
+            f.write("9\n")
 
     def _write_control(self):
         build_deps = ",\n ".join(
@@ -259,9 +259,9 @@ class Build(targets.Build):
             Maintainer: {maintainer}
             Standards-Version: 4.1.5
             Build-Depends:
-             debhelper (>= 10~),
-             dh-exec (>= 0.23~),
-             dpkg-dev (>= 1.18.0~),
+             debhelper (>= 9~),
+             dh-exec (>= 0.13~),
+             dpkg-dev (>= 1.16.1~),
              {build_deps}
 
             Package: {name}
