@@ -63,7 +63,9 @@ class Provider(poetry_provider.Provider):
             package = poetry_pkg.Package(dependency.name, dist.version)
             package.build_requires = []
 
-            build_requires = tools.python.get_build_requires(setup_py)
+            build_requires = tools.python.get_build_requires_from_setup_py(
+                setup_py
+            )
             for breq in build_requires:
                 dep = utils.python_dependency_from_pep_508(breq)
                 package.build_requires.append(dep)

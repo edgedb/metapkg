@@ -3,12 +3,14 @@ from typing import *
 
 import pathlib
 import shlex
+import sys
 import tempfile
 import textwrap
 import typing
 
 from poetry import semver
 from poetry import packages as poetry_pkg
+from poetry.packages.constraints import generic_constraint as poetry_genconstr
 from poetry.repositories import pypi_repository
 
 from metapkg import tools
@@ -19,7 +21,8 @@ from . import sources as af_sources
 from .utils import python_dependency_from_pep_508
 
 
-python_dependency = poetry_pkg.Dependency(name="python", constraint=">=3.7")
+platform_constraint = poetry_genconstr.GenericConstraint("=", sys.platform)
+python_dependency = poetry_pkg.Dependency(name="python", constraint=">=3.10")
 wheel_dependency = poetry_pkg.Dependency(name="pypkg-wheel", constraint="*")
 
 
@@ -113,6 +116,12 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             # filter it out.
             if dep.name == "typing":
                 continue
+            if not dep.python_constraint.allows_any(
+                python_dependency.constraint
+            ):
+                continue
+            if not dep.platform_constraint.matches(platform_constraint):
+                continue
             dep._name = f"pypkg-{dep.name}"
             dep._pretty_name = f"pypkg-{dep.pretty_name}"
             package.requires.append(dep)
@@ -123,8 +132,6 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         package.source_type = "pypi"
         package.source_url = package.source.url
         package.build_requires = self._get_build_requires(package)
-        if package.name not in {"pypkg-wheel"}:
-            package.build_requires.append(wheel_dependency)
 
         return package
 
@@ -207,33 +214,50 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             )
 
             tmpdir = pathlib.Path(tmpdir)
-
             af_sources.unpack(tarball, dest=tmpdir, io=self._io)
+            return get_build_requires_from_srcdir(package, tmpdir)
 
-            setup_py = tmpdir / "setup.py"
-            if not setup_py.exists():
-                raise LookupError(f"No setup.py in {package.name} tarball")
 
-            build_requires = []
-            breqs = tools.python.get_build_requires(setup_py)
-            for breq in breqs:
-                dep = python_dependency_from_pep_508(breq)
-                build_requires.append(dep)
+def get_build_requires_from_srcdir(package, path):
+    build_requires = []
 
-        build_requires.extend(package.get_build_requirements())
+    setup_py = path / "setup.py"
+    pyproject_toml = path / "pyproject.toml"
 
-        return build_requires
+    if pyproject_toml.exists():
+        breqs = tools.python.get_build_requires_from_pyproject_toml(
+            pyproject_toml
+        )
+
+        if not breqs and setup_py.exists():
+            breqs = tools.python.get_build_requires_from_setup_py(setup_py)
+    elif setup_py.exists():
+        breqs = tools.python.get_build_requires_from_setup_py(setup_py)
+    else:
+        raise LookupError(
+            f"No setup.py or pyproject.toml in {package.name} tarball"
+        )
+
+    if not breqs and package.name not in {
+        "pypkg-wheel",
+        "pypkg-setuptools",
+    }:
+        breqs = ["setuptools >= 40.8.0", "wheel"]
+
+    for breq in breqs:
+        dep = python_dependency_from_pep_508(breq)
+        build_requires.append(dep)
+
+    build_requires.extend(package.get_build_requirements())
+
+    return build_requires
 
 
 class BasePythonPackage(base.BasePackage):
     def get_configure_script(self, build) -> str:
         return ""
 
-    def get_bdist_wheel_command(self, build) -> List[str]:
-        bdir = build.get_build_dir(self, relative_to="pkgsource")
-        return ["bdist_wheel", "-d", bdir]
-
-    def get_bdist_wheel_env(self, build) -> Dict[str, str]:
+    def get_build_wheel_env(self, build) -> Dict[str, str]:
         return {}
 
     def get_build_script(self, build) -> str:
@@ -263,19 +287,30 @@ class BasePythonPackage(base.BasePackage):
         }
 
         if pkgname == "wheel":
-            build_command = "sdist -d ${_wheeldir}"
+            build_command = f'"{src_python}" setup.py sdist -d ${{_wheeldir}}'
             binary = False
         else:
+            args = [
+                src_python,
+                "-m",
+                "pip",
+                "wheel",
+                "--verbose",
+                "--wheel-dir",
+                "${_wheeldir}",
+                "--no-binary=:all:",
+                "--no-build-isolation",
+                "--use-feature=in-tree-build",
+                "--no-deps",
+                ".",
+            ]
             build_command = " ".join(
-                shlex.quote(str(c))
-                for c in self.get_bdist_wheel_command(build)
+                shlex.quote(c) if c[0] != "$" else c for c in args
             )
-            env.update(self.get_bdist_wheel_env(build))
+            env.update(self.get_build_wheel_env(build))
 
             cflags = build.sh_get_bundled_shlibs_cflags(
-                build.get_packages(
-                    dep.name for dep in self.build_requires
-                ),
+                build.get_packages(dep.name for dep in self.build_requires),
                 relative_to="pkgsource",
             )
 
@@ -286,9 +321,7 @@ class BasePythonPackage(base.BasePackage):
                     env["CFLAGS"] = f"!{cflags}"
 
             ldflags = build.sh_get_bundled_shlibs_ldflags(
-                build.get_packages(
-                    dep.name for dep in self.build_requires
-                ),
+                build.get_packages(dep.name for dep in self.build_requires),
                 relative_to="pkgsource",
             )
 
@@ -308,9 +341,9 @@ class BasePythonPackage(base.BasePackage):
             _target=$("{build_python}" -c '{sitescript}')
             (cd "{sdir}"; \\
              {env_str} \\
-                 "{src_python}" setup.py --verbose {build_command})
+                 {build_command})
             "{build_python}" -m pip install \\
-                --no-use-pep517 \\
+                --no-build-isolation \\
                 --no-warn-script-location \\
                 --no-index \\
                 --no-deps \\
@@ -344,7 +377,7 @@ class BasePythonPackage(base.BasePackage):
             f"""\
             _wheeldir=$("{python}" -c '{wheeldir_script}')
             "{python}" -m pip install \\
-                --no-use-pep517 \\
+                --no-build-isolation \\
                 --ignore-installed \\
                 --no-index \\
                 --no-deps \\
@@ -454,11 +487,9 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
 
         package = cls(version, requires=requires, source_version=ref or "HEAD")
         package.dist_name = dist.name
-
-        build_requires = tools.python.get_build_requires(setup_py)
-        for breq in build_requires:
-            dep = python_dependency_from_pep_508(breq)
-            package.build_requires.append(dep)
+        package.build_requires = get_build_requires_from_srcdir(
+            package, repo_dir
+        )
 
         return package
 
@@ -468,9 +499,8 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         return reqs
 
     def get_build_requirements(self) -> typing.List[poetry_pkg.Dependency]:
-        reqs = super().get_requirements()
+        reqs = super().get_build_requirements()
         reqs.append(python_dependency)
-        reqs.append(wheel_dependency)
         return reqs
 
     def get_install_list_script(self, build) -> str:

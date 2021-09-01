@@ -9,6 +9,8 @@ import textwrap
 import distlib.database
 import distlib.version
 
+import tomli
+
 from metapkg import tools
 
 
@@ -79,7 +81,7 @@ SCRIPT = textwrap.dedent(
 )
 
 
-def get_build_requires(setup_py):
+def get_build_requires_from_setup_py(setup_py):
     scriptfile = tempfile.NamedTemporaryFile(
         "w+t", delete=False, dir=str(setup_py.parent)
     )
@@ -96,3 +98,14 @@ def get_build_requires(setup_py):
         return json.loads(process.stdout)
     finally:
         pathlib.Path(scriptfile.name).unlink()
+
+
+def get_build_requires_from_pyproject_toml(pyproject_toml):
+    with open(pyproject_toml, "r") as f:
+        ppt = tomli.load(f)
+
+    build_system = ppt.get("build-system")
+    if not build_system:
+        return []
+
+    return build_system.get("requires", [])
