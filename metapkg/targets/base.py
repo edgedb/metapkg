@@ -78,6 +78,9 @@ class Target:
     def supports_pgo(self) -> bool:
         return False
 
+    def uses_modern_gcc(self) -> bool:
+        return False
+
 
 class PosixEnsureDirAction(TargetAction):
     def get_script(
@@ -249,6 +252,13 @@ class LinuxTarget(PosixTarget):
         # PGO is broken on pre-4.9, similarly to LTO.
         return self.supports_lto()
 
+    def uses_modern_gcc(self) -> bool:
+        gcc_ver = tools.cmd("gcc", "--version")
+        m = re.match(r"^gcc.*?(\d+(?:\.\d+)+)", gcc_ver, re.M)
+        if not m:
+            raise RuntimeError(f"cannot determine gcc version:\n{gcc_ver}")
+        return tuple(int(v) for v in m.group(1).split(".")) >= (10, 0)
+
     def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
         pkg_install_root = build.get_install_dir(
             package, relative_to="pkgbuild"
@@ -411,6 +421,9 @@ class Build:
 
     def supports_pgo(self):
         return self._target.supports_pgo()
+
+    def uses_modern_gcc(self):
+        return self._target.uses_modern_gcc()
 
     def run(self):
         self._io.writeln(
