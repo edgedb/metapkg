@@ -453,7 +453,14 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         return PyPiRepository(io=io)
 
     @classmethod
-    def resolve(cls, io, *, ref=None, version=None) -> "BundledPythonPackage":
+    def resolve(
+        cls,
+        io,
+        *,
+        ref=None,
+        version=None,
+        is_release=False,
+    ) -> BundledPythonPackage:
         repo_dir = cls.resolve_vcs_source(io, ref=ref)
         setup_py = repo_dir / "setup.py"
 

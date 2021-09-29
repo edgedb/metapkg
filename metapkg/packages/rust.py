@@ -9,7 +9,14 @@ from . import base
 
 class BundledRustPackage(base.BundledPackage):
     @classmethod
-    def resolve(cls, io, *, ref=None, version=None) -> "BundledRustPackage":
+    def resolve(
+        cls,
+        io,
+        *,
+        ref=None,
+        version=None,
+        is_release=False,
+    ) -> "BundledRustPackage":
         repo_dir = cls.resolve_vcs_source(io, ref=ref)
         out = tools.cmd("cargo", "pkgid", cwd=repo_dir).strip()
 

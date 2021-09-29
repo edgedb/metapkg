@@ -29,6 +29,7 @@ class Build(base.Command):
         { --generic : Build a generic target. }
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
+        { --release : Whether this build is a release. }
         { --source-ref= : VCS ref to build. }
         { --pkg-version= : Override package version. }
         { --pkg-revision= : Override package revision number (defaults to 1). }
@@ -52,6 +53,7 @@ class Build(base.Command):
         version = self.option("pkg-version")
         revision = self.option("pkg-revision")
         subdist = self.option("pkg-subdist")
+        is_release = self.option("release")
         extra_opt = self.option("extra-optimizations")
 
         modname, _, clsname = pkgname.rpartition(":")
@@ -62,7 +64,7 @@ class Build(base.Command):
             if "extras" not in pkgcls.sources[0]:
                 pkgcls.sources[0]["extras"] = {}
             pkgcls.sources[0]["extras"]["version"] = src_ref
-        pkg = pkgcls.resolve(self.io, version=version)
+        pkg = pkgcls.resolve(self.io, version=version, is_release=is_release)
 
         sources = pkg.get_sources()
 

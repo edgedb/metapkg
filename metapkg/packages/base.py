@@ -225,7 +225,14 @@ class BundledPackage(BasePackage):
         return vcs.Git(repo_dir).rev_parse("HEAD").strip()
 
     @classmethod
-    def resolve(cls, io, *, version=None) -> "BundledPackage":
+    def resolve(
+        cls,
+        io,
+        *,
+        ref=None,
+        version=None,
+        is_release=False,
+    ) -> "BundledPackage":
         if version is None:
             version = cls.resolve_version(io)
         return cls(version=version)
