@@ -15,7 +15,7 @@ logger = logging.getLogger("copy-tree")
 system = platform.system()
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Copies a tree of files to an empty directory."
     )
@@ -182,7 +182,7 @@ def warn_about_excluded_files(
 ) -> None:
     last_seen = ""
 
-    def maybe_warn():
+    def maybe_warn() -> None:
         if last_seen != "":
             logger.warning(f"Not in file list: {last_seen}")
 

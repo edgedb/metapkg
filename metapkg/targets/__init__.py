@@ -1,13 +1,38 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 import distro
 import platform
 
-from .base import Build, Target  # noqa
-from .package import SystemPackage  # noqa
+from .base import (
+    Build,
+    Target,
+    Location,
+    LinuxTarget,
+    EnsureDirAction,
+    AddUserAction,
+)
+from .package import SystemPackage
 
 from . import deb, rpm, macos, generic, win  # noqa
 
+if TYPE_CHECKING:
+    from cleo.io.io import IO
 
-def detect_target(io):
+
+__all__ = (
+    "Build",
+    "EnsureDirAction",
+    "AddUserAction",
+    "Location",
+    "Target",
+    "LinuxTarget",
+    "SystemPackage",
+)
+
+
+def detect_target(io: IO) -> Target:
+    target: Target
     system = platform.system()
 
     if system == "Linux":
@@ -30,12 +55,12 @@ def detect_target(io):
     elif system == "Darwin":
         v, _, _ = platform.mac_ver()
         version = tuple(int(p) for p in v.split("."))
-        return macos.get_specific_target(version)
+        target = macos.get_specific_target(version)
 
     elif system == "Windows":
         v = platform.version()
         version = tuple(int(p) for p in v.split("."))
-        return win.get_specific_target(version)
+        target = win.get_specific_target(version)
 
     else:
         raise RuntimeError(f"System not supported: {system}")

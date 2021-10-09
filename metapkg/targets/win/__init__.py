@@ -1,7 +1,12 @@
 from __future__ import annotations
-from typing import *
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
+from metapkg import packages as mpkg
 from metapkg.packages import repository
+from metapkg import targets
 from metapkg.targets import generic
 
 from . import build as winbuild
@@ -20,22 +25,25 @@ class WindowsRepository(repository.Repository):
 
 
 class WindowsTarget(generic.GenericTarget):
-    def __init__(self, version):
+    def __init__(self, version: tuple[int, ...]) -> None:
         self.version = version
 
     @property
-    def name(self):
+    def name(self) -> str:
         return f'Windows {".".join(str(v) for v in self.version)}'
 
     def get_package_system_ident(
-        self, build, package, include_slot: bool = False
-    ):
+        self,
+        build: targets.Build,
+        package: mpkg.BundledPackage,
+        include_slot: bool = False,
+    ) -> str:
         if include_slot:
             return f"{package.identifier}{package.slot_suffix}"
         else:
             return package.identifier
 
-    def get_package_repository(self):
+    def get_package_repository(self) -> WindowsRepository:
         return WindowsRepository()
 
     def get_exe_suffix(self) -> str:
@@ -43,15 +51,16 @@ class WindowsTarget(generic.GenericTarget):
 
 
 class ModernWindowsTarget(WindowsTarget):
-    def build(self, **kwargs):
+    def build(self, **kwargs: Any) -> None:
         return winbuild.Build(self, **kwargs).run()
 
 
-def get_specific_target(version):
+def get_specific_target(version: tuple[int, ...]) -> WindowsTarget:
 
     if version >= (10, 0):
         return ModernWindowsTarget(version)
     else:
         raise NotImplementedError(
-            f'Windows version {".".join(version)} is not supported'
+            f'Windows version {".".join(str(v) for v in version)}'
+            " is not supported"
         )

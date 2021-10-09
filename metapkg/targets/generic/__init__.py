@@ -3,13 +3,15 @@ from typing import *
 
 import pathlib
 
+from metapkg import packages as mpkg
 from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets.package import SystemPackage
 
-from .build import Build
+from .build import Build as Build
 
 if TYPE_CHECKING:
+    from cleo.io import io as cleo_io
     from poetry.core.packages import dependency as poetry_dep
     from poetry.core.packages import package as poetry_pkg
 
@@ -48,23 +50,25 @@ class GenericRepository(repository.Repository):
 
 
 class GenericTarget(targets.FHSTarget):
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     @property
-    def name(self):
+    def name(self) -> str:
         return f"Generic POSIX"
 
-    def get_package_repository(self):
+    def get_package_repository(self) -> GenericRepository:
         return GenericRepository()
 
-    def get_install_root(self, build) -> pathlib.Path:
+    def get_install_root(self, build: targets.Build) -> pathlib.Path:
         return pathlib.Path("/usr/local")
 
-    def get_install_prefix(self, build) -> pathlib.Path:
+    def get_install_prefix(self, build: targets.Build) -> pathlib.Path:
         return pathlib.Path("lib") / build.root_package.name_slot
 
-    def get_install_path(self, build, aspect) -> pathlib.Path:
+    def get_install_path(
+        self, build: targets.Build, aspect: str
+    ) -> pathlib.Path:
         root = self.get_install_root(build)
         prefix = self.get_install_prefix(build)
 
@@ -92,14 +96,38 @@ class GenericTarget(targets.FHSTarget):
         else:
             raise LookupError(f"aspect: {aspect}")
 
-    def build(self, **kwargs):
-        return Build(self, **kwargs).run()
-
-    def service_scripts_for_package(self, build, package) -> dict:
-        return {}
+    def build(
+        self,
+        *,
+        io: cleo_io.IO,
+        root_pkg: mpkg.BundledPackage,
+        deps: list[mpkg.BasePackage],
+        build_deps: list[mpkg.BasePackage],
+        workdir: str | pathlib.Path,
+        outputdir: str | pathlib.Path,
+        build_source: bool,
+        build_debug: bool,
+        revision: str,
+        subdist: str | None,
+        extra_opt: bool,
+    ) -> None:
+        return Build(
+            self,
+            io=io,
+            root_pkg=root_pkg,
+            deps=deps,
+            build_deps=build_deps,
+            workdir=workdir,
+            outputdir=outputdir,
+            build_source=build_source,
+            build_debug=build_debug,
+            revision=revision,
+            subdist=subdist,
+            extra_opt=extra_opt,
+        ).run()
 
 
 class GenericLinuxTarget(GenericTarget, targets.LinuxTarget):
     @property
-    def name(self):
+    def name(self) -> str:
         return f"Generic Linux"

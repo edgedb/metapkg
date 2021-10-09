@@ -1,5 +1,11 @@
 from __future__ import annotations
-from typing import *
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Iterable,
+    Literal,
+    Mapping,
+)
 
 import collections
 import os
@@ -13,64 +19,114 @@ import textwrap
 
 from metapkg import tools
 from metapkg.packages import base as mpkg_base
+from metapkg.packages import repository as mpkg_repo
 from metapkg.packages import sources as mpkg_sources
 
 from . import _helpers as helpers_pkg
 from . import package as tgt_pkg
 
 if TYPE_CHECKING:
+    from cleo.io.io import IO
     from poetry import packages as poetry_pkg
 
 
 class TargetAction:
-    def __init__(self, build) -> None:
+    def __init__(self, build: Build) -> None:
         self._build = build
-
-    def get_script(self, **kwargs) -> str:
-        raise NotImplementedError
 
 
 class Target:
-    def prepare(self):
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
+
+    def get_package_repository(self) -> mpkg_repo.Repository:
+        raise NotImplementedError
+
+    def prepare(self) -> None:
         pass
 
-    def get_capabilities(self) -> list:
+    def build(
+        self,
+        *,
+        io: IO,
+        root_pkg: mpkg_base.BundledPackage,
+        deps: list[mpkg_base.BasePackage],
+        build_deps: list[mpkg_base.BasePackage],
+        workdir: str | pathlib.Path,
+        outputdir: str | pathlib.Path,
+        build_source: bool,
+        build_debug: bool,
+        revision: str,
+        subdist: str | None,
+        extra_opt: bool,
+    ) -> None:
+        raise NotImplementedError
+
+    def get_capabilities(self) -> list[str]:
         return []
 
-    def has_capability(self, capability):
+    def has_capability(self, capability: str) -> bool:
         return capability in self.get_capabilities()
 
-    def get_system_dependencies(self, dep_name) -> list:
+    def get_system_dependencies(self, dep_name: str) -> list[str]:
         return [dep_name]
 
-    def get_action(self, name, build) -> TargetAction:
+    def get_action(self, name: str, build: Build) -> TargetAction:
         raise NotImplementedError(f"unknown target action: {name}")
 
-    def get_resource_path(self, build, resource):
+    def get_resource_path(
+        self, build: Build, resource: str
+    ) -> pathlib.Path | None:
         return None
 
     def get_package_system_ident(
-        self, build, package, include_slot: bool = False
-    ):
+        self,
+        build: Build,
+        package: mpkg_base.BundledPackage,
+        include_slot: bool = False,
+    ) -> str:
         return package.name_slot if include_slot else package.name
 
-    def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
+    def service_scripts_for_package(
+        self, build: Build, package: mpkg_base.BasePackage
+    ) -> dict[pathlib.Path, str]:
+        return {}
+
+    def get_package_ld_env(
+        self, build: Build, package: mpkg_base.BasePackage, wd: str
+    ) -> dict[str, str]:
         raise NotImplementedError
 
-    def get_ld_env_keys(self, build) -> List[str]:
+    def get_ld_env_keys(self, build: Build) -> list[str]:
         raise NotImplementedError
 
-    def get_shlib_path_link_time_ldflags(self, build, path) -> List[str]:
+    def get_shlib_path_link_time_ldflags(
+        self,
+        build: Build,
+        path: str,
+    ) -> list[str]:
         raise NotImplementedError
 
-    def get_shlib_path_run_time_ldflags(self, build, path) -> List[str]:
+    def get_shlib_path_run_time_ldflags(
+        self, build: Build, path: str
+    ) -> list[str]:
         raise NotImplementedError
 
     def get_exe_suffix(self) -> str:
         raise NotImplementedError
 
-    def get_full_install_prefix(self, build) -> pathlib.Path:
+    def get_install_root(self, build: Build) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_install_prefix(self, build: Build) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_full_install_prefix(self, build: Build) -> pathlib.Path:
         return self.get_install_root(build) / self.get_install_prefix(build)
+
+    def get_install_path(self, build: Build, aspect: str) -> pathlib.Path:
+        raise NotImplementedError
 
     def supports_lto(self) -> bool:
         return False
@@ -81,18 +137,47 @@ class Target:
     def uses_modern_gcc(self) -> bool:
         return False
 
+    def get_su_script(self, build: Build, script: str, user: str) -> str:
+        raise NotImplementedError
 
-class PosixEnsureDirAction(TargetAction):
+
+class EnsureDirAction(TargetAction):
     def get_script(
         self,
         *,
-        path,
-        owner_user=None,
-        owner_group=None,
-        owner_recursive=False,
-        mode=0o755,
-    ):
+        path: str,
+        owner_user: str | None = None,
+        owner_group: str | None = None,
+        owner_recursive: bool = False,
+        mode: int = 0o755,
+    ) -> str:
+        raise NotImplementedError
 
+
+class AddUserAction(TargetAction):
+    def get_script(
+        self,
+        *,
+        name: str,
+        group: str | None = None,
+        homedir: str | None = None,
+        shell: bool = False,
+        system: bool = False,
+        description: str | None = None,
+    ) -> str:
+        raise NotImplementedError
+
+
+class PosixEnsureDirAction(EnsureDirAction):
+    def get_script(
+        self,
+        *,
+        path: str,
+        owner_user: str | None = None,
+        owner_group: str | None = None,
+        owner_recursive: bool = False,
+        mode: int = 0o755,
+    ) -> str:
         chown_flags = "-R" if owner_recursive else ""
 
         script = textwrap.dedent(
@@ -117,7 +202,7 @@ class PosixEnsureDirAction(TargetAction):
 
 
 class PosixTarget(Target):
-    def get_action(self, name, build) -> TargetAction:
+    def get_action(self, name: str, build: Build) -> TargetAction:
         if name == "ensuredir":
             return PosixEnsureDirAction(build)
         else:
@@ -127,19 +212,19 @@ class PosixTarget(Target):
         return ""
 
 
-class LinuxAddUserAction(TargetAction):
+class LinuxAddUserAction(AddUserAction):
     def get_script(
         self,
         *,
-        name,
-        group=None,
-        homedir=None,
-        shell=False,
-        system=False,
-        description=None,
+        name: str,
+        group: str | None = None,
+        homedir: str | None = None,
+        shell: bool = False,
+        system: bool = False,
+        description: str | None = None,
     ) -> str:
 
-        args = {}
+        args: dict[str, str | None] = {}
         if group:
             args["-g"] = group
         if homedir:
@@ -160,7 +245,7 @@ class LinuxAddUserAction(TargetAction):
         user_group = name
 
         if group:
-            group_args = {}
+            group_args: dict[str, str | None] = {}
             if system:
                 group_args["-r"] = None
             group_args[group] = None
@@ -211,20 +296,25 @@ class LinuxAddUserAction(TargetAction):
 
 
 class LinuxTarget(PosixTarget):
+    def __init__(self, distro_info: dict[str, Any]) -> None:
+        self.distro = distro_info
+
     @property
-    def name(self):
+    def name(self) -> str:
         return f'{self.distro["id"]}-{self.distro["version"]}'
 
-    def get_action(self, name, build) -> TargetAction:
+    def get_action(self, name: str, build: Build) -> TargetAction:
         if name == "adduser":
             return LinuxAddUserAction(build)
         else:
             return super().get_action(name, build)
 
-    def get_su_script(self, build, script, user) -> str:
+    def get_su_script(self, build: Build, script: str, user: str) -> str:
         return f"su '{user}' -c {shlex.quote(script)}\n"
 
-    def service_scripts_for_package(self, build, package) -> dict:
+    def service_scripts_for_package(
+        self, build: Build, package: mpkg_base.BasePackage
+    ) -> dict[pathlib.Path, str]:
         if self.has_capability("systemd"):
             units = package.read_support_files(build, "*.service.in")
             systemd_path = self.get_resource_path(build, "systemd-units")
@@ -240,7 +330,7 @@ class LinuxTarget(PosixTarget):
                 "non-systemd linux targets are not supported"
             )
 
-    def supports_lto(self):
+    def supports_lto(self) -> bool:
         # LTO more-or-less stabilized in GCC 4.9.0.
         gcc_ver = tools.cmd("gcc", "--version")
         m = re.match(r"^gcc.*?(\d+(?:\.\d+)+)", gcc_ver, re.M)
@@ -248,7 +338,7 @@ class LinuxTarget(PosixTarget):
             raise RuntimeError(f"cannot determine gcc version:\n{gcc_ver}")
         return tuple(int(v) for v in m.group(1).split(".")) >= (4, 9)
 
-    def supports_pgo(self):
+    def supports_pgo(self) -> bool:
         # PGO is broken on pre-4.9, similarly to LTO.
         return self.supports_lto()
 
@@ -259,7 +349,9 @@ class LinuxTarget(PosixTarget):
             raise RuntimeError(f"cannot determine gcc version:\n{gcc_ver}")
         return tuple(int(v) for v in m.group(1).split(".")) >= (10, 0)
 
-    def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
+    def get_package_ld_env(
+        self, build: Build, package: mpkg_base.BasePackage, wd: str
+    ) -> dict[str, str]:
         pkg_install_root = build.get_install_dir(
             package, relative_to="pkgbuild"
         )
@@ -268,34 +360,38 @@ class LinuxTarget(PosixTarget):
         ).relative_to("/")
         return {"LD_LIBRARY_PATH": f"{wd}/{pkg_lib_path}"}
 
-    def get_ld_env_keys(self, build) -> List[str]:
+    def get_ld_env_keys(self, build: Build) -> list[str]:
         return ["LD_LIBRARY_PATH"]
 
-    def get_shlib_path_link_time_ldflags(self, build, path) -> List[str]:
+    def get_shlib_path_link_time_ldflags(
+        self, build: Build, path: str
+    ) -> list[str]:
         return [f"-L{path}", f"-Wl,-rpath-link,{path}"]
 
-    def get_shlib_path_run_time_ldflags(self, build, path) -> List[str]:
+    def get_shlib_path_run_time_ldflags(
+        self, build: Build, path: str
+    ) -> list[str]:
         return [f"-Wl,-rpath,{path}"]
 
 
 class FHSTarget(PosixTarget):
-    def get_arch_libdir(self):
+    def get_arch_libdir(self) -> pathlib.Path:
         raise NotImplementedError
 
-    def get_sys_bindir(self):
+    def get_sys_bindir(self) -> pathlib.Path:
         return pathlib.Path("/usr/bin")
 
-    def sh_get_command(self, command):
+    def sh_get_command(self, command: str) -> str:
         return command
 
-    def get_install_root(self, build):
+    def get_install_root(self, build: Build) -> pathlib.Path:
         return pathlib.Path("/")
 
-    def get_install_prefix(self, build):
+    def get_install_prefix(self, build: Build) -> pathlib.Path:
         libdir = self.get_arch_libdir()
         return (libdir / build.root_package.name_slot).relative_to("/")
 
-    def get_install_path(self, build, aspect):
+    def get_install_path(self, build: Build, aspect: str) -> pathlib.Path:
         root = self.get_install_root(build)
         prefix = self.get_install_prefix(build)
 
@@ -323,35 +419,39 @@ class FHSTarget(PosixTarget):
         else:
             raise LookupError(f"aspect: {aspect}")
 
-    def get_resource_path(self, build, resource):
+    def get_resource_path(
+        self, build: Build, resource: str
+    ) -> pathlib.Path | None:
         if resource == "tzdata":
             return pathlib.Path("/usr/share/zoneinfo")
         else:
             return None
 
 
+Location = Literal[
+    "fsroot", "buildroot", "pkgsource", "sourceroot", "pkgbuild"
+]
+
+
 class Build:
     def __init__(
         self,
-        target,
+        target: Target,
         *,
-        io,
-        root_pkg,
-        deps,
-        build_deps,
-        workdir,
-        outputdir,
-        build_source,
-        build_debug,
-        revision,
-        subdist,
-        extra_opt,
-    ):
+        io: IO,
+        root_pkg: mpkg_base.BundledPackage,
+        deps: list[mpkg_base.BasePackage],
+        build_deps: list[mpkg_base.BasePackage],
+        workdir: str | pathlib.Path,
+        outputdir: str | pathlib.Path,
+        build_source: bool,
+        build_debug: bool,
+        revision: str,
+        subdist: str | None,
+        extra_opt: bool,
+    ) -> None:
         self._droot = pathlib.Path(workdir)
-        if outputdir is not None:
-            self._outputroot = pathlib.Path(outputdir)
-        else:
-            self._outputroot = None
+        self._outputroot = pathlib.Path(outputdir)
         self._target = target
         self._io = io
         self._root_pkg = root_pkg
@@ -374,26 +474,37 @@ class Build:
         self._installable = [
             pkg for pkg in self._bundled if pkg not in self._build_only
         ]
-        self._tools = {}
-        self._common_tools = {}
-        self._system_tools = {}
-        self._tool_wrappers = {}
-        self._tarballs = {}
-        self._patches = []
+        self._tools: dict[str, pathlib.Path] = {}
+        self._common_tools: dict[str, pathlib.Path] = {}
+        self._system_tools: dict[str, str] = {}
+        self._tarballs: dict[mpkg_base.BasePackage, pathlib.Path] = {}
+        self._patches: list[str] = []
 
     @property
-    def io(self):
+    def io(self) -> IO:
         return self._io
 
     @property
-    def root_package(self):
+    def root_package(self) -> mpkg_base.BundledPackage:
         return self._root_pkg
 
     @property
-    def target(self):
+    def target(self) -> Target:
         return self._target
 
-    def get_package(self, name):
+    def get_source_abspath(self) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_path(
+        self,
+        path: str | pathlib.Path,
+        *,
+        relative_to: Location,
+        package: mpkg_base.BasePackage | None = None,
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_package(self, name: str) -> mpkg_base.BasePackage:
         for pkg in self._deps:
             if pkg.name == name:
                 return pkg
@@ -402,7 +513,11 @@ class Build:
             if pkg.name == name:
                 return pkg
 
-    def get_packages(self, names):
+        raise LookupError(f"package not found: {name}")
+
+    def get_packages(
+        self, names: Iterable[str]
+    ) -> list[mpkg_base.BasePackage]:
         packages = []
         for name in names:
             package = self.get_package(name)
@@ -410,22 +525,22 @@ class Build:
                 packages.append(package)
         return packages
 
-    def is_bundled(self, pkg):
+    def is_bundled(self, pkg: mpkg_base.BasePackage) -> bool:
         return pkg in self._bundled
 
-    def extra_optimizations_enabled(self):
+    def extra_optimizations_enabled(self) -> bool:
         return self._extra_opt
 
-    def supports_lto(self):
+    def supports_lto(self) -> bool:
         return self._target.supports_lto()
 
-    def supports_pgo(self):
+    def supports_pgo(self) -> bool:
         return self._target.supports_pgo()
 
-    def uses_modern_gcc(self):
+    def uses_modern_gcc(self) -> bool:
         return self._target.uses_modern_gcc()
 
-    def run(self):
+    def run(self) -> None:
         self._io.write_line(
             f"<info>Building {self._root_pkg} on "
             f"{self._target.name}</info>"
@@ -434,37 +549,85 @@ class Build:
         self.prepare()
         self.build()
 
-    def prepare(self):
+    def prepare(self) -> None:
         self._system_tools["make"] = "make"
         self._system_tools["bash"] = "/bin/bash"
         self._system_tools["find"] = "find"
 
-    def build(self):
+    def build(self) -> None:
         raise NotImplementedError
 
-    def get_dir(self, path, *, relative_to, package=None):
+    def get_dir(
+        self,
+        path: str | pathlib.Path,
+        *,
+        relative_to: Location,
+        package: mpkg_base.BasePackage | None = None,
+    ) -> pathlib.Path:
         absolute_path = (self.get_source_abspath() / path).resolve()
         if not absolute_path.exists():
             absolute_path.mkdir(parents=True)
 
         return self.get_path(path, relative_to=relative_to, package=package)
 
-    def get_install_dir(self, package, *, relative_to="sourceroot"):
+    def get_install_dir(
+        self,
+        package: mpkg_base.BasePackage,
+        *,
+        relative_to: Location = "sourceroot",
+    ) -> pathlib.Path:
         raise NotImplementedError
 
-    def get_install_path(self, aspect):
+    def get_install_path(self, aspect: str) -> pathlib.Path:
         return self._target.get_install_path(self, aspect)
 
-    def get_install_prefix(self):
+    def get_install_prefix(self) -> pathlib.Path:
         return self._target.get_install_prefix(self)
 
-    def get_full_install_prefix(self):
+    def get_full_install_prefix(self) -> pathlib.Path:
         return self._target.get_full_install_prefix(self)
 
-    def get_exe_suffix(self):
+    def get_helpers_root(
+        self, *, relative_to: Location = "sourceroot"
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_build_dir(
+        self,
+        package: mpkg_base.BasePackage,
+        *,
+        relative_to: Location = "sourceroot",
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_temp_root(
+        self, *, relative_to: Location = "sourceroot"
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_temp_dir(
+        self,
+        package: mpkg_base.BasePackage,
+        *,
+        relative_to: Location = "sourceroot",
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_extras_root(
+        self, *, relative_to: Location = "sourceroot"
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_exe_suffix(self) -> str:
         return self._target.get_exe_suffix()
 
-    def sh_get_command(self, command, *, package=None, relative_to="pkgbuild"):
+    def sh_get_command(
+        self,
+        command: str,
+        *,
+        package: mpkg_base.BasePackage | None = None,
+        relative_to: Location = "pkgbuild",
+    ) -> str:
         path = self._tools.get(command)
         if not path:
             path = self._common_tools.get(command)
@@ -499,13 +662,13 @@ class Build:
 
     def sh_format_command(
         self,
-        path,
-        args: dict,
+        path: str | pathlib.Path,
+        args: Mapping[str, str | pathlib.Path | None],
         *,
-        extra_indent=0,
-        user=None,
-        force_args_eq=False,
-        linebreaks=True,
+        extra_indent: int = 0,
+        user: str | None = None,
+        force_args_eq: bool = False,
+        linebreaks: bool = True,
     ) -> str:
         args_parts = []
         for arg, val in args.items():
@@ -537,8 +700,10 @@ class Build:
 
         return result
 
-    def format_package_template(self, tpl, package) -> str:
-        variables = {}
+    def format_package_template(
+        self, tpl: str, package: mpkg_base.BasePackage
+    ) -> str:
+        variables: dict[str, str] = {}
         for aspect in (
             "bin",
             "data",
@@ -549,9 +714,9 @@ class Build:
             "userconf",
         ):
             path = self.get_install_path(aspect)
-            variables[f"{aspect}dir"] = path
+            variables[f"{aspect}dir"] = str(path)
 
-        variables["prefix"] = self.get_install_prefix()
+        variables["prefix"] = str(self.get_install_prefix())
         variables["slot"] = package.slot
         variables["identifier"] = self.target.get_package_system_ident(
             self, package
@@ -562,31 +727,28 @@ class Build:
 
         return tools.format_template(tpl, **variables)
 
-    def write_helper(self, name: str, text: str, *, relative_to: str) -> str:
-        helpers_abs = self.get_helpers_root(relative_to=None)
+    def write_helper(
+        self, name: str, text: str, *, relative_to: Location
+    ) -> pathlib.Path:
+        helpers_abs = self.get_helpers_root(relative_to="fsroot")
         helpers_rel = self.get_helpers_root(relative_to=relative_to)
 
         with open(helpers_abs / name, "w") as f:
             print(text, file=f)
-            try:
-                os.fchmod(f.fileno(), 0o755)
-            except AttributeError:
-                # no fchmod on Windows and that's fine, because
-                # there's no such thing as executable bit on Windows
-                pass
+            os.chmod(f.name, 0o755)
 
-        return f"{helpers_rel / name}"
+        return helpers_rel / name
 
     def sh_write_helper(
-        self, name: str, text: str, *, relative_to: str
+        self, name: str, text: str, *, relative_to: Location
     ) -> str:
         """Write an executable helper and return it's shell-escaped name."""
 
         cmd = self.write_helper(name, text, relative_to=relative_to)
-        return f"{shlex.quote(cmd)}"
+        return f"{shlex.quote(str(cmd))}"
 
     def sh_write_python_helper(
-        self, name: str, text: str, *, relative_to: str
+        self, name: str, text: str, *, relative_to: Location
     ) -> str:
 
         python = self.sh_get_command("python", relative_to=relative_to)
@@ -595,7 +757,7 @@ class Build:
         return f"{shlex.quote(python)} {path}"
 
     def sh_write_bash_helper(
-        self, name: str, text: str, *, relative_to: str
+        self, name: str, text: str, *, relative_to: Location
     ) -> str:
         bash = self.sh_get_command("bash")
         script = textwrap.dedent(
@@ -609,25 +771,43 @@ class Build:
 
         return self.sh_write_helper(name, script, relative_to=relative_to)
 
-    def get_tarball_tpl(self, package):
+    def get_tarball_tpl(self, package: mpkg_base.BasePackage) -> str:
         rp = self._root_pkg
         return (
             f"{rp.name_slot}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
         )
 
-    def get_tool_list(self):
+    def get_tarball_root(
+        self, *, relative_to: Location = "sourceroot"
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_patches_root(
+        self, *, relative_to: Location = "sourceroot"
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_source_dir(
+        self,
+        package: mpkg_base.BasePackage,
+        *,
+        relative_to: Location = "sourceroot",
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
+    def get_tool_list(self) -> list[str]:
         return ["trim-install.py", "copy-tree.py"]
 
-    def get_su_script(self, script, user):
+    def get_su_script(self, script: str, user: str) -> str:
         return self.target.get_su_script(self, script, user)
 
-    def prepare_tools(self):
+    def prepare_tools(self) -> None:
         for pkg in self._bundled:
             bundled_tools = pkg.get_build_tools(self)
             if bundled_tools:
                 self._tools.update(bundled_tools)
 
-        source_dirs = [pathlib.Path(helpers_pkg.__path__[0])]
+        source_dirs = [pathlib.Path(helpers_pkg.__path__[0])]  # type: ignore
         specific_helpers = (
             pathlib.Path(sys.modules[self.__module__].__file__).parent
             / "_helpers"
@@ -635,12 +815,10 @@ class Build:
         if specific_helpers.exists():
             source_dirs.insert(0, specific_helpers)
 
-        helpers_target_dir = self.get_helpers_root(relative_to=None)
+        helpers_target_dir = self.get_helpers_root(relative_to="fsroot")
         helpers_rel_dir = self.get_helpers_root(relative_to="sourceroot")
 
         for helper in self.get_tool_list():
-            helper = pathlib.Path(helper)
-
             for source_dir in source_dirs:
                 if (source_dir / helper).exists():
                     shutil.copy(
@@ -658,10 +836,12 @@ class Build:
             else:
                 raise RuntimeError(f"cannot find helper: {helper}")
 
-            self._common_tools[helper.stem] = helpers_rel_dir / helper
+            self._common_tools[pathlib.Path(helper).stem] = (
+                helpers_rel_dir / helper
+            )
 
-    def prepare_tarballs(self):
-        tarball_root = self.get_tarball_root(relative_to=None)
+    def prepare_tarballs(self) -> None:
+        tarball_root = self.get_tarball_root(relative_to="fsroot")
 
         for pkg in self._bundled:
             tarball_tpl = self.get_tarball_tpl(pkg)
@@ -672,17 +852,17 @@ class Build:
 
                 self._tarballs[pkg] = tarball
 
-    def unpack_sources(self):
+    def unpack_sources(self) -> None:
         for pkg, tarball in self._tarballs.items():
             self._io.write_line(f"<info>Extracting {tarball.name}...</>")
             mpkg_sources.unpack(
                 tarball,
-                dest=self.get_source_dir(pkg, relative_to=None),
+                dest=self.get_source_dir(pkg, relative_to="fsroot"),
                 io=self._io,
             )
 
-    def prepare_patches(self):
-        patches_dir = self.get_patches_root(relative_to=None)
+    def prepare_patches(self) -> None:
+        patches_dir = self.get_patches_root(relative_to="fsroot")
 
         i = 0
         series = []
@@ -712,7 +892,7 @@ class Build:
 
         self._patches = series
 
-    def get_extra_system_requirements(self) -> dict:
+    def get_extra_system_requirements(self) -> dict[str, set[str]]:
         all_reqs = collections.defaultdict(set)
 
         for pkg in self._installable:
@@ -724,9 +904,9 @@ class Build:
 
                 all_reqs[req_type].update(sys_reqs)
 
-        return all_reqs
+        return dict(all_reqs)
 
-    def get_service_scripts(self) -> dict:
+    def get_service_scripts(self) -> dict[pathlib.Path, str]:
         all_scripts = {}
 
         for pkg in self._installable:
@@ -740,7 +920,7 @@ class Build:
         stage: str,
         *,
         installable_only: bool = False,
-        relative_to: str = "sourceroot",
+        relative_to: Location = "sourceroot",
     ) -> str:
 
         script = self.get_script(
@@ -758,7 +938,7 @@ class Build:
         stage: str,
         *,
         installable_only: bool = False,
-        relative_to: str = "sourceroot",
+        relative_to: Location = "sourceroot",
     ) -> str:
 
         scripts = []
@@ -825,7 +1005,11 @@ class Build:
         return script
 
     def _get_package_script(
-        self, pkg, stage: str, *, relative_to="sourceroot"
+        self,
+        pkg: mpkg_base.BasePackage,
+        stage: str,
+        *,
+        relative_to: Location = "sourceroot",
     ) -> str:
         method = f"get_{stage}_script"
         self_method = getattr(self, f"_get_package_{stage}_script", None)
@@ -863,11 +1047,11 @@ class Build:
 
     def get_ld_env(
         self,
-        deps,
+        deps: Iterable[mpkg_base.BasePackage],
         wd: str,
         extra: Iterable[str] = (),
-    ) -> List[str]:
-        env = collections.defaultdict(list)
+    ) -> list[str]:
+        env: dict[str, list[str]] = collections.defaultdict(list)
         keys = self.target.get_ld_env_keys(self)
         for k in keys:
             env[k] = []
@@ -889,7 +1073,7 @@ class Build:
     def sh_get_bundled_shlibs_ldflags(
         self,
         deps: Iterable[poetry_pkg.Package],
-        relative_to: str = "pkgbuild",
+        relative_to: Location = "pkgbuild",
     ) -> str:
         flags = []
 
@@ -922,7 +1106,7 @@ class Build:
     def sh_get_bundled_shlibs_cflags(
         self,
         deps: Iterable[poetry_pkg.Package],
-        relative_to: str = "pkgbuild",
+        relative_to: Location = "pkgbuild",
     ) -> str:
         flags = []
 

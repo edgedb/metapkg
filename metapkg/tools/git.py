@@ -1,3 +1,9 @@
+from __future__ import annotations
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
+
 import os.path
 import pathlib
 import subprocess
@@ -9,36 +15,43 @@ from metapkg import cache
 
 from . import cmd
 
+if TYPE_CHECKING:
+    from cleo.io import io as cleo_io
 
-class Git(vcs.Git):
-    def run(self, *args, **kwargs):
+
+class Git(vcs.Git):  # type: ignore
+    def run(self, *args: Any, **kwargs: Any) -> str:
         if self._work_dir and self._work_dir.exists():
             wd = self._work_dir.as_posix()
         else:
             wd = None
         result = cmd.cmd("git", *args, cwd=wd, **kwargs)
-        if isinstance(result, str):
-            result = result.strip(" \n\t")
+        result = result.strip(" \n\t")
         return result
 
 
-def _repodir(repo_url):
+def _repodir(repo_url: str) -> pathlib.Path:
     u = urllib.parse.urlparse(repo_url)
     base = os.path.basename(u.path)
     name, _ = os.path.splitext(base)
     return pathlib.Path(name)
 
 
-def repodir(repo_url):
+def repodir(repo_url: str) -> pathlib.Path:
     return cache.cachedir() / _repodir(repo_url)
 
 
-def repo(repo_url):
+def repo(repo_url: str) -> Git:
     return Git(repodir(repo_url))
 
 
 def update_repo(
-    repo_url, *, exclude_submodules=None, clone_depth=50, ref=None, io
+    repo_url: str,
+    *,
+    exclude_submodules: frozenset[str] | None = None,
+    clone_depth: int = 50,
+    ref: str | None = None,
+    io: cleo_io.IO,
 ) -> pathlib.Path:
     repo_dir = repodir(repo_url)
     repo_gitdir = repo_dir / ".git"
@@ -46,6 +59,8 @@ def update_repo(
     git = Git(repo_dir)
     if ref == "HEAD":
         ref = None
+
+    args: tuple[str | pathlib.Path, ...]
 
     if repo_gitdir.exists():
         args = ("fetch", "--force", "-u")
@@ -81,7 +96,7 @@ def update_repo(
 
         git.run("clone", *args)
 
-    submodules = None
+    submodules: set[str] | None = None
     deinit_submodules = set()
     if exclude_submodules:
         try:

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from poetry.core.semver.version import Version
 
 
-class SystemPackage(poetry_pkg.Package):
+class SystemPackage(poetry_pkg.Package):  # type: ignore
     def __init__(
         self,
         name: str,

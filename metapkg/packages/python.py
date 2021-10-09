@@ -1,10 +1,12 @@
 from __future__ import annotations
-from typing import *
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 import copy
 import pathlib
 import shlex
-import sys
 import tempfile
 import textwrap
 
@@ -12,28 +14,33 @@ from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import package as poetry_pkg
 from poetry.repositories import pypi_repository
 
+from metapkg import packages as mpkg
 from metapkg import tools
+from metapkg import targets
 
 from . import base
 from . import repository as af_repository
 from . import sources as af_sources
 from .utils import python_dependency_from_pep_508
 
+if TYPE_CHECKING:
+    from cleo.io import io as cleo_io
+
 
 python_dependency = poetry_dep.Dependency(name="python", constraint=">=3.7")
 wheel_dependency = poetry_dep.Dependency(name="pypkg-wheel", constraint="*")
 
 
-def set_python_runtime_dependency(dep):
+def set_python_runtime_dependency(dep: poetry_dep.Dependency) -> None:
     global python_dependency
     python_dependency = dep
 
 
-class PyPiRepository(pypi_repository.PyPiRepository):
-    def __init__(self, io) -> None:
+class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
+    def __init__(self, io: cleo_io.IO) -> None:
         super().__init__()
         self._io = io
-        self._pkg_impls: Dict[str, Type[PythonPackage]] = {
+        self._pkg_impls: dict[str, type[PythonPackage]] = {
             "flit-core": FlitCore,
             "tomli": Tomli,
         }
@@ -41,7 +48,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
     def register_package_impl(
         self,
         name: str,
-        impl_cls: Type[PythonPackage],
+        impl_cls: type[PythonPackage],
     ) -> None:
         self._pkg_impls[name] = impl_cls
 
@@ -62,10 +69,10 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             package._name = f"pypkg-{package._name}"
             package._pretty_name = f"pypkg-{package._pretty_name}"
 
-        return packages
+        return packages  # type: ignore
 
     def package(
-        self, name: str, version: str, extras: Optional[list[str]] = None
+        self, name: str, version: str, extras: list[str] | None = None
     ) -> poetry_pkg.Package:
 
         if name.startswith("pypkg-"):
@@ -124,13 +131,15 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         return package
 
-    def get_package_info(self, name):
+    def get_package_info(self, name: str) -> dict[str, Any]:
         if name.startswith("pypkg-"):
             name = name[len("pypkg-") :]
 
-        return super().get_package_info(name)
+        return super().get_package_info(name)  # type: ignore
 
-    def get_sdist_source(self, pypi_info: dict) -> af_sources.BaseSource:
+    def get_sdist_source(
+        self, pypi_info: dict[str, Any]
+    ) -> af_sources.BaseSource:
         sdist_info = self._get_sdist_info(pypi_info)
         source = af_sources.source_for_url(sdist_info["url"])
         md5_digest = sdist_info.get("md5_digest")
@@ -150,8 +159,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         return source
 
-    def get_pypi_info(self, name: str, version: str) -> dict:
-
+    def get_pypi_info(self, name: str, version: str) -> dict[str, Any]:
         if name.startswith("pypkg-"):
             name = name[len("pypkg-") :]
         if self._disable_cache:
@@ -164,17 +172,16 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         return pypi_info
 
-    def _get_pypi_info(self, name: str, version: str) -> dict:
+    def _get_pypi_info(self, name: str, version: str) -> dict[str, Any]:
         json_data = self._get(f"pypi/{name}/{version}/json")
         if json_data is None:
             raise af_repository.PackageNotFoundError(
                 f"Package [{name}] not found."
             )
 
-        return json_data
+        return json_data  # type: ignore
 
-    def _get_sdist_info(self, pypi_info: dict) -> dict:
-
+    def _get_sdist_info(self, pypi_info: dict[str, Any]) -> dict[str, Any]:
         name = pypi_info["info"]["name"]
         version = pypi_info["info"]["version"]
         sdist_info = None
@@ -192,9 +199,11 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         if sdist_info is None:
             raise LookupError(f"No sdist URL for {name}")
 
-        return sdist_info
+        return sdist_info  # type: ignore
 
-    def _get_build_requires(self, package) -> list[poetry_dep.Dependency]:
+    def _get_build_requires(
+        self, package: mpkg.BasePackage
+    ) -> list[poetry_dep.Dependency]:
         with tempfile.TemporaryDirectory() as t, tempfile.TemporaryDirectory() as tardir:
             tmpdir = pathlib.Path(t)
 
@@ -207,7 +216,9 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             return get_build_requires_from_srcdir(package, tmpdir)
 
 
-def get_build_requires_from_srcdir(package, path):
+def get_build_requires_from_srcdir(
+    package: mpkg.BasePackage, path: pathlib.Path
+) -> list[poetry_dep.Dependency]:
     build_requires = []
 
     setup_py = path / "setup.py"
@@ -245,13 +256,13 @@ def get_build_requires_from_srcdir(package, path):
 
 
 class BasePythonPackage(base.BasePackage):
-    def get_configure_script(self, build) -> str:
+    def get_configure_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_build_wheel_env(self, build) -> Dict[str, str]:
+    def get_build_wheel_env(self, build: targets.Build) -> dict[str, str]:
         return {}
 
-    def get_build_script(self, build) -> str:
+    def get_build_script(self, build: targets.Build) -> str:
         sdir = build.get_source_dir(self, relative_to="pkgbuild")
         src_python = build.sh_get_command(
             "python", package=self, relative_to="pkgsource"
@@ -346,7 +357,7 @@ class BasePythonPackage(base.BasePackage):
         """
         )
 
-    def get_build_install_script(self, build) -> str:
+    def get_build_install_script(self, build: targets.Build) -> str:
         common_script = super().get_build_install_script(build)
 
         python = build.sh_get_command("python", package=self)
@@ -386,10 +397,10 @@ class BasePythonPackage(base.BasePackage):
         else:
             return wheel_install
 
-    def get_install_script(self, build) -> str:
+    def get_install_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_install_list_script(self, build) -> str:
+    def get_install_list_script(self, build: targets.Build) -> str:
         common_script = super().get_install_list_script(build)
 
         prefix = build.get_full_install_prefix()
@@ -452,23 +463,25 @@ class PythonPackage(BasePythonPackage):
     def get_cyclic_runtime_deps(self) -> frozenset[str]:
         return frozenset()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<PythonPackage {}>".format(self.unique_name)
 
 
 class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
     @classmethod
-    def get_package_repository(cls, target, io):
+    def get_package_repository(
+        cls, target: targets.Target, io: cleo_io.IO
+    ) -> PyPiRepository:
         return PyPiRepository(io=io)
 
     @classmethod
     def resolve(
         cls,
-        io,
+        io: cleo_io.IO,
         *,
-        ref=None,
-        version=None,
-        is_release=False,
+        ref: str | None = None,
+        version: str | None = None,
+        is_release: bool = False,
     ) -> BundledPythonPackage:
         repo_dir = cls.resolve_vcs_source(io, ref=ref)
         setup_py = repo_dir / "setup.py"
@@ -504,7 +517,7 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         reqs.append(python_dependency)
         return reqs
 
-    def get_install_list_script(self, build) -> str:
+    def get_install_list_script(self, build: targets.Build) -> str:
         static_list = base.BundledPackage.get_install_list_script(self, build)
         wheel_list = super().get_install_list_script(build)
 
@@ -520,8 +533,8 @@ class FlitCore(PythonPackage):
 
 
 class Tomli(PythonPackage):
-    def get_build_wheel_env(self, build) -> dict[str, str]:
+    def get_build_wheel_env(self, build: targets.Build) -> dict[str, str]:
         env = dict(super().get_build_wheel_env(build))
         sdir = build.get_source_dir(self, relative_to="pkgbuild")
-        env["EXTRA_PYTHONPATH"] = sdir
+        env["EXTRA_PYTHONPATH"] = str(sdir)
         return env

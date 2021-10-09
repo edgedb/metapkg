@@ -5,15 +5,15 @@ import metapkg
 from . import commands as metapkg_commands
 
 
-class App(BaseApplication):
+class App(BaseApplication):  # type: ignore
     def __init__(self) -> None:
         super().__init__(metapkg.__name__, metapkg.__version__)
 
 
-def main():
+def main() -> int:
     app = App()
     for cmd_name in metapkg_commands.__all__:
         cmd = getattr(metapkg_commands, cmd_name)
         app.add(cmd())
 
-    return app.run()
+    return app.run()  # type: ignore
