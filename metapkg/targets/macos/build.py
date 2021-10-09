@@ -11,7 +11,7 @@ from metapkg import tools
 
 
 class Build(generic.Build):
-    def prepare(self):
+    def prepare(self) -> None:
         super().prepare()
         self._system_tools["bash"] = "/usr/local/bin/bash"
         self._system_tools["make"] = (
@@ -19,28 +19,29 @@ class Build(generic.Build):
             f"-j{os.cpu_count()} SHELL=/usr/local/bin/bash"
         )
 
-    def _build(self):
+    def _build(self) -> None:
         super()._build()
         self._build_installer()
 
-    def _build_installer(self):
+    def _build_installer(self) -> None:
         if self._outputroot is not None:
             if not self._outputroot.exists():
                 self._outputroot.mkdir(parents=True, exist_ok=True)
             elif tuple(self._outputroot.iterdir()):
                 raise RuntimeError(
-                    f"target directory {self._outputroot} is not empty")
+                    f"target directory {self._outputroot} is not empty"
+                )
 
         pkg = self._root_pkg
         title = pkg.name
         version = pkg.pretty_version
         ident = f"{pkg.identifier}{pkg.slot_suffix}"
 
-        temp_root = self.get_temp_root(relative_to=None)
+        temp_root = self.get_temp_root(relative_to="fsroot")
         installer = temp_root / "installer"
         installer.mkdir(parents=True)
 
-        srcdir = self.get_image_root(relative_to=None)
+        srcdir = self.get_image_root(relative_to="fsroot")
 
         # Unversioned package.
 
@@ -134,11 +135,13 @@ class Build(generic.Build):
 
         resources = self._root_pkg.get_resources(self)
 
-        for name, data in resources.items():
-            with open(rsrcdir / name, "wb") as f:
-                data = data.replace(b"$TITLE", pkg.title.encode())
-                data = data.replace(b"$FULL_VERSION", version.encode())
-                f.write(data)
+        nice_title = pkg.title if pkg.title is not None else pkg.name
+
+        for name, res_data in resources.items():
+            with open(rsrcdir / name, "wb") as rf:
+                res_data = res_data.replace(b"$TITLE", nice_title.encode())
+                res_data = res_data.replace(b"$FULL_VERSION", version.encode())
+                rf.write(res_data)
 
         distribution = installer / "Distribution.xml"
 
@@ -203,29 +206,31 @@ class Build(generic.Build):
             suffix = f"{suffix}~{self._subdist}"
 
         finalname = f"{title}{pkg.slot_suffix}_{version}_{suffix}.pkg"
-        tools.cmd(
-            "productbuild",
-            "--package-path",
-            pkgpath.parent,
-            "--resources",
-            rsrcdir,
-            "--identifier",
-            ident,
-            "--version",
-            version,
-            "--distribution",
-            distribution,
-            self._outputroot / finalname,
-        )
 
-        with open(self._outputroot / "package-version.json", "w") as f:
-            json.dump(
-                {
-                    "installref": finalname,
-                    **self._root_pkg.get_artifact_metadata(self),
-                },
-                f,
+        if self._outputroot is not None:
+            tools.cmd(
+                "productbuild",
+                "--package-path",
+                pkgpath.parent,
+                "--resources",
+                rsrcdir,
+                "--identifier",
+                ident,
+                "--version",
+                version,
+                "--distribution",
+                distribution,
+                self._outputroot / finalname,
             )
 
-    def _package(self):
+            with open(self._outputroot / "package-version.json", "w") as f:
+                json.dump(
+                    {
+                        "installref": finalname,
+                        **self._root_pkg.get_artifact_metadata(self),
+                    },
+                    f,
+                )
+
+    def _package(self) -> None:
         pass

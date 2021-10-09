@@ -7,7 +7,7 @@ import shutil
 import sys
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("install_list", help="List of files to be installed.")
     parser.add_argument(
@@ -46,6 +46,8 @@ def main():
 
     for path in install_set - no_install_set:
         print(path)
+
+    return 0
 
 
 if __name__ == "__main__":

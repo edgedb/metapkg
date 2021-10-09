@@ -67,6 +67,9 @@ def _rpm_version_to_pep440(rpmver: str) -> str:
             version += part.translate(_version_trans)
         else:
             part_m = re.match(r"^([0-9]*)(.*)$", part)
+            if not part_m:
+                raise ValueError(f"unexpected RPM package version: {rpmver}")
+
             if part_m.group(1):
                 if i > 0:
                     version += "."
@@ -91,9 +94,11 @@ def _rpm_version_to_pep440(rpmver: str) -> str:
 
 
 class RPMRepository(repository.Repository):
-    def __init__(self, packages=None):
+    def __init__(
+        self, packages: list[poetry_pkg.Package] | None = None
+    ) -> None:
         super().__init__(packages)
-        self._parsed = set()
+        self._parsed: set[str] = set()
 
     def find_packages(
         self,
@@ -106,7 +111,7 @@ class RPMRepository(repository.Repository):
                 self.add_package(package)
             self._parsed.add(dependency.name)
 
-        return super().find_packages(dependency)
+        return super().find_packages(dependency)  # type: ignore
 
     def apt_get_packages(self, name: str) -> list[poetry_pkg.Package]:
         system_name = PACKAGE_MAP.get(name, name)
@@ -168,48 +173,51 @@ class RPMRepository(repository.Repository):
 
 
 class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
-    def __init__(self, distro_info):
-        self.distro = distro_info
+    def __init__(self, distro_info: dict[str, Any]) -> None:
+        targets.FHSTarget.__init__(self)
+        targets.LinuxTarget.__init__(self, distro_info=distro_info)
 
-    def get_package_repository(self):
+    def get_package_repository(self) -> RPMRepository:
         return RPMRepository()
 
-    def get_arch_libdir(self):
+    def get_arch_libdir(self) -> pathlib.Path:
         return pathlib.Path(tools.cmd("rpm", "--eval", "%_libdir").strip())
 
-    def get_sys_bindir(self):
+    def get_sys_bindir(self) -> pathlib.Path:
         return pathlib.Path(tools.cmd("rpm", "--eval", "%_bindir").strip())
 
-    def build(self, **kwargs):
+    def build(self, **kwargs: Any) -> None:
         return rpmbuild.Build(self, **kwargs).run()
 
-    def get_system_dependencies(self, dep_name) -> list:
+    def get_system_dependencies(self, dep_name: str) -> list[str]:
         try:
             return SYSTEM_DEPENDENCY_MAP[dep_name]
         except KeyError:
             return super().get_system_dependencies(dep_name)
 
-    def install_build_deps(self, build, spec):
+    def install_build_deps(self, build: rpmbuild.Build, spec: str) -> None:
         tools.cmd(
             "yum-builddep",
             "-y",
             spec,
-            cwd=str(build.get_spec_root(relative_to=None)),
+            cwd=str(build.get_spec_root(relative_to="fsroot")),
             stdout=build._io.output.stream,
             stderr=subprocess.STDOUT,
         )
 
 
 class RHEL7OrNewerTarget(BaseRPMTarget):
-    def __init__(self, distro_info):
+    def __init__(self, distro_info: dict[str, Any]) -> None:
         super().__init__(distro_info)
         self.distro["codename"] = f'el{self.distro["version_parts"]["major"]}'
 
-    def get_capabilities(self) -> list:
+    def get_capabilities(self) -> list[str]:
         capabilities = super().get_capabilities()
         return capabilities + ["systemd", "libffi", "tzdata"]
 
-    def get_resource_path(self, build, resource):
+    def get_resource_path(
+        self, build: targets.Build, resource: str
+    ) -> pathlib.Path | None:
         if resource == "systemd-units":
             return pathlib.Path(
                 tools.cmd("rpm", "--eval", "%_unitdir").strip()
@@ -219,23 +227,23 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
 
 
 class FedoraTarget(RHEL7OrNewerTarget):
-    def __init__(self, distro_info):
+    def __init__(self, distro_info: dict[str, Any]) -> None:
         super().__init__(distro_info)
         self.distro["codename"] = f'fc{self.distro["version_parts"]["major"]}'
 
-    def install_build_deps(self, build, spec):
+    def install_build_deps(self, build: rpmbuild.Build, spec: str) -> None:
         tools.cmd(
             "dnf",
             "builddep",
             "-y",
             spec,
-            cwd=str(build.get_spec_root(relative_to=None)),
+            cwd=str(build.get_spec_root(relative_to="fsroot")),
             stdout=build._io.output.stream,
             stderr=subprocess.STDOUT,
         )
 
 
-def get_specific_target(distro_info):
+def get_specific_target(distro_info: dict[str, Any]) -> BaseRPMTarget:
     if distro_info["id"] in {"centos", "rhel"}:
         ver = int(distro_info["version_parts"]["major"])
         if ver >= 7:

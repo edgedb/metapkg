@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import glob
 import json
@@ -10,12 +12,15 @@ import stat
 import subprocess
 import textwrap
 
+from metapkg import packages as mpkg
 from metapkg import targets
 from metapkg import tools
 
 
 class Build(targets.Build):
-    def prepare(self):
+    _target: targets.LinuxTarget
+
+    def prepare(self) -> None:
         super().prepare()
 
         self._pkgroot = self._droot / self._root_pkg.name_slot
@@ -35,10 +40,16 @@ class Build(targets.Build):
 
         self._bin_shims = self._root_pkg.get_bin_shims(self)
 
-    def get_source_abspath(self):
+    def get_source_abspath(self) -> pathlib.Path:
         return self._srcroot
 
-    def get_path(self, path, *, relative_to, package=None):
+    def get_path(
+        self,
+        path: str | pathlib.Path,
+        *,
+        relative_to: targets.Location,
+        package: mpkg.BasePackage | None = None,
+    ) -> pathlib.Path:
         """Return *path* relative to *relative_to* location.
 
         :param pathlike path:
@@ -63,65 +74,101 @@ class Build(targets.Build):
             return pathlib.Path("..") / ".." / path
         elif relative_to == "pkgbuild":
             return pathlib.Path("..") / ".." / path
-        elif relative_to is None:
+        elif relative_to == "fsroot":
             return (self.get_source_abspath() / path).resolve()
         else:
             raise ValueError(f"invalid relative_to argument: {relative_to}")
 
-    def get_helpers_root(self, *, relative_to="sourceroot"):
+    def get_helpers_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             self.get_tarball_root() / "helpers", relative_to=relative_to
         )
 
-    def get_source_root(self, *, relative_to="sourceroot"):
+    def get_source_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path("."), relative_to=relative_to)
 
-    def get_tarball_root(self, *, relative_to="sourceroot"):
+    def get_tarball_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path("SOURCES"), relative_to=relative_to)
 
-    def get_patches_root(self, *, relative_to="sourceroot"):
+    def get_patches_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_tarball_root(relative_to=relative_to)
 
-    def get_extras_root(self, *, relative_to="sourceroot"):
+    def get_extras_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_tarball_root(relative_to=relative_to) / "extras"
 
-    def get_spec_root(self, *, relative_to="sourceroot"):
+    def get_spec_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path("SPECS"), relative_to=relative_to)
 
-    def get_source_dir(self, package, *, relative_to="sourceroot"):
+    def get_source_dir(
+        self,
+        package: mpkg.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             pathlib.Path("BUILD") / package.name, relative_to=relative_to
         )
 
-    def get_temp_dir(self, package, *, relative_to="sourceroot"):
+    def get_temp_dir(
+        self,
+        package: mpkg.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._tmproot / package.name, relative_to=relative_to
         )
 
-    def get_temp_root(self, *, relative_to="sourceroot"):
+    def get_temp_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(self._tmproot, relative_to=relative_to)
 
-    def get_image_root(self, *, relative_to="sourceroot"):
+    def get_image_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             pathlib.Path("BUILDROOT") / self._root_pkg.name_slot,
             relative_to=relative_to,
         )
 
-    def get_build_dir(self, package, *, relative_to="sourceroot"):
+    def get_build_dir(
+        self,
+        package: mpkg.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._buildroot / package.name, relative_to=relative_to
         )
 
-    def get_install_dir(self, package, *, relative_to="sourceroot"):
+    def get_install_dir(
+        self,
+        package: mpkg.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._installroot / package.name, relative_to=relative_to
         )
 
-    def _get_tarball_tpl(self, package):
+    def _get_tarball_tpl(self, package: mpkg.BasePackage) -> str:
         rp = self._root_pkg
         return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
 
-    def build(self):
+    def build(self) -> None:
         self.prepare_tools()
         self.prepare_tarballs()
         self.unpack_sources()
@@ -129,10 +176,10 @@ class Build(targets.Build):
         self._write_spec()
         self._rpmbuild()
 
-    def _format_version(self, ver):
+    def _format_version(self, ver: str) -> str:
         return ver.replace("-", "_")
 
-    def _write_spec(self):
+    def _write_spec(self) -> None:
         sysreqs = self.get_extra_system_requirements()
         base_name = self._root_pkg.name
 
@@ -301,11 +348,11 @@ class Build(targets.Build):
             debug_pkg="%debug_package" if self._build_debug else "",
         )
 
-        spec_root = self.get_spec_root(relative_to=None)
+        spec_root = self.get_spec_root(relative_to="fsroot")
         with open(spec_root / f"{self._root_pkg.name_slot}.spec", "w") as f:
             f.write(rules)
 
-    def _get_changelog(self):
+    def _get_changelog(self) -> str:
         root_v = self._format_version(self._root_pkg.version.text)
         changelog = textwrap.dedent(
             """\
@@ -322,7 +369,7 @@ class Build(targets.Build):
 
         return changelog
 
-    def _get_private_libs_pattern(self):
+    def _get_private_libs_pattern(self) -> str:
         private_libs = set()
 
         for pkg in self._installable:
@@ -330,7 +377,7 @@ class Build(targets.Build):
 
         return "|".join(private_libs)
 
-    def _get_build_reqs_spec(self):
+    def _get_build_reqs_spec(self) -> str:
         lines = []
 
         deps = (
@@ -343,7 +390,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _get_runtime_reqs_spec(self, extrareqs):
+    def _get_runtime_reqs_spec(self, extrareqs: dict[str, set[str]]) -> str:
         lines = []
 
         deps = (
@@ -369,7 +416,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _get_conflict_spec(self, conflicts):
+    def _get_conflict_spec(self, conflicts: list[str]) -> str:
         lines = []
 
         for conflict in conflicts:
@@ -378,7 +425,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _get_provides_spec(self, provides):
+    def _get_provides_spec(self, provides: list[tuple[str, str]]) -> str:
         lines = []
 
         for pkg, ver in provides:
@@ -386,7 +433,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _get_source_spec(self):
+    def _get_source_spec(self) -> str:
         lines = []
 
         for i, tarball in enumerate(self._tarballs.values()):
@@ -394,7 +441,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _get_patch_spec(self):
+    def _get_patch_spec(self) -> str:
         lines = []
 
         for i, patch in enumerate(self._patches):
@@ -402,7 +449,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _get_patch_script(self):
+    def _get_patch_script(self) -> str:
         lines = []
 
         for i, patch in enumerate(self._patches):
@@ -410,7 +457,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _get_package_unpack_script(self, pkg) -> str:
+    def _get_package_unpack_script(self, pkg: mpkg.BasePackage) -> str:
         tarball_root = self.get_tarball_root(relative_to="pkgbuild")
         tarball = tarball_root / self._tarballs[pkg]
         ext = tarball.suffix
@@ -433,7 +480,7 @@ class Build(targets.Build):
         """
         )
 
-    def _get_package_install_script(self, pkg) -> str:
+    def _get_package_install_script(self, pkg: mpkg.BasePackage) -> str:
         source_root = self.get_source_root(relative_to="pkgbuild")
         install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
         image_root = self.get_image_root(relative_to="sourceroot")
@@ -503,7 +550,7 @@ class Build(targets.Build):
         lines = []
         symlinks = []
 
-        extras_dir = self.get_extras_root(relative_to=None)
+        extras_dir = self.get_extras_root(relative_to="fsroot")
         extras_dir_rel = self.get_extras_root(relative_to="buildroot")
 
         for pkg in self._installable:
@@ -528,8 +575,8 @@ class Build(targets.Build):
         if self._bin_shims:
             sysbindir = self.get_install_path("systembin")
 
-            for path, data in self._bin_shims.items():
-                relpath = (sysbindir / path).relative_to("/")
+            for shim_path, data in self._bin_shims.items():
+                relpath = (sysbindir / shim_path).relative_to("/")
                 inst_path = extras_dir / relpath
                 inst_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(inst_path, "w") as f:
@@ -544,14 +591,15 @@ class Build(targets.Build):
                 )
 
                 src_path = extras_dir_rel / relpath
-                src = shlex.quote(str(src_path))
-
-                broot_path = f"%{{_bindir}}/{path}"
+                broot_path = f"%{{_bindir}}/{shim_path}"
 
                 lines.append(
                     f'mkdir -p "$(dirname ${{RPM_BUILD_ROOT}}/{broot_path})"'
                 )
-                lines.append(f'cp -p {src} "${{RPM_BUILD_ROOT}}/{broot_path}"')
+                lines.append(
+                    f"cp -p {shlex.quote(str(src_path))}"
+                    f' "${{RPM_BUILD_ROOT}}/{broot_path}"'
+                )
 
         return "\n".join(lines)
 
@@ -573,13 +621,13 @@ class Build(targets.Build):
         else:
             return ""
 
-    def _rpmbuild(self):
-        if self._outputroot is not None:
-            if not self._outputroot.exists():
-                self._outputroot.mkdir(parents=True, exist_ok=True)
-            elif tuple(self._outputroot.iterdir()):
-                raise RuntimeError(
-                    f"target directory {self._outputroot} is not empty")
+    def _rpmbuild(self) -> None:
+        if not self._outputroot.exists():
+            self._outputroot.mkdir(parents=True, exist_ok=True)
+        elif tuple(self._outputroot.iterdir()):
+            raise RuntimeError(
+                f"target directory {self._outputroot} is not empty"
+            )
 
         tools.cmd(
             "yum",
@@ -592,11 +640,11 @@ class Build(targets.Build):
             stderr=subprocess.STDOUT,
         )
 
-        self.target.install_build_deps(
+        self.target.install_build_deps(  # type: ignore
             self, f"{self._root_pkg.name_slot}.spec"
         )
 
-        image_root = self.get_image_root(relative_to=None)
+        image_root = self.get_image_root(relative_to="fsroot")
 
         args = [
             f"{self._root_pkg.name_slot}.spec",
@@ -612,7 +660,7 @@ class Build(targets.Build):
         tools.cmd(
             "rpmbuild",
             *args,
-            cwd=str(self.get_spec_root(relative_to=None)),
+            cwd=str(self.get_spec_root(relative_to="fsroot")),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT,
         )
@@ -621,20 +669,22 @@ class Build(targets.Build):
             "rpmlint",
             "-i",
             f"{self._root_pkg.name_slot}.spec",
-            cwd=str(self.get_spec_root(relative_to=None)),
+            cwd=str(self.get_spec_root(relative_to="fsroot")),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT,
         )
 
         if self._outputroot is not None:
-            rpms = self.get_dir("RPMS", relative_to=None) / platform.machine()
-            for rpm in glob.glob(str(rpms / "*.rpm")):
-                rpm = pathlib.Path(rpm)
+            rpms = (
+                self.get_dir("RPMS", relative_to="fsroot") / platform.machine()
+            )
+            for rpm_path in glob.glob(str(rpms / "*.rpm")):
+                rpm = pathlib.Path(rpm_path)
                 shutil.copy2(rpm, self._outputroot / rpm.name)
 
-            srpms = self.get_dir("SRPMS", relative_to=None)
-            for rpm in glob.glob(str(srpms / "*.rpm")):
-                rpm = pathlib.Path(rpm)
+            srpms = self.get_dir("SRPMS", relative_to="fsroot")
+            for rpm_path in glob.glob(str(srpms / "*.rpm")):
+                rpm = pathlib.Path(rpm_path)
                 shutil.copy2(rpm, self._outputroot / rpm.name)
 
             distro = self._target.distro["codename"]

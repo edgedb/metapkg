@@ -1,5 +1,12 @@
 from __future__ import annotations
-from typing import *
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Literal,
+    Sequence,
+    TypeVar,
+    overload,
+)
 
 import collections
 import copy
@@ -20,12 +27,16 @@ from poetry.core import vcs
 from . import repository
 from . import sources as af_sources
 
+if TYPE_CHECKING:
+    from cleo.io import io as cleo_io
+    from metapkg import targets
 
-class Dependency(poetry_dep.Dependency):
+
+class Dependency(poetry_dep.Dependency):  # type: ignore
     pass
 
 
-class DummyPackage(poetry_pkg.Package):
+class DummyPackage(poetry_pkg.Package):  # type: ignore
     def __repr__(self) -> str:
         return "<DummyPackage {}>".format(self.unique_name)
 
@@ -44,26 +55,26 @@ class MetaPackage:
     dependencies: dict[str, str]
 
 
-class BasePackage(poetry_pkg.Package):
-    def get_requirements(self) -> typing.List[Dependency]:
+class BasePackage(poetry_pkg.Package):  # type: ignore
+    def get_requirements(self) -> list[Dependency]:
         return []
 
-    def get_build_requirements(self) -> typing.List[Dependency]:
+    def get_build_requirements(self) -> list[Dependency]:
         return []
 
-    def get_configure_script(self, build) -> str:
+    def get_configure_script(self, build: targets.Build) -> str:
         raise NotImplementedError(f"{self}.configure()")
 
-    def get_build_script(self, build) -> str:
+    def get_build_script(self, build: targets.Build) -> str:
         raise NotImplementedError(f"{self}.build()")
 
-    def get_build_install_script(self, build) -> str:
+    def get_build_install_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_install_script(self, build) -> str:
+    def get_install_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_build_tools(self, build) -> dict:
+    def get_build_tools(self, build: targets.Build) -> dict[str, pathlib.Path]:
         return {}
 
     def get_patches(
@@ -71,59 +82,66 @@ class BasePackage(poetry_pkg.Package):
     ) -> dict[str, list[tuple[str, str]]]:
         return {}
 
-    def get_install_list_script(self, build) -> str:
+    def get_install_list_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_no_install_list_script(self, build) -> str:
+    def get_no_install_list_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_ignore_list_script(self, build) -> str:
+    def get_ignore_list_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_private_libraries(self, build) -> list:
+    def get_private_libraries(self, build: targets.Build) -> list[str]:
         return []
 
-    def get_extra_system_requirements(self, build) -> dict:
+    def get_extra_system_requirements(
+        self, build: targets.Build
+    ) -> dict[str, list[str]]:
         return {}
 
-    def get_before_install_script(self, build) -> str:
+    def get_before_install_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_after_install_script(self, build) -> str:
+    def get_after_install_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_service_scripts(self, build) -> dict:
+    def get_service_scripts(
+        self, build: targets.Build
+    ) -> dict[pathlib.Path, str]:
         return {}
 
-    def get_bin_shims(self, build) -> dict:
+    def get_bin_shims(self, build: targets.Build) -> dict[str, str]:
         return {}
 
-    def get_exposed_commands(self, build) -> list:
+    def get_exposed_commands(self, build: targets.Build) -> list[pathlib.Path]:
         return []
 
-    def get_shlib_paths(self, build) -> List[pathlib.Path]:
+    def get_shlib_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return []
 
-    def get_include_paths(self, build) -> List[pathlib.Path]:
+    def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return []
+
+
+BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
 
 class BundledPackage(BasePackage):
 
-    title = None
-    name = None
-    aliases = None
-    description = None
-    license = None
-    group = None
-    url = None
-    identifier = None
+    name: ClassVar[str]
+    title: ClassVar[str | None] = None
+    aliases: ClassVar[list[str] | None] = None
+    description: ClassVar[str | None] = None
+    license: ClassVar[str | None] = None
+    group: ClassVar[str]
+    url: ClassVar[str | None] = None
+    identifier: ClassVar[str]
 
     build_required: list[poetry_dep.Dependency]
     source_version: str
 
-    artifact_requirements: list[Union[str, poetry_dep.Dependency]] = []
-    artifact_build_requirements: list[Union[str, poetry_dep.Dependency]] = []
+    artifact_requirements: list[str | poetry_dep.Dependency] = []
+    artifact_build_requirements: list[str | poetry_dep.Dependency] = []
 
     @property
     def slot(self) -> str:
@@ -137,7 +155,7 @@ class BundledPackage(BasePackage):
             return ""
 
     @property
-    def name_slot(self):
+    def name_slot(self) -> str:
         return f"{self.name}{self.slot_suffix}"
 
     @classmethod
@@ -145,7 +163,7 @@ class BundledPackage(BasePackage):
         return {}
 
     @classmethod
-    def _get_sources(cls, version: str) -> list[af_sources.BaseSource]:
+    def _get_sources(cls, version: str | None) -> list[af_sources.BaseSource]:
         sources = []
 
         if version is None:
@@ -202,15 +220,19 @@ class BundledPackage(BasePackage):
         return sources
 
     @classmethod
-    def to_vcs_version(cls, version):
+    def to_vcs_version(cls, version: str) -> str:
         return version
 
     @classmethod
-    def get_package_repository(cls, target, io):
+    def get_package_repository(
+        cls, target: targets.Target, io: cleo_io.IO
+    ) -> repository.BundleRepository:
         return repository.bundle_repo
 
     @classmethod
-    def resolve_vcs_source(cls, io, *, ref=None) -> pathlib.Path:
+    def resolve_vcs_source(
+        cls, io: cleo_io.IO, *, ref: str | None = None
+    ) -> pathlib.Path:
         sources = cls._get_sources(version=ref)
         if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
             repo_dir = sources[0].download(io)
@@ -220,19 +242,19 @@ class BundledPackage(BasePackage):
         return repo_dir
 
     @classmethod
-    def resolve_version(cls, io) -> str:
+    def resolve_version(cls, io: cleo_io.IO) -> str:
         repo_dir = cls.resolve_vcs_source(io)
-        return vcs.Git(repo_dir).rev_parse("HEAD").strip()
+        return vcs.Git(repo_dir).rev_parse("HEAD").strip()  # type: ignore
 
     @classmethod
     def resolve(
         cls,
-        io,
+        io: cleo_io.IO,
         *,
-        ref=None,
-        version=None,
-        is_release=False,
-    ) -> "BundledPackage":
+        ref: str | None = None,
+        version: str | None = None,
+        is_release: bool = False,
+    ) -> BundledPackage:
         if version is None:
             version = cls.resolve_version(io)
         return cls(version=version)
@@ -243,7 +265,9 @@ class BundledPackage(BasePackage):
     def get_patches(
         self,
     ) -> dict[str, list[tuple[str, str]]]:
-        modpath = pathlib.Path(sys.modules[self.__module__].__path__[0])
+        modpath = pathlib.Path(
+            sys.modules[self.__module__].__path__[0]  # type: ignore
+        )
         patches_dir = modpath / "patches"
 
         patches = collections.defaultdict(list)
@@ -261,12 +285,10 @@ class BundledPackage(BasePackage):
     def __init__(
         self,
         version: str,
-        pretty_version: Optional[str] = None,
+        pretty_version: str | None = None,
         *,
-        source_version: Optional[str] = None,
-        requires=None,
-        name: Optional[str] = None,
-        aliases: Optional[list[str]] = None,
+        source_version: str | None = None,
+        requires: list[poetry_pkg.Package] | None = None,
     ) -> None:
 
         if self.title is None:
@@ -274,14 +296,6 @@ class BundledPackage(BasePackage):
                 f"{type(self)!r} does not define the required "
                 f"title attribute"
             )
-
-        if name is not None:
-            self.name = name
-        elif self.name is None:
-            self.name = self.title.lower()
-
-        if aliases is not None:
-            self.aliases = aliases
 
         super().__init__(self.name, version)
 
@@ -301,7 +315,7 @@ class BundledPackage(BasePackage):
             self._dependency_groups["default"].add_dependency(req)
 
         self.build_requires = self.get_build_requirements()
-        self.description = type(self).description
+        self.description = type(self).description  # type: ignore
         if source_version is None:
             self.source_version = self.pretty_version
         else:
@@ -335,18 +349,20 @@ class BundledPackage(BasePackage):
                 reqs.append(item)
         return reqs
 
-    def clone(self):
+    def clone(self: BundledPackage_T) -> BundledPackage_T:
         clone = self.__class__(self.version)
         clone.__dict__ = copy.deepcopy(self.__dict__)
         return clone
 
-    def is_root(self):
+    def is_root(self) -> bool:
         return False
 
-    def write_file_list_script(self, build, listname, entries) -> str:
+    def write_file_list_script(
+        self, build: targets.Build, listname: str, entries: list[str]
+    ) -> str:
         installdest = build.get_install_dir(self, relative_to="pkgbuild")
 
-        paths = {}
+        paths: dict[str, str | pathlib.Path] = {}
         for aspect in ("systembin", "bin", "data", "include", "lib"):
             path = build.get_install_path(aspect).relative_to("/")
             paths[f"{aspect}dir"] = path
@@ -386,7 +402,27 @@ class BundledPackage(BasePackage):
             scriptfile_name, pyscript, relative_to="pkgbuild"
         )
 
-    def read_support_files(self, build, file_glob, binary=False) -> dict:
+    @overload
+    def read_support_files(
+        self, build: targets.Build, file_glob: str, binary: Literal[False]
+    ) -> dict[str, str]:
+        ...
+
+    @overload
+    def read_support_files(
+        self, build: targets.Build, file_glob: str
+    ) -> dict[str, str]:
+        ...
+
+    @overload
+    def read_support_files(
+        self, build: targets.Build, file_glob: str, binary: Literal[True]
+    ) -> dict[str, bytes]:
+        ...
+
+    def read_support_files(
+        self, build: targets.Build, file_glob: str, binary: bool = False
+    ) -> dict[str, str] | dict[str, bytes]:
 
         mod = sys.modules[type(self).__module__]
         path = pathlib.Path(mod.__file__).parent / file_glob
@@ -412,7 +448,11 @@ class BundledPackage(BasePackage):
         return result
 
     def _get_file_list_script(
-        self, build, listname, *, extra_files=None
+        self,
+        build: targets.Build,
+        listname: str,
+        *,
+        extra_files: Sequence[pathlib.Path] | None = None,
     ) -> str:
         mod = sys.modules[type(self).__module__]
         path = pathlib.Path(mod.__file__).parent / f"{listname}.list"
@@ -433,34 +473,35 @@ class BundledPackage(BasePackage):
 
         return script
 
-    def get_install_list_script(self, build) -> str:
+    def get_install_list_script(self, build: targets.Build) -> str:
         extra_files = list(self.get_service_scripts(build))
         return self._get_file_list_script(
             build, "install", extra_files=extra_files
         )
 
-    def get_no_install_list_script(self, build) -> str:
+    def get_no_install_list_script(self, build: targets.Build) -> str:
         return self._get_file_list_script(build, "no_install")
 
-    def get_ignore_list_script(self, build) -> str:
+    def get_ignore_list_script(self, build: targets.Build) -> str:
         return self._get_file_list_script(build, "ignore")
 
-    def get_build_install_script(self, build) -> str:
+    def get_build_install_script(self, build: targets.Build) -> str:
         service_scripts = self.get_service_scripts(build)
         if service_scripts:
             install = build.sh_get_command("cp", relative_to="pkgbuild")
             extras_dir = build.get_extras_root(relative_to="pkgbuild")
             install_dir = build.get_install_dir(self, relative_to="pkgbuild")
             ensuredir = build.target.get_action("ensuredir", build)
+            assert isinstance(ensuredir, targets.EnsureDirAction)
 
             commands = []
 
             for path, content in service_scripts.items():
                 path = path.relative_to("/")
                 commands.append(
-                    ensuredir.get_script(path=(install_dir / path).parent)
+                    ensuredir.get_script(path=str((install_dir / path).parent))
                 )
-                args = {
+                args: dict[str, str | None] = {
                     str(extras_dir / path): None,
                     str(install_dir / path): None,
                 }
@@ -471,43 +512,45 @@ class BundledPackage(BasePackage):
         else:
             return ""
 
-    def get_resources(self, build) -> dict:
+    def get_resources(self, build: targets.Build) -> dict[str, bytes]:
         return self.read_support_files(build, "resources/*", binary=True)
 
-    def get_service_scripts(self, build) -> dict:
+    def get_service_scripts(
+        self, build: targets.Build
+    ) -> dict[pathlib.Path, str]:
         return build.target.service_scripts_for_package(build, self)
 
-    def get_bin_shims(self, build) -> dict:
+    def get_bin_shims(self, build: targets.Build) -> dict[str, str]:
         return self.read_support_files(build, "shims/*")
 
-    def get_package_layout(self, build) -> PackageFileLayout:
+    def get_package_layout(self, build: targets.Build) -> PackageFileLayout:
         return PackageFileLayout.REGULAR
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<BundledPackage {}>".format(self.unique_name)
 
     def get_meta_packages(
         self,
-        build,
-        root_version,
+        build: targets.Build,
+        root_version: str,
     ) -> list[MetaPackage]:
         return []
 
     def get_conflict_packages(
         self,
-        build,
-        root_version,
+        build: targets.Build,
+        root_version: str,
     ) -> list[str]:
         return []
 
     def get_provided_packages(
         self,
-        build,
-        root_version,
+        build: targets.Build,
+        root_version: str,
     ) -> list[tuple[str, str]]:
         return []
 
-    def get_artifact_metadata(self, build) -> typing.Dict[str, str]:
+    def get_artifact_metadata(self, build: targets.Build) -> dict[str, str]:
         if self.slot:
             return {"version_slot": self.slot}
         else:

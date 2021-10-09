@@ -1,9 +1,14 @@
+from __future__ import annotations
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
+
 import hashlib
 import os
 import pathlib
 import platform
 import re
-import requests
 import shutil
 import tarfile
 import tempfile
@@ -11,20 +16,33 @@ import typing
 import urllib.parse
 import zipfile
 
-from metapkg import cache
-from metapkg import tools
+import requests
 
+from metapkg import cache
+from metapkg import packages as mpkg
+from metapkg import tools
 
 from cleo.ui import progress_bar
 
+if TYPE_CHECKING:
+    from cleo.io import io as cleo_io
+
 
 class BaseVerification:
-    pass
+    def verify(self, path: pathlib.Path) -> None:
+        raise NotImplementedError
 
 
 class HashVerification(BaseVerification):
-    def __init__(self, algorithm: str, *, hash_url=None, hash_value=None):
+    def __init__(
+        self,
+        algorithm: str,
+        *,
+        hash_url: str | None = None,
+        hash_value: str | None = None,
+    ) -> None:
         self.algorithm = algorithm
+        self._hash_value: str | None
         if hash_value is not None:
             self._hash_value = hash_value
         elif hash_url is not None:
@@ -36,7 +54,7 @@ class HashVerification(BaseVerification):
                 "for HashVerification"
             )
 
-    def verify(self, path: str):
+    def verify(self, path: pathlib.Path) -> None:
         if self._hash_value is None:
             self._obtain_hash_value()
 
@@ -54,30 +72,30 @@ class HashVerification(BaseVerification):
                 f"{self._hash_value}"
             )
 
-    def _obtain_hash_value(self):
+    def _obtain_hash_value(self) -> str:
         content = requests.get(self._hash_url).text.strip()
         firstval, _, rest = content.partition(" ")
         self._hash_value = firstval
-        return self._hash_value
+        return firstval
 
 
 class BaseSource:
-    def __init__(self, url: str, name: str, **extras):
+    def __init__(self, url: str, name: str, **extras: Any) -> None:
         self.url = url
-        self.verifications = []
+        self.verifications: list[BaseVerification] = []
         self.name = name
         self.extras = extras
 
-    def add_verification(self, verification):
+    def add_verification(self, verification: BaseVerification) -> None:
         self.verifications.append(verification)
 
-    def verify(self, path):
+    def verify(self, path: pathlib.Path) -> None:
         for verification in self.verifications:
             verification.verify(path)
 
 
 class HttpsSource(BaseSource):
-    def download(self, io) -> pathlib.Path:
+    def download(self, io: cleo_io.IO) -> pathlib.Path:
         destination_dir = cache.cachedir() / "distfiles"
         if not destination_dir.exists():
             destination_dir.mkdir()
@@ -96,7 +114,9 @@ class HttpsSource(BaseSource):
 
         return self._download(destination, io)
 
-    def _download(self, destination, io) -> pathlib.Path:
+    def _download(
+        self, destination: pathlib.Path, io: cleo_io.IO
+    ) -> pathlib.Path:
         req = requests.get(self.url, stream=True)
         length = int(req.headers.get("content-length", 0))
 
@@ -130,11 +150,11 @@ class HttpsSource(BaseSource):
 
     def tarball(
         self,
-        pkg,
+        pkg: mpkg.BasePackage,
         name_tpl: typing.Optional[str] = None,
         *,
         target_dir: pathlib.Path,
-        io,
+        io: cleo_io.IO,
     ) -> pathlib.Path:
         if name_tpl is None:
             name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
@@ -177,16 +197,16 @@ class GitSource(BaseSource):
         url: str,
         name: str,
         *,
-        vcs_version=None,
-        exclude_submodules=None,
-        clone_depth=50,
-    ):
+        vcs_version: str | None = None,
+        exclude_submodules: frozenset[str] | None = None,
+        clone_depth: int = 50,
+    ) -> None:
         super().__init__(url, name)
         self.ref = vcs_version
         self.exclude_submodules = exclude_submodules
         self.clone_depth = clone_depth
 
-    def download(self, io) -> pathlib.Path:
+    def download(self, io: cleo_io.IO) -> pathlib.Path:
         return tools.git.update_repo(
             self.url,
             exclude_submodules=self.exclude_submodules,
@@ -197,11 +217,11 @@ class GitSource(BaseSource):
 
     def tarball(
         self,
-        pkg,
+        pkg: mpkg.BasePackage,
         name_tpl: typing.Optional[str] = None,
         *,
         target_dir: pathlib.Path,
-        io,
+        io: cleo_io.IO,
     ) -> pathlib.Path:
         self.download(io)
         repo = tools.git.repo(self.url)
@@ -226,8 +246,7 @@ class GitSource(BaseSource):
             "\n"
         )
         if submodules:
-            submodules = submodules.split("\n")
-            for submodule in submodules:
+            for submodule in submodules.split("\n"):
                 path_m = re.match("Entering '([^']+)'", submodule)
                 if not path_m:
                     raise ValueError(
@@ -283,7 +302,7 @@ class GitSource(BaseSource):
 
 
 def source_for_url(
-    url: str, extras: typing.Optional[dict] = None
+    url: str, extras: dict[str, Any] | None = None
 ) -> BaseSource:
     parts = urllib.parse.urlparse(url)
     path_parts = parts.path.split("/")
@@ -305,7 +324,7 @@ def source_for_url(
 def unpack(
     archive: pathlib.Path,
     dest: pathlib.Path,
-    io,
+    io: cleo_io.IO,
     *,
     strip_top: bool = True,
 ) -> None:
@@ -313,59 +332,76 @@ def unpack(
     if len(parts) == 1:
         raise ValueError(f"{archive.name} is not a supported archive")
 
-    zf = None
-
     if not dest.exists():
         dest.mkdir()
 
-    if parts[-2] == "tar" or parts[-1] in {"tgz", "tbz2", "tar"}:
-        if parts[-1] in ("gz", "tgz"):
-            compression = "gz"
-        elif parts[-1] in ("bz2", "tbz2"):
-            compression = "bz2"
-        elif parts[-1] == "xz":
-            compression = "xz"
-        else:
-            raise ValueError(f"{archive.name} is not a supported archive")
+    ext = parts[-1]
 
-        zf = tarfile.open(archive, f"r:{compression}")
-        try:
-            for member in zf.getmembers():
-                if strip_top:
-                    parts = pathlib.Path(member.name).parts
-                    if len(parts) == 1:
-                        continue
-
-                    path = pathlib.Path(parts[1]).joinpath(*parts[2:])
-                    member.name = str(path)
-                zf.extract(member, path=dest)
-        finally:
-            zf.close()
-
+    if parts[-2] == "tar" or ext in {"tgz", "tbz2", "tar"}:
+        unpack_tar(archive, dest, strip_top=strip_top)
     elif parts[-1] == "zip":
-        zf = zipfile.ZipFile(archive)
-
-        try:
-            for member in zf.infolist():
-                if strip_top:
-                    parts = pathlib.Path(member.filename).parts
-                    if len(parts) == 1:
-                        continue
-
-                    relpath = pathlib.Path(parts[1]).joinpath(*parts[2:])
-                else:
-                    relpath = pathlib.Path(member.filename)
-                targetpath = dest / relpath
-                if member.is_dir():
-                    targetpath.mkdir(parents=True, exist_ok=True)
-                else:
-                    dirname = targetpath.parent
-                    if not dirname.exists():
-                        dirname.mkdir(parents=True)
-                    with open(targetpath, "wb") as df, zf.open(member) as sf:
-                        shutil.copyfileobj(sf, df)
-        finally:
-            zf.close()
-
+        unpack_zip(archive, dest, strip_top=strip_top)
     else:
         raise ValueError(f"{archive.name} is not a supported archive")
+
+
+def unpack_tar(
+    archive: pathlib.Path, dest: pathlib.Path, *, strip_top: bool
+) -> None:
+    ext = archive.suffix
+
+    if ext in (".gz", ".tgz"):
+        compression = "gz"
+    elif ext in (".bz2", ".tbz2"):
+        compression = "bz2"
+    elif ext == ".xz":
+        compression = "xz"
+    else:
+        raise ValueError(f"{archive.name} is not a supported archive")
+
+    tf = tarfile.open(archive, f"r:{compression}")
+    try:
+        for member in tf.getmembers():
+            if strip_top:
+                member_parts = pathlib.Path(member.name).parts
+                if len(member_parts) == 1:
+                    continue
+
+                path = pathlib.Path(member_parts[1]).joinpath(
+                    *member_parts[2:]
+                )
+                member.name = str(path)
+            tf.extract(member, path=dest)
+    finally:
+        tf.close()
+
+
+def unpack_zip(
+    archive: pathlib.Path, dest: pathlib.Path, *, strip_top: bool
+) -> None:
+
+    zf = zipfile.ZipFile(archive)
+
+    try:
+        for member in zf.infolist():
+            if strip_top:
+                member_parts = pathlib.Path(member.filename).parts
+                if len(member_parts) == 1:
+                    continue
+
+                relpath = pathlib.Path(member_parts[1]).joinpath(
+                    *member_parts[2:]
+                )
+            else:
+                relpath = pathlib.Path(member.filename)
+            targetpath = dest / relpath
+            if member.is_dir():
+                targetpath.mkdir(parents=True, exist_ok=True)
+            else:
+                dirname = targetpath.parent
+                if not dirname.exists():
+                    dirname.mkdir(parents=True)
+                with open(targetpath, "wb") as df, zf.open(member) as sf:
+                    shutil.copyfileobj(sf, df)
+    finally:
+        zf.close()

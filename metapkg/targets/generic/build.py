@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import pathlib
@@ -12,7 +14,10 @@ from metapkg import tools
 
 
 class Build(targets.Build):
-    def prepare(self):
+    _srcroot: pathlib.Path
+    _pkgroot: pathlib.Path
+
+    def prepare(self) -> None:
         super().prepare()
 
         self._pkgroot = self._droot / self._root_pkg.name_slot
@@ -37,10 +42,16 @@ class Build(targets.Build):
         self._tmproot = self._artifactroot / "tmp"
         self._installroot = self._artifactroot / "install"
 
-    def get_source_abspath(self):
+    def get_source_abspath(self) -> pathlib.Path:
         return self._srcroot
 
-    def get_path(self, path, *, relative_to, package=None):
+    def get_path(
+        self,
+        path: str | pathlib.Path,
+        *,
+        relative_to: targets.Location,
+        package: packages.BasePackage | None = None,
+    ) -> pathlib.Path:
         """Return *path* relative to *relative_to* location.
 
         :param pathlike path:
@@ -71,34 +82,51 @@ class Build(targets.Build):
                 return pathlib.Path("..") / ".." / path
         elif relative_to == "pkgbuild":
             return pathlib.Path("..") / ".." / ".." / path
-        elif relative_to is None:
+        elif relative_to == "fsroot":
             return (self.get_source_abspath() / path).resolve()
         else:
             raise ValueError(f"invalid relative_to argument: {relative_to}")
 
-    def get_helpers_root(self, *, relative_to="sourceroot"):
+    def get_helpers_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             pathlib.Path("build") / "helpers", relative_to=relative_to
         )
 
-    def get_source_root(self, *, relative_to="sourceroot"):
+    def get_source_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path("."), relative_to=relative_to)
 
-    def get_tarball_root(self, *, relative_to="sourceroot"):
+    def get_tarball_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             self._tmproot / "tarballs", relative_to=relative_to
         )
 
-    def get_patches_root(self, *, relative_to="sourceroot"):
+    def get_patches_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_tarball_root(relative_to=relative_to)
 
-    def get_extras_root(self, *, relative_to="sourceroot"):
+    def get_extras_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_source_root(relative_to=relative_to) / "extras"
 
-    def get_spec_root(self, *, relative_to="sourceroot"):
+    def get_spec_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path("SPECS"), relative_to=relative_to)
 
-    def get_source_dir(self, package, *, relative_to="sourceroot"):
+    def get_source_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         if package.name == self.root_package.name_slot:
             return self.get_dir(".", relative_to=relative_to)
         else:
@@ -108,41 +136,60 @@ class Build(targets.Build):
                 package=package,
             )
 
-    def get_temp_dir(self, package, *, relative_to="sourceroot"):
+    def get_temp_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._tmproot / package.name,
             relative_to=relative_to,
             package=package,
         )
 
-    def get_temp_root(self, *, relative_to="sourceroot"):
+    def get_temp_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(self._tmproot, relative_to=relative_to)
 
-    def get_image_root(self, *, relative_to="sourceroot"):
+    def get_image_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             self._tmproot / "buildroot" / self._root_pkg.name_slot,
             relative_to=relative_to,
         )
 
-    def get_build_dir(self, package, *, relative_to="sourceroot"):
+    def get_build_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._buildroot / package.name,
             relative_to=relative_to,
             package=package,
         )
 
-    def get_install_dir(self, package, *, relative_to="sourceroot"):
+    def get_install_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._installroot / package.name,
             relative_to=relative_to,
             package=package,
         )
 
-    def _get_tarball_tpl(self, package):
+    def _get_tarball_tpl(self, package: packages.BasePackage) -> str:
         rp = self._root_pkg
         return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
 
-    def build(self):
+    def build(self) -> None:
         self.prepare_tools()
         self.prepare_tarballs()
         self.prepare_patches()
@@ -152,18 +199,18 @@ class Build(targets.Build):
         self._build()
         self._package()
 
-    def _apply_patches(self):
-        proot = self.get_patches_root(relative_to=None)
+    def _apply_patches(self) -> None:
+        proot = self.get_patches_root(relative_to="fsroot")
         patch_cmd = shlex.split(self.sh_get_command("patch"))
-        sroot = self.get_dir("thirdparty", relative_to=None)
+        sroot = self.get_dir("thirdparty", relative_to="fsroot")
         for patchname in self._patches:
             patch = proot / patchname
             tools.cmd(
-                *(patch_cmd + ["-p1", "-i", patch]),
+                *(patch_cmd + ["-p1", "-i", str(patch)]),
                 cwd=sroot,
             )
 
-    def _write_makefile(self):
+    def _write_makefile(self) -> None:
         temp_root = self.get_temp_root(relative_to="sourceroot")
         image_root = self.get_image_root(relative_to="sourceroot")
 
@@ -205,7 +252,7 @@ class Build(targets.Build):
         with open(self._srcroot / "Makefile", "w") as f:
             f.write(makefile)
 
-    def _get_package_install_script(self, pkg) -> str:
+    def _get_package_install_script(self, pkg: packages.BasePackage) -> str:
         source_root = self.get_source_root(relative_to="pkgbuild")
         install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
         image_root = self.get_image_root(relative_to="sourceroot")
@@ -273,7 +320,7 @@ class Build(targets.Build):
         """
         )
 
-    def _get_package_extras_script(self, pkg) -> str:
+    def _get_package_extras_script(self, pkg: packages.BasePackage) -> str:
         lines = []
         install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
         bindir = self.get_install_path("systembin").relative_to("/")
@@ -284,7 +331,7 @@ class Build(targets.Build):
             lines.append(f'ln -sf "{cmd}" "{install_dir / bindir}/{cmdname}"')
             lines.append(f"echo {bindir / cmdname}")
 
-        extras_dir = self.get_extras_root(relative_to=None)
+        extras_dir = self.get_extras_root(relative_to="fsroot")
         for path, content in pkg.get_service_scripts(self).items():
             directory = extras_dir / path.parent.relative_to("/")
             directory.mkdir(parents=True, exist_ok=True)
@@ -295,7 +342,7 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _build(self):
+    def _build(self) -> None:
         make = self.sh_get_command("make", relative_to="sourceroot")
         command = shlex.split(make)
         tools.cmd(
@@ -305,7 +352,7 @@ class Build(targets.Build):
             stderr=subprocess.STDOUT,
         )
 
-    def _package(self):
+    def _package(self) -> None:
         pkg = self._root_pkg
         title = pkg.name
 
@@ -323,12 +370,12 @@ class Build(targets.Build):
             .split("\n")
         )
 
-        if self._outputroot is not None:
-            if not self._outputroot.exists():
-                self._outputroot.mkdir(parents=True, exist_ok=True)
-            elif tuple(self._outputroot.iterdir()):
-                raise RuntimeError(
-                    f"target directory {self._outputroot} is not empty")
+        if not self._outputroot.exists():
+            self._outputroot.mkdir(parents=True, exist_ok=True)
+        elif tuple(self._outputroot.iterdir()):
+            raise RuntimeError(
+                f"target directory {self._outputroot} is not empty"
+            )
 
         version = pkg.pretty_version
         suffix = self._revision

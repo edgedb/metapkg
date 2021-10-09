@@ -11,12 +11,15 @@ import stat
 import subprocess
 import textwrap
 
+from metapkg import packages
 from metapkg import targets
 from metapkg import tools
 
 
 class Build(targets.Build):
-    def prepare(self):
+    _target: targets.LinuxTarget
+
+    def prepare(self) -> None:
         super().prepare()
 
         self._pkgroot = self._droot / self._root_pkg.name_slot
@@ -46,10 +49,16 @@ class Build(targets.Build):
 
         self._bin_shims = self._root_pkg.get_bin_shims(self)
 
-    def get_source_abspath(self):
+    def get_source_abspath(self) -> pathlib.Path:
         return self._srcroot
 
-    def get_path(self, path, *, relative_to, package=None):
+    def get_path(
+        self,
+        path: str | pathlib.Path,
+        *,
+        relative_to: targets.Location,
+        package: packages.BasePackage | None = None,
+    ) -> pathlib.Path:
         """Return *path* relative to *relative_to* location.
 
         :param pathlike path:
@@ -72,63 +81,97 @@ class Build(targets.Build):
             return pathlib.Path("..") / path
         elif relative_to == "pkgbuild":
             return pathlib.Path("..") / ".." / ".." / path
-        elif relative_to is None:
+        elif relative_to == "fsroot":
             return (self.get_source_abspath() / path).resolve()
         else:
             raise ValueError(f"invalid relative_to argument: {relative_to}")
 
-    def get_spec_root(self, *, relative_to="sourceroot"):
+    def get_spec_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path("debian"), relative_to=relative_to)
 
-    def get_helpers_root(self, *, relative_to="sourceroot"):
+    def get_helpers_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             pathlib.Path("debian") / "helpers", relative_to=relative_to
         )
 
-    def get_source_root(self, *, relative_to="sourceroot"):
+    def get_source_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path("."), relative_to=relative_to)
 
-    def get_tarball_root(self, *, relative_to="sourceroot"):
+    def get_tarball_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(pathlib.Path(".."), relative_to=relative_to)
 
-    def get_patches_root(self, *, relative_to="sourceroot"):
+    def get_patches_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             pathlib.Path("debian") / "patches", relative_to=relative_to
         )
 
-    def get_extras_root(self, *, relative_to="sourceroot"):
+    def get_extras_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(
             pathlib.Path("debian") / "extras", relative_to=relative_to
         )
 
-    def get_source_dir(self, package, *, relative_to="sourceroot"):
+    def get_source_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             pathlib.Path(package.name), relative_to=relative_to
         )
 
-    def get_temp_dir(self, package, *, relative_to="sourceroot"):
+    def get_temp_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._tmproot / package.name, relative_to=relative_to
         )
 
-    def get_temp_root(self, *, relative_to="sourceroot"):
+    def get_temp_root(
+        self, *, relative_to: targets.Location = "sourceroot"
+    ) -> pathlib.Path:
         return self.get_dir(self._tmproot, relative_to=relative_to)
 
-    def get_build_dir(self, package, *, relative_to="sourceroot"):
+    def get_build_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._buildroot / package.name, relative_to=relative_to
         )
 
-    def get_install_dir(self, package, *, relative_to="sourceroot"):
+    def get_install_dir(
+        self,
+        package: packages.BasePackage,
+        *,
+        relative_to: targets.Location = "sourceroot",
+    ) -> pathlib.Path:
         return self.get_dir(
             self._installroot / package.name, relative_to=relative_to
         )
 
-    def _get_tarball_tpl(self, package):
+    def _get_tarball_tpl(self, package: packages.BasePackage) -> str:
         rp = self._root_pkg
         return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
 
-    def build(self):
+    def build(self) -> None:
         self.prepare_tools()
         self.prepare_tarballs()
         self.unpack_sources()
@@ -140,7 +183,7 @@ class Build(targets.Build):
         self._write_scriptlets()
         self._dpkg_buildpackage()
 
-    def _write_common_bits(self):
+    def _write_common_bits(self) -> None:
         debsource = self._debroot / "source"
         debsource.mkdir()
         with open(debsource / "format", "w") as f:
@@ -148,7 +191,7 @@ class Build(targets.Build):
         with open(self._debroot / "compat", "w") as f:
             f.write("9\n")
 
-    def _write_control(self):
+    def _write_control(self) -> None:
         build_deps = ",\n ".join(
             f"{dep.system_name} (>= {dep.pretty_version})"
             for dep in self._build_deps
@@ -283,7 +326,9 @@ class Build(targets.Build):
             build_deps=build_deps,
             conflicts_spec=conflicts_spec,
             provides_spec=provides_spec,
-            section=self._target.get_package_group(self._root_pkg),
+            section=(
+                self._target.get_package_group(self._root_pkg)  # type: ignore
+            ),
             description=self._root_pkg.description,
             maintainer="MagicStack Inc. <hello@magic.io>",
             common_pkg=common_package,
@@ -297,7 +342,7 @@ class Build(targets.Build):
         with open(self._debroot / f"{name}.shlibs", "w") as f:
             f.write("")
 
-    def _write_changelog(self):
+    def _write_changelog(self) -> None:
         distro = self._target.distro["codename"]
         if self._subdist:
             distro = f"{distro}.{self._subdist}"
@@ -323,10 +368,10 @@ class Build(targets.Build):
         with open(self._debroot / "changelog", "w") as f:
             f.write(changelog)
 
-    def _write_rules(self):
+    def _write_rules(self) -> None:
         shlib_paths = self._get_bundled_shlib_paths()
         if shlib_paths:
-            shlib_paths_spec = ':'.join(
+            shlib_paths_spec = ":".join(
                 shlex.quote(str(p)) for p in shlib_paths
             )
             shlib_paths_opt = f"-l {shlib_paths_spec}"
@@ -384,7 +429,9 @@ class Build(targets.Build):
         """
         ).format(
             name=self._root_pkg.name_slot,
-            target_global_rules=self._target.get_global_rules(),
+            target_global_rules=(
+                self._target.get_global_rules()  # type: ignore
+            ),
             build_steps=self._write_script("complete"),
             install_extras=textwrap.indent(self._get_install_extras(), "\t"),
             install_steps=self._write_script("install", installable_only=True),
@@ -398,10 +445,9 @@ class Build(targets.Build):
 
         with open(self._debroot / "rules", "w") as f:
             f.write(rules)
-            os.fchmod(f.fileno(), 0o755)
+            os.chmod(f.name, 0o755)
 
-    def _write_scriptlets(self):
-
+    def _write_scriptlets(self) -> None:
         stagemap = {
             "before_install": "preinst",
             "after_install": "postinst",
@@ -413,12 +459,12 @@ class Build(targets.Build):
             script = self.get_script(genstage, installable_only=True)
             if script:
                 stagefile = f"{self.root_package.name_slot}.{debstage}"
-                spec_root = self.get_spec_root(relative_to=None)
+                spec_root = self.get_spec_root(relative_to="fsroot")
                 with open(spec_root / stagefile, "w") as f:
                     print("#!/bin/bash\nset -e", file=f)
                     print(script, file=f)
 
-    def _get_package_install_script(self, pkg) -> str:
+    def _get_package_install_script(self, pkg: packages.BasePackage) -> str:
         source_root = self.get_source_root(relative_to="pkgbuild")
         install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
         temp_dir = self.get_temp_dir(pkg, relative_to="sourceroot")
@@ -470,7 +516,7 @@ class Build(targets.Build):
         """
         )
 
-    def _get_bundled_shlib_paths(self) -> List[str]:
+    def _get_bundled_shlib_paths(self) -> list[pathlib.Path]:
         paths = []
 
         for pkg in self._installable:
@@ -482,7 +528,7 @@ class Build(targets.Build):
         lines = []
         symlinks = []
 
-        extras_dir = self.get_extras_root(relative_to=None)
+        extras_dir = self.get_extras_root(relative_to="fsroot")
         sys_bindir = self.get_install_path("systembin").relative_to("/")
 
         for pkg in self._installable:
@@ -501,7 +547,7 @@ class Build(targets.Build):
                 )
 
         if symlinks:
-            spec_root = self.get_spec_root(relative_to=None)
+            spec_root = self.get_spec_root(relative_to="fsroot")
             links = spec_root / f"{self.root_package.name_slot}.links"
             with open(links, "w") as f:
                 print(
@@ -519,8 +565,8 @@ class Build(targets.Build):
 
             sysbindir = self.get_install_path("systembin")
 
-            for path, data in self._bin_shims.items():
-                bin_path = (sysbindir / path).relative_to("/")
+            for shim_path, data in self._bin_shims.items():
+                bin_path = (sysbindir / shim_path).relative_to("/")
                 inst_path = extras_dir / bin_path
                 inst_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(inst_path, "w") as f:
@@ -546,13 +592,14 @@ class Build(targets.Build):
 
         return "\n".join(lines)
 
-    def _dpkg_buildpackage(self):
+    def _dpkg_buildpackage(self) -> None:
         if self._outputroot is not None:
             if not self._outputroot.exists():
                 self._outputroot.mkdir(parents=True, exist_ok=True)
             elif tuple(self._outputroot.iterdir()):
                 raise RuntimeError(
-                    f"target directory {self._outputroot} is not empty")
+                    f"target directory {self._outputroot} is not empty"
+                )
 
         env = os.environ.copy()
         env["DEBIAN_FRONTEND"] = "noninteractive"
@@ -622,11 +669,13 @@ class Build(targets.Build):
                         output_name = entry.name
                     shutil.copy2(entry, self._outputroot / output_name)
 
+            assert isinstance(self._target, targets.LinuxTarget)
             distro = self._target.distro["codename"]
             if self._subdist:
                 distro = f"{distro}.{self._subdist}"
             root_version = (
-                f"{self._root_pkg.version.text}-{self._revision}~{distro}")
+                f"{self._root_pkg.version.text}-{self._revision}~{distro}"
+            )
             with open(self._outputroot / "package-version.json", "w") as f:
                 installref = f"{self._root_pkg.name_slot}={root_version}"
                 json.dump(

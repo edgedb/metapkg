@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import graphlib
 import importlib
@@ -16,7 +18,6 @@ from metapkg import targets
 from metapkg.packages import python as af_python
 from metapkg.packages import repository as af_repo
 from metapkg.packages import sources as af_sources
-from metapkg.packages import topological
 
 from . import base
 
@@ -44,7 +45,7 @@ class Build(base.Command):
 
     _loggers = ["metapkg.build"]
 
-    def handle(self):
+    def handle(self) -> int:
         pkgname = self.argument("name")
         keepwork = self.option("keepwork")
         destination = self.option("dest")
@@ -88,6 +89,7 @@ class Build(base.Command):
         )
         af_repo.bundle_repo.add_package(root)
 
+        target: targets.Target
         if generic:
             if platform.system() == "Linux":
                 target = targets.generic.GenericLinuxTarget()
@@ -222,3 +224,5 @@ class Build(base.Command):
         finally:
             if not keepwork:
                 tempdir.cleanup()
+
+        return 0

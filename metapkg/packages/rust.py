@@ -1,3 +1,8 @@
+from __future__ import annotations
+from typing import (
+    TYPE_CHECKING,
+)
+
 import datetime
 import textwrap
 
@@ -6,17 +11,20 @@ from metapkg import tools
 
 from . import base
 
+if TYPE_CHECKING:
+    from cleo.io import io as cleo_io
+
 
 class BundledRustPackage(base.BundledPackage):
     @classmethod
     def resolve(
         cls,
-        io,
+        io: cleo_io.IO,
         *,
-        ref=None,
-        version=None,
-        is_release=False,
-    ) -> "BundledRustPackage":
+        ref: str | None = None,
+        version: str | None = None,
+        is_release: bool = False,
+    ) -> BundledRustPackage:
         repo_dir = cls.resolve_vcs_source(io, ref=ref)
         out = tools.cmd("cargo", "pkgid", cwd=repo_dir).strip()
 
@@ -30,13 +38,13 @@ class BundledRustPackage(base.BundledPackage):
         package = cls(version, source_version=ref or "HEAD")
         return package
 
-    def get_configure_script(self, build) -> str:
+    def get_configure_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_build_script(self, build) -> str:
+    def get_build_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_build_install_script(self, build) -> str:
+    def get_build_install_script(self, build: targets.Build) -> str:
         cargo = build.sh_get_command("cargo")
         installdest = build.get_temp_dir(self, relative_to="pkgbuild")
         src = build.get_source_dir(self, relative_to="pkgbuild")

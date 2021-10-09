@@ -25,4 +25,9 @@ setup(
         "setuptools-rust>=0.11.4",
         "tomli>=1.2",
     ],
+    extras_require={
+        "test": [
+            "types-requests~=2.25.9",
+        ]
+    },
 )

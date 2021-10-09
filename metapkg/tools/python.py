@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import glob
 import json
 import pathlib
@@ -14,7 +16,7 @@ import tomli
 from metapkg import tools
 
 
-def get_dist(path):
+def get_dist(path: pathlib.Path) -> distlib.database.InstalledDistribution:
 
     with tempfile.TemporaryDirectory() as d:
         tools.cmd(
@@ -81,7 +83,7 @@ SCRIPT = textwrap.dedent(
 )
 
 
-def get_build_requires_from_setup_py(setup_py):
+def get_build_requires_from_setup_py(setup_py: pathlib.Path) -> list[str]:
     scriptfile = tempfile.NamedTemporaryFile(
         "w+t", delete=False, dir=str(setup_py.parent)
     )
@@ -95,17 +97,19 @@ def get_build_requires_from_setup_py(setup_py):
             universal_newlines=True,
             cwd=str(setup_py.parent),
         )
-        return json.loads(process.stdout)
+        return json.loads(process.stdout)  # type: ignore
     finally:
         pathlib.Path(scriptfile.name).unlink()
 
 
-def get_build_requires_from_pyproject_toml(pyproject_toml):
-    with open(pyproject_toml, "r") as f:
+def get_build_requires_from_pyproject_toml(
+    pyproject_toml: pathlib.Path,
+) -> list[str]:
+    with open(pyproject_toml, "rb") as f:
         ppt = tomli.load(f)
 
     build_system = ppt.get("build-system")
     if not build_system:
         return []
 
-    return build_system.get("requires", [])
+    return build_system.get("requires", [])  # type: ignore

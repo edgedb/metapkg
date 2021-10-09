@@ -6,6 +6,7 @@ import shlex
 import textwrap
 
 from metapkg import tools
+from metapkg import packages as mpkg
 from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets import generic
@@ -31,16 +32,16 @@ PACKAGE_WHITELIST = [
 ]
 
 
-class MacOSAddUserAction(targets.TargetAction):
+class MacOSAddUserAction(targets.AddUserAction):
     def get_script(
         self,
         *,
-        name,
-        group=None,
-        homedir=None,
-        shell=False,
-        system=False,
-        description=None,
+        name: str,
+        group: str | None = None,
+        homedir: str | None = None,
+        shell: bool = False,
+        system: bool = False,
+        description: str | None = None,
     ) -> str:
 
         if group:
@@ -182,9 +183,15 @@ class MacOSAddUserAction(targets.TargetAction):
         )
 
     def _get_dscl_cmd(
-        self, name, *, action="create", key=None, value=None, indent=0
-    ):
-        args = {
+        self,
+        name: str,
+        *,
+        action: str = "create",
+        key: str | None = None,
+        value: str | None = None,
+        indent: int = 0,
+    ) -> str:
+        args: dict[str, str | None] = {
             ".": None,
             action: None,
             name: None,
@@ -219,10 +226,10 @@ class MacOSRepository(repository.Repository):
 
 
 class MacOSTarget(generic.GenericTarget):
-    def __init__(self, version):
+    def __init__(self, version: tuple[int, ...]):
         self.version = version
 
-    def prepare(self):
+    def prepare(self) -> None:
         tools.cmd("brew", "update")
         brew_inst = (
             'if brew ls --versions "$1"; then brew upgrade "$1"; '
@@ -232,27 +239,36 @@ class MacOSTarget(generic.GenericTarget):
         tools.cmd("/bin/sh", "-c", brew_inst, "--", "make")
 
     @property
-    def name(self):
+    def name(self) -> str:
         return f'macOS {".".join(str(v) for v in self.version)}'
 
     def get_package_system_ident(
-        self, build, package, include_slot: bool = False
-    ):
+        self,
+        build: targets.Build,
+        package: mpkg.BundledPackage,
+        include_slot: bool = False,
+    ) -> str:
         if include_slot:
             return f"{package.identifier}{package.slot_suffix}"
         else:
             return package.identifier
 
-    def get_su_script(self, build, script, user) -> str:
+    def get_su_script(
+        self, build: targets.Build, script: str, user: str
+    ) -> str:
         return f"su '{user}' -c {shlex.quote(script)}\n"
 
-    def get_action(self, name, build) -> targets.TargetAction:
+    def get_action(
+        self, name: str, build: targets.Build
+    ) -> targets.TargetAction:
         if name == "adduser":
             return MacOSAddUserAction(build)
         else:
             return super().get_action(name, build)
 
-    def get_install_path(self, build, aspect) -> pathlib.Path:
+    def get_install_path(
+        self, build: targets.Build, aspect: str
+    ) -> pathlib.Path:
         if aspect == "localstate":
             return pathlib.Path("/") / "var"
         elif aspect == "userconf":
@@ -264,33 +280,39 @@ class MacOSTarget(generic.GenericTarget):
         else:
             return super().get_install_path(build, aspect)
 
-    def get_package_repository(self):
+    def get_package_repository(self) -> MacOSRepository:
         return MacOSRepository()
 
-    def get_framework_root(self, build) -> pathlib.Path:
+    def get_framework_root(self, build: targets.Build) -> pathlib.Path:
         rpkg = build.root_package
         return pathlib.Path(f"/Library/Frameworks/{rpkg.title}.framework")
 
-    def get_install_root(self, build) -> pathlib.Path:
+    def get_install_root(self, build: targets.Build) -> pathlib.Path:
         rpkg = build.root_package
         return self.get_framework_root(build) / "Versions" / rpkg.slot
 
-    def get_resource_path(self, build, resource):
+    def get_resource_path(
+        self, build: targets.Build, resource: str
+    ) -> pathlib.Path | None:
         if resource == "system-daemons":
             return pathlib.Path("/Library/LaunchDaemons/")
         else:
             return super().get_resource_path(build, resource)
 
-    def service_scripts_for_package(self, build, package) -> dict:
+    def service_scripts_for_package(
+        self, build: targets.Build, package: mpkg.BasePackage
+    ) -> dict[pathlib.Path, str]:
         units = package.read_support_files(build, "*.plist.in")
         launchd_path = self.get_resource_path(build, "system-daemons")
         return {launchd_path / name: data for name, data in units.items()}
 
-    def get_capabilities(self) -> list:
+    def get_capabilities(self) -> list[str]:
         capabilities = super().get_capabilities()
         return capabilities + ["launchd"]
 
-    def get_package_ld_env(self, build, package, wd) -> Dict[str, str]:
+    def get_package_ld_env(
+        self, build: targets.Build, package: mpkg.BasePackage, wd: str
+    ) -> dict[str, str]:
         pkg_install_root = build.get_install_dir(
             package, relative_to="pkgbuild"
         )
@@ -306,26 +328,31 @@ class MacOSTarget(generic.GenericTarget):
             "DYLD_FRAMEWORK_PATH": f"{wd}/{pkg_fw_root}",
         }
 
-    def get_ld_env_keys(self, build) -> List[str]:
+    def get_ld_env_keys(self, build: targets.Build) -> List[str]:
         return ["DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH"]
 
-    def get_shlib_path_link_time_ldflags(self, build, path) -> List[str]:
+    def get_shlib_path_link_time_ldflags(
+        self, build: targets.Build, path: str
+    ) -> list[str]:
         return [f"-L{path}"]
 
-    def get_shlib_path_run_time_ldflags(self, build, path) -> List[str]:
+    def get_shlib_path_run_time_ldflags(
+        self, build: targets.Build, path: str
+    ) -> List[str]:
         return []
 
 
 class ModernMacOSTarget(MacOSTarget):
-    def build(self, **kwargs):
+    def build(self, **kwargs: Any) -> None:
         return macbuild.Build(self, **kwargs).run()
 
 
-def get_specific_target(version):
+def get_specific_target(version: tuple[int, ...]) -> MacOSTarget:
 
     if version >= (10, 10):
         return ModernMacOSTarget(version)
     else:
         raise NotImplementedError(
-            f'macOS version {".".join(version)} is not supported'
+            f'macOS version {".".join(str(v) for v in version)}'
+            " is not supported"
         )
