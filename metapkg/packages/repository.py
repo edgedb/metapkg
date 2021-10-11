@@ -99,7 +99,7 @@ class Provider(poetry_provider.Provider):
 
             for req in dist.metadata.run_requires:
                 dep = utils.python_dependency_from_pep_508(req)
-                package.requires.append(dep)
+                package.add_dependency(dep)
 
             return [package]
         else:

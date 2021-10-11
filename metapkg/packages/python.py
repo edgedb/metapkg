@@ -33,7 +33,10 @@ class PyPiRepository(pypi_repository.PyPiRepository):
     def __init__(self, io) -> None:
         super().__init__()
         self._io = io
-        self._pkg_impls: Dict[str, Type[PythonPackage]] = {}
+        self._pkg_impls: Dict[str, Type[PythonPackage]] = {
+            "flit-core": FlitCore,
+            "tomli": Tomli,
+        }
 
     def register_package_impl(
         self,
@@ -111,10 +114,11 @@ class PyPiRepository(pypi_repository.PyPiRepository):
                 continue
             dep._name = f"pypkg-{dep.name}"
             dep._pretty_name = f"pypkg-{dep.pretty_name}"
-            package.requires.append(dep)
+            package.add_dependency(dep)
 
-        package.requires.append(python_dependency)
-        package.requires.extend(package.get_requirements())
+        package.add_dependency(python_dependency)
+        for req in package.get_requirements():
+            package.add_dependency(req)
         package.source = self.get_sdist_source(pypi_info)
         package.build_requires = self._get_build_requires(package)
 
@@ -226,6 +230,8 @@ def get_build_requires_from_srcdir(package, path):
     if not breqs and package.name not in {
         "pypkg-wheel",
         "pypkg-setuptools",
+        "pypkg-flit-core",
+        "pypkg-poetry-core",
     }:
         breqs = ["setuptools >= 40.8.0", "wheel"]
 
@@ -443,6 +449,9 @@ class PythonPackage(BasePythonPackage):
 
         return [self.source]
 
+    def get_cyclic_runtime_deps(self) -> frozenset[str]:
+        return frozenset()
+
     def __repr__(self):
         return "<PythonPackage {}>".format(self.unique_name)
 
@@ -503,3 +512,16 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
             return f"{static_list}\n{wheel_list}"
         else:
             return wheel_list
+
+
+class FlitCore(PythonPackage):
+    def get_cyclic_runtime_deps(self) -> frozenset[str]:
+        return frozenset({"pypkg-tomli"})
+
+
+class Tomli(PythonPackage):
+    def get_build_wheel_env(self, build) -> dict[str, str]:
+        env = dict(super().get_build_wheel_env(build))
+        sdir = build.get_source_dir(self, relative_to="pkgbuild")
+        env["EXTRA_PYTHONPATH"] = sdir
+        return env

@@ -1,3 +1,5 @@
+import collections
+import graphlib
 import importlib
 import os
 import pathlib
@@ -64,9 +66,11 @@ class Build(base.Command):
             if "extras" not in pkgcls.sources[0]:
                 pkgcls.sources[0]["extras"] = {}
             pkgcls.sources[0]["extras"]["version"] = src_ref
-        pkg = pkgcls.resolve(self.io, version=version, is_release=is_release)
+        root_pkg = pkgcls.resolve(
+            self.io, version=version, is_release=is_release
+        )
 
-        sources = pkg.get_sources()
+        sources = root_pkg.get_sources()
 
         if len(sources) != 1:
             self.error("Only single-source git packages are supported")
@@ -79,7 +83,9 @@ class Build(base.Command):
 
         root = project_package.ProjectPackage("__root__", "1")
         root.python_versions = af_python.python_dependency.pretty_constraint
-        root.add_dependency(poetry_dep.Dependency(pkg.name, pkg.version))
+        root.add_dependency(
+            poetry_dep.Dependency(root_pkg.name, root_pkg.version)
+        )
         af_repo.bundle_repo.add_package(root)
 
         if generic:
@@ -99,7 +105,7 @@ class Build(base.Command):
         repo_pool.add_repository(target.get_package_repository())
         repo_pool.add_repository(af_repo.bundle_repo, secondary=True)
 
-        item_repo = pkg.get_package_repository(target, io=self.io)
+        item_repo = root_pkg.get_package_repository(target, io=self.io)
         if item_repo is not None:
             repo_pool.add_repository(item_repo, secondary=True)
 
@@ -107,9 +113,10 @@ class Build(base.Command):
         resolution = poetry_solver.resolve_version(root, provider)
 
         env = poetry_env.SystemEnv(pathlib.Path(sys.executable))
-
+        pkg_map = {}
         graph = {}
         for dep_package in resolution.packages:
+            pkg_map[dep_package.name] = dep_package.package
             package = dep_package.package
             if env.is_valid_for_marker(dep_package.dependency.marker):
                 deps = {
@@ -117,24 +124,28 @@ class Build(base.Command):
                     for req in package.requires
                     if env.is_valid_for_marker(req.marker)
                 }
-                graph[package.name] = {"item": package, "deps": deps}
-        packages = list(topological.sort(graph))
+                graph[package.name] = deps
+        sorter = graphlib.TopologicalSorter(graph)
+        packages = [pkg_map[pn] for pn in sorter.static_order()]
 
         # Build a separate package list for build deps.
-        build_deps = {}
         build_root = project_package.ProjectPackage("__build_root__", "1")
         build_root.python_versions = (
             af_python.python_dependency.pretty_constraint
         )
-        build_root.add_dependency(poetry_dep.Dependency(pkg.name, pkg.version))
+        build_root.add_dependency(
+            poetry_dep.Dependency(root_pkg.name, root_pkg.version)
+        )
         build_root.build_requires = []
         provider = af_repo.Provider(
             build_root, repo_pool, self.io, include_build_reqs=True
         )
         resolution = poetry_solver.resolve_version(build_root, provider)
 
+        pkg_map = {}
         graph = {}
         for dep_package in resolution.packages:
+            pkg_map[dep_package.name] = dep_package.package
             package = dep_package.package
             if env.is_valid_for_marker(dep_package.dependency.marker):
                 reqs = set(package.requires) | set(
@@ -146,9 +157,45 @@ class Build(base.Command):
                     if req.is_activated()
                     and env.is_valid_for_marker(req.marker)
                 }
-                graph[package.name] = {"item": package, "deps": deps}
+                graph[package.name] = deps
 
-        build_deps = list(topological.sort(graph))
+        # Workaround cycles in build/runtime dependencies between
+        # packages.  This requires the depending package to explicitly
+        # declare its cyclic runtime dependencies in get_cyclic_runtime_deps()
+        # and then the cyclic dependency must take care to inject itself
+        # into the dependent's context to build itself (e.g. by manipulating
+        # PYTHONPATH at build time.)  An example of such cycle is
+        # flit-core -> tomli -> flit-core.
+        cyclic_runtime_deps = collections.defaultdict(list)
+        last_cycle = None
+        current_cycle = None
+        while True:
+            sorter = graphlib.TopologicalSorter(graph)
+
+            try:
+                build_pkgs = [pkg_map[pn] for pn in sorter.static_order()]
+            except graphlib.CycleError as e:
+                cycle = e.args[1]
+                dep = pkg_map[cycle[-1]]
+                pkg_with_dep = pkg_map[cycle[-2]]
+                if (
+                    dep.name not in pkg_with_dep.get_cyclic_runtime_deps()
+                    or len(cycle) > 3
+                    or cycle == last_cycle
+                ):
+                    raise e
+                last_cycle = current_cycle
+                current_cycle = cycle
+                cyclic_runtime_deps[pkg_with_dep].append(dep)
+                graph[pkg_with_dep.name].remove(dep.name)
+            else:
+                break
+
+        for pkg_with_cr_deps, cr_deps in cyclic_runtime_deps.items():
+            for i, build_pkg in enumerate(build_pkgs):
+                if build_pkg == pkg_with_cr_deps:
+                    build_pkgs[i + 1 : i + 1] = cr_deps
+                    break
 
         if keepwork:
             workdir = tempfile.mkdtemp(prefix="metapkg.")
@@ -160,9 +207,9 @@ class Build(base.Command):
 
         try:
             target.build(
-                root_pkg=pkg,
+                root_pkg=root_pkg,
                 deps=packages,
-                build_deps=build_deps,
+                build_deps=build_pkgs,
                 io=self.io,
                 workdir=workdir,
                 outputdir=destination,
