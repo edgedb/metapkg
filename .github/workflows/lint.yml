@@ -1,0 +1,23 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - master
+      - ci
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  lint:
+    strategy:
+      matrix:
+        # A separate run on Windows is needed
+        # because typing of stdlib might be different.
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: psf/black@stable
+      - uses: edgedb/action-mypy@main
