@@ -10,7 +10,7 @@ from metapkg.targets import generic
 from metapkg import tools
 
 
-class Build(generic.Build):
+class GenericBuild(generic.Build):
     def prepare(self) -> None:
         super().prepare()
         self._system_tools["bash"] = "/usr/local/bin/bash"
@@ -18,7 +18,10 @@ class Build(generic.Build):
             "env -u MAKELEVEL /usr/local/bin/gmake "
             f"-j{os.cpu_count()} SHELL=/usr/local/bin/bash"
         )
+        self._system_tools["sed"] = "/usr/local/bin/gsed"
 
+
+class NativePackageBuild(GenericBuild):
     def _build(self) -> None:
         super()._build()
         self._build_installer()

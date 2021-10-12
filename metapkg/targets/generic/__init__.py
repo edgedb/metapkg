@@ -4,16 +4,20 @@ from typing import *
 import pathlib
 
 from metapkg import packages as mpkg
+from metapkg import tools
 from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets.package import SystemPackage
 
-from .build import Build as Build
+from . import build as genbuild
 
 if TYPE_CHECKING:
     from cleo.io import io as cleo_io
     from poetry.core.packages import dependency as poetry_dep
     from poetry.core.packages import package as poetry_pkg
+
+
+Build = genbuild.Build
 
 
 PACKAGE_WHITELIST = [
@@ -111,7 +115,7 @@ class GenericTarget(targets.FHSTarget):
         subdist: str | None,
         extra_opt: bool,
     ) -> None:
-        return Build(
+        return genbuild.Build(
             self,
             io=io,
             root_pkg=root_pkg,

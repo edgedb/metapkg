@@ -46,6 +46,7 @@ class BundledRustPackage(base.BundledPackage):
 
     def get_build_install_script(self, build: targets.Build) -> str:
         cargo = build.sh_get_command("cargo")
+        sed = build.sh_get_command("sed")
         installdest = build.get_temp_dir(self, relative_to="pkgbuild")
         src = build.get_source_dir(self, relative_to="pkgbuild")
         bindir = build.get_install_path("systembin").relative_to("/")
@@ -58,7 +59,7 @@ class BundledRustPackage(base.BundledPackage):
             target = ""
         return textwrap.dedent(
             f"""\
-            sed -i -e '/\\[package\\]/,/\\[.*\\]/{{
+            {sed} -i -e '/\\[package\\]/,/\\[.*\\]/{{
                     s/^version\\s*=.*/version = "{self.version.text}"/;
                 }}' \\
                 "{src}/Cargo.toml"

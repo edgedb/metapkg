@@ -5,8 +5,8 @@ import pathlib
 import shlex
 import textwrap
 
-from metapkg import tools
 from metapkg import packages as mpkg
+from metapkg import tools
 from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets import generic
@@ -225,10 +225,7 @@ class MacOSRepository(repository.Repository):
             return []
 
 
-class MacOSTarget(generic.GenericTarget):
-    def __init__(self, version: tuple[int, ...]):
-        self.version = version
-
+class GenericMacOSTarget(generic.GenericTarget):
     def prepare(self) -> None:
         tools.cmd("brew", "update")
         brew_inst = (
@@ -237,6 +234,15 @@ class MacOSTarget(generic.GenericTarget):
         )
         tools.cmd("/bin/sh", "-c", brew_inst, "--", "bash")
         tools.cmd("/bin/sh", "-c", brew_inst, "--", "make")
+        tools.cmd("/bin/sh", "-c", brew_inst, "--", "gnu-sed")
+
+    def build(self, **kwargs: Any) -> None:
+        return macbuild.GenericBuild(self, **kwargs).run()
+
+
+class MacOSTarget(GenericMacOSTarget):
+    def __init__(self, version: tuple[int, ...]) -> None:
+        self.version = version
 
     @property
     def name(self) -> str:
@@ -344,7 +350,7 @@ class MacOSTarget(generic.GenericTarget):
 
 class ModernMacOSTarget(MacOSTarget):
     def build(self, **kwargs: Any) -> None:
-        return macbuild.Build(self, **kwargs).run()
+        return macbuild.NativePackageBuild(self, **kwargs).run()
 
 
 def get_specific_target(version: tuple[int, ...]) -> MacOSTarget:
