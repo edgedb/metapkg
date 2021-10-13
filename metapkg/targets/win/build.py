@@ -3,8 +3,8 @@ from metapkg.targets import generic
 
 
 class Build(generic.Build):
-    def prepare(self) -> None:
-        super().prepare()
+    def define_tools(self) -> None:
+        super().define_tools()
         # "realbash" below is to circumvent a dubious practice
         # of Windows intercepting bare invocations of "bash" to mean
         # "WSL", since make runs its shells using bare names even

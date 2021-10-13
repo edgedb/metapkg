@@ -23,21 +23,6 @@ class Build(targets.Build):
         self._pkgroot = self._droot / self._root_pkg.name_slot
         self._srcroot = self._pkgroot / self._root_pkg.name_slot
 
-        # Undefining MAKELEVEL is required because
-        # some package makefiles have
-        # conditions on MAKELEVEL.
-        self._system_tools["make"] = "env -u MAKELEVEL make -j{}".format(
-            os.cpu_count()
-        )
-        self._system_tools["cp"] = "cp"
-        self._system_tools["cargo"] = "cargo"
-        self._system_tools["python"] = "python3"
-        self._system_tools["install"] = "install"
-        self._system_tools["patch"] = "patch"
-        self._system_tools["useradd"] = "useradd"
-        self._system_tools["groupadd"] = "groupadd"
-        self._system_tools["sed"] = "sed"
-
         self._artifactroot = pathlib.Path("_artifacts")
         self._buildroot = self._artifactroot / "build"
         self._tmproot = self._artifactroot / "tmp"
@@ -427,14 +412,3 @@ class Build(targets.Build):
                             an / pathlib.Path(file).relative_to(image_root)
                         ),
                     )
-
-
-class GenericMacOSBuild(Build):
-    def prepare(self) -> None:
-        super().prepare()
-        self._system_tools["bash"] = "/usr/local/bin/bash"
-        self._system_tools["make"] = (
-            "env -u MAKELEVEL /usr/local/bin/gmake "
-            f"-j{os.cpu_count()} SHELL=/usr/local/bin/bash"
-        )
-        self._system_tools["sed"] = "/usr/local/bin/gsed"

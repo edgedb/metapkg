@@ -25,20 +25,6 @@ class Build(targets.Build):
         self._pkgroot = self._droot / self._root_pkg.name_slot
         self._srcroot = self._pkgroot / self._root_pkg.name_slot
         self._debroot = self._srcroot / "debian"
-
-        # Undefining MAKELEVEL is required because debian/rules
-        # is a Makefile, and some package makefiles have
-        # conditions on MAKELEVEL.
-        self._system_tools["make"] = "env -u MAKELEVEL make -j{}".format(
-            os.cpu_count()
-        )
-        self._system_tools["cargo"] = "cargo"
-        self._system_tools["python"] = "python3"
-        self._system_tools["cp"] = "cp"
-        self._system_tools["install"] = "install"
-        self._system_tools["useradd"] = "useradd"
-        self._system_tools["groupadd"] = "groupadd"
-
         self._artifactroot = pathlib.Path("_artifacts")
         self._buildroot = self._artifactroot / "build"
         self._tmproot = self._artifactroot / "tmp"

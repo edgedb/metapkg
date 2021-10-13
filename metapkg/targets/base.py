@@ -549,10 +549,27 @@ class Build:
         self.prepare()
         self.build()
 
-    def prepare(self) -> None:
+    def define_tools(self) -> None:
+        # Undefining MAKELEVEL is required because
+        # some package makefiles have
+        # conditions on MAKELEVEL.
+        self._system_tools["make"] = "env -u MAKELEVEL make -j{}".format(
+            os.cpu_count()
+        )
+        self._system_tools["cp"] = "cp"
+        self._system_tools["cargo"] = "cargo"
+        self._system_tools["python"] = "python3"
+        self._system_tools["install"] = "install"
+        self._system_tools["patch"] = "patch"
+        self._system_tools["useradd"] = "useradd"
+        self._system_tools["groupadd"] = "groupadd"
+        self._system_tools["sed"] = "sed"
         self._system_tools["make"] = "make"
         self._system_tools["bash"] = "/bin/bash"
         self._system_tools["find"] = "find"
+
+    def prepare(self) -> None:
+        self.define_tools()
 
     def build(self) -> None:
         raise NotImplementedError

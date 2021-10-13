@@ -11,8 +11,8 @@ from metapkg import tools
 
 
 class GenericBuild(generic.Build):
-    def prepare(self) -> None:
-        super().prepare()
+    def define_tools(self) -> None:
+        super().define_tools()
         self._system_tools["bash"] = "/usr/local/bin/bash"
         self._system_tools["make"] = (
             "env -u MAKELEVEL /usr/local/bin/gmake "

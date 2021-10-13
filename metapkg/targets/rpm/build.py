@@ -29,15 +29,6 @@ class Build(targets.Build):
         self._buildroot = pathlib.Path("BUILD")
         self._tmproot = pathlib.Path("TEMP")
         self._installroot = pathlib.Path("INSTALL")
-
-        self._system_tools["make"] = f"make -j{os.cpu_count()}"
-        self._system_tools["cargo"] = "cargo"
-        self._system_tools["python"] = "python3"
-        self._system_tools["cp"] = "cp"
-        self._system_tools["install"] = "install"
-        self._system_tools["useradd"] = "useradd"
-        self._system_tools["groupadd"] = "groupadd"
-
         self._bin_shims = self._root_pkg.get_bin_shims(self)
 
     def get_source_abspath(self) -> pathlib.Path:
