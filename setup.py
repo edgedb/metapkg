@@ -15,6 +15,7 @@ setup(
             "metapkg = metapkg.app:main",
         ]
     },
+    python_requires=">=3.9",
     install_requires=[
         "distro~=1.5.0",
         "requests~=2.26.0",
