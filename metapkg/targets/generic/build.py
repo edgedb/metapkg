@@ -317,15 +317,6 @@ class Build(targets.Build):
             lines.append(f'ln -sf "{cmd}" "{install_dir / bindir}/{cmdname}"')
             lines.append(f"echo {bindir / cmdname}")
 
-        extras_dir = self.get_extras_root(relative_to="fsroot")
-        for path, content in pkg.get_service_scripts(self).items():
-            directory = extras_dir / path.parent.relative_to("/")
-            directory.mkdir(parents=True, exist_ok=True)
-            with open(directory / path.name, "w") as f:
-                print(content, file=f)
-
-            lines.append(f'echo {path.relative_to("/")}')
-
         return "\n".join(lines)
 
     def _build(self) -> None:

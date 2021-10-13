@@ -88,11 +88,6 @@ class Target:
     ) -> str:
         return package.name_slot if include_slot else package.name
 
-    def service_scripts_for_package(
-        self, build: Build, package: mpkg_base.BasePackage
-    ) -> dict[pathlib.Path, str]:
-        return {}
-
     def get_package_ld_env(
         self, build: Build, package: mpkg_base.BasePackage, wd: str
     ) -> dict[str, str]:
@@ -311,24 +306,6 @@ class LinuxTarget(PosixTarget):
 
     def get_su_script(self, build: Build, script: str, user: str) -> str:
         return f"su '{user}' -c {shlex.quote(script)}\n"
-
-    def service_scripts_for_package(
-        self, build: Build, package: mpkg_base.BasePackage
-    ) -> dict[pathlib.Path, str]:
-        if self.has_capability("systemd"):
-            units = package.read_support_files(build, "*.service.in")
-            systemd_path = self.get_resource_path(build, "systemd-units")
-            if systemd_path is None:
-                raise RuntimeError(
-                    "systemd-enabled target does not define "
-                    '"systemd-units" path'
-                )
-            return {systemd_path / name: data for name, data in units.items()}
-
-        else:
-            raise NotImplementedError(
-                "non-systemd linux targets are not supported"
-            )
 
     def supports_lto(self) -> bool:
         # LTO more-or-less stabilized in GCC 4.9.0.
@@ -923,15 +900,6 @@ class Build:
 
         return dict(all_reqs)
 
-    def get_service_scripts(self) -> dict[pathlib.Path, str]:
-        all_scripts = {}
-
-        for pkg in self._installable:
-            pkg_scripts = pkg.get_service_scripts(self)
-            all_scripts.update(pkg_scripts)
-
-        return all_scripts
-
     def _write_script(
         self,
         stage: str,
@@ -987,39 +955,7 @@ class Build:
         return "\n\n".join(scripts)
 
     def _get_global_after_install_script(self) -> str:
-        script = ""
-        service_scripts = self.get_service_scripts()
-
-        if service_scripts:
-            if self.target.has_capability("systemd"):
-                rundir = self.get_install_path("runstate")
-                systemd = rundir / "systemd" / "system"
-
-                script = textwrap.dedent(
-                    f"""\
-                    if [ -d "{systemd}" ]; then
-                        systemctl daemon-reload
-                    fi
-                """
-                )
-
-            elif self.target.has_capability("launchd"):
-                script_lines = []
-
-                for path in service_scripts:
-                    ident = path.stem
-                    script_lines.append(f'launchctl bootstrap system "{path}"')
-                    script_lines.append(f"launchctl enable system/{ident}")
-
-                script = "\n".join(script_lines)
-
-        if script:
-            script = (
-                f'if [ -z "${{_EDGEDB_INSTALL_SKIP_BOOTSTRAP}}" ]; then\n'
-                f"{script}\nfi"
-            )
-
-        return script
+        return ""
 
     def _get_package_script(
         self,

@@ -545,12 +545,6 @@ class Build(targets.Build):
         extras_dir_rel = self.get_extras_root(relative_to="buildroot")
 
         for pkg in self._installable:
-            for path, content in pkg.get_service_scripts(self).items():
-                directory = extras_dir / path.parent.relative_to("/")
-                directory.mkdir(parents=True)
-                with open(directory / path.name, "w") as f:
-                    print(content, file=f)
-
             for cmd in pkg.get_exposed_commands(self):
                 symlinks.append((cmd, f"{cmd.name}{pkg.slot_suffix}"))
 

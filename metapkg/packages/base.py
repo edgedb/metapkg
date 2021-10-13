@@ -105,11 +105,6 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
     def get_after_install_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_service_scripts(
-        self, build: targets.Build
-    ) -> dict[pathlib.Path, str]:
-        return {}
-
     def get_bin_shims(self, build: targets.Build) -> dict[str, str]:
         return {}
 
@@ -474,10 +469,7 @@ class BundledPackage(BasePackage):
         return script
 
     def get_install_list_script(self, build: targets.Build) -> str:
-        extra_files = list(self.get_service_scripts(build))
-        return self._get_file_list_script(
-            build, "install", extra_files=extra_files
-        )
+        return self._get_file_list_script(build, "install")
 
     def get_no_install_list_script(self, build: targets.Build) -> str:
         return self._get_file_list_script(build, "no_install")
@@ -486,39 +478,10 @@ class BundledPackage(BasePackage):
         return self._get_file_list_script(build, "ignore")
 
     def get_build_install_script(self, build: targets.Build) -> str:
-        service_scripts = self.get_service_scripts(build)
-        if service_scripts:
-            install = build.sh_get_command("cp", relative_to="pkgbuild")
-            extras_dir = build.get_extras_root(relative_to="pkgbuild")
-            install_dir = build.get_install_dir(self, relative_to="pkgbuild")
-            ensuredir = build.target.get_action("ensuredir", build)
-            assert isinstance(ensuredir, targets.EnsureDirAction)
-
-            commands = []
-
-            for path, content in service_scripts.items():
-                path = path.relative_to("/")
-                commands.append(
-                    ensuredir.get_script(path=str((install_dir / path).parent))
-                )
-                args: dict[str, str | None] = {
-                    str(extras_dir / path): None,
-                    str(install_dir / path): None,
-                }
-                cmd = build.sh_format_command(install, args)
-                commands.append(cmd)
-
-            return "\n".join(commands)
-        else:
-            return ""
+        return ""
 
     def get_resources(self, build: targets.Build) -> dict[str, bytes]:
         return self.read_support_files(build, "resources/*", binary=True)
-
-    def get_service_scripts(
-        self, build: targets.Build
-    ) -> dict[pathlib.Path, str]:
-        return build.target.service_scripts_for_package(build, self)
 
     def get_bin_shims(self, build: targets.Build) -> dict[str, str]:
         return self.read_support_files(build, "shims/*")

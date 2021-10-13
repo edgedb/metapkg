@@ -305,13 +305,6 @@ class MacOSTarget(GenericMacOSTarget):
         else:
             return super().get_resource_path(build, resource)
 
-    def service_scripts_for_package(
-        self, build: targets.Build, package: mpkg.BasePackage
-    ) -> dict[pathlib.Path, str]:
-        units = package.read_support_files(build, "*.plist.in")
-        launchd_path = self.get_resource_path(build, "system-daemons")
-        return {launchd_path / name: data for name, data in units.items()}
-
     def get_capabilities(self) -> list[str]:
         capabilities = super().get_capabilities()
         return capabilities + ["launchd"]
