@@ -541,7 +541,6 @@ class Build:
         self._system_tools["useradd"] = "useradd"
         self._system_tools["groupadd"] = "groupadd"
         self._system_tools["sed"] = "sed"
-        self._system_tools["make"] = "make"
         self._system_tools["bash"] = "/bin/bash"
         self._system_tools["find"] = "find"
 
