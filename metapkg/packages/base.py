@@ -3,6 +3,7 @@ from typing import (
     TYPE_CHECKING,
     ClassVar,
     Literal,
+    Mapping,
     Sequence,
     TypeVar,
     overload,
@@ -16,6 +17,7 @@ import glob
 import os
 import pathlib
 import pprint
+import shlex
 import sys
 import textwrap
 
@@ -518,3 +520,59 @@ class BundledPackage(BasePackage):
             return {"version_slot": self.slot}
         else:
             return {}
+
+
+class BundledCPackage(BundledPackage):
+    def sh_configure(
+        self,
+        build: targets.Build,
+        path: str | pathlib.Path,
+        args: Mapping[str, str | pathlib.Path | None],
+    ) -> str:
+        conf_args = dict(args)
+        shlib_paths = self.get_shlib_paths(build)
+        ldflags = []
+        for shlib_path in shlib_paths:
+            ldflags.extend(
+                build.target.get_shlib_path_run_time_ldflags(
+                    build, shlex.quote(str(shlib_path))
+                )
+            )
+        if ldflags:
+            conf_args["LDFLAGS"] = "!" + "' '".join(ldflags)
+
+        if "--prefix" not in args:
+            conf_args["--prefix"] = str(build.get_full_install_prefix())
+
+        conf_args = build.sh_append_global_flags(conf_args)
+        return build.sh_format_command(path, conf_args, force_args_eq=True)
+
+    def get_shlib_paths(self, build: targets.Build) -> list[pathlib.Path]:
+        return [build.get_full_install_prefix() / "lib"]
+
+    def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
+        return [build.get_full_install_prefix() / "include"]
+
+    def get_configure_script(self, build: targets.Build) -> str:
+        sdir = build.get_source_dir(self, relative_to="pkgbuild")
+        configure = sdir / "configure"
+        return self.sh_configure(build, configure, {})
+
+    def get_build_script(self, build: targets.Build) -> str:
+        make = build.sh_get_command("make")
+
+        return textwrap.dedent(
+            f"""\
+            {make}
+        """
+        )
+
+    def get_build_install_script(self, build: targets.Build) -> str:
+        installdest = build.get_install_dir(self, relative_to="pkgbuild")
+        make = build.sh_get_command("make")
+
+        return textwrap.dedent(
+            f"""\
+            {make} DESTDIR=$(pwd)/"{installdest}" install
+        """
+        )

@@ -22,11 +22,7 @@ class GenericBuild(generic.Build):
 
 
 class NativePackageBuild(GenericBuild):
-    def _build(self) -> None:
-        super()._build()
-        self._build_installer()
-
-    def _build_installer(self) -> None:
+    def _package(self, files: list[pathlib.Path]) -> None:
         if self._outputroot is not None:
             if not self._outputroot.exists():
                 self._outputroot.mkdir(parents=True, exist_ok=True)
@@ -234,6 +230,3 @@ class NativePackageBuild(GenericBuild):
                     },
                     f,
                 )
-
-    def _package(self) -> None:
-        pass

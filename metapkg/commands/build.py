@@ -30,6 +30,7 @@ class Build(base.Command):
         { --dest= : Destination path. }
         { --keepwork : Do not remove the work directory. }
         { --generic : Build a generic target. }
+        { --libc= : Libc to target. }
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
         { --release : Whether this build is a release. }
@@ -50,6 +51,7 @@ class Build(base.Command):
         keepwork = self.option("keepwork")
         destination = self.option("dest")
         generic = self.option("generic")
+        libc = self.option("libc")
         build_source = self.option("build-source")
         build_debug = self.option("build-debug")
         src_ref = self.option("source-ref")
@@ -93,7 +95,13 @@ class Build(base.Command):
         if generic:
             current_system = platform.system()
             if current_system == "Linux":
-                target = targets.generic.GenericLinuxTarget()
+                if libc == "musl":
+                    target = targets.generic.GenericMuslLinuxTarget()
+                elif libc == "glibc" or not libc:
+                    target = targets.generic.GenericLinuxTarget()
+                else:
+                    self.error(f"Unsupported libc: {libc}")
+                    return 1
             elif current_system == "Darwin":
                 target = targets.macos.GenericMacOSTarget()
             else:
@@ -212,17 +220,20 @@ class Build(base.Command):
 
         try:
             target.build(
-                root_pkg=root_pkg,
-                deps=packages,
-                build_deps=build_pkgs,
-                io=self.io,
-                workdir=workdir,
-                outputdir=destination,
-                build_source=build_source,
-                build_debug=build_debug,
-                revision=revision or "1",
-                subdist=subdist,
-                extra_opt=extra_opt,
+                targets.BuildRequest(
+                    io=self.io,
+                    env=env,
+                    root_pkg=root_pkg,
+                    deps=packages,
+                    build_deps=build_pkgs,
+                    workdir=workdir,
+                    outputdir=destination,
+                    build_source=build_source,
+                    build_debug=build_debug,
+                    revision=revision or "1",
+                    subdist=subdist,
+                    extra_opt=extra_opt,
+                ),
             )
         finally:
             if not keepwork:

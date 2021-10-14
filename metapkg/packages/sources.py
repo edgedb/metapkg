@@ -191,6 +191,25 @@ class HttpsSource(BaseSource):
         return target_path
 
 
+class LocalSource(BaseSource):
+    def tarball(
+        self,
+        pkg: mpkg.BasePackage,
+        name_tpl: typing.Optional[str] = None,
+        *,
+        target_dir: pathlib.Path,
+        io: cleo_io.IO,
+    ) -> pathlib.Path:
+        comp = ".gz"
+        if name_tpl is None:
+            name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
+        target_path = target_dir / name_tpl.format(part="", comp=comp)
+        with tarfile.open(target_path, "w:gz") as tf:
+            tf.add(self.url, arcname=pkg.unique_name)
+
+        return target_path
+
+
 class GitSource(BaseSource):
     def __init__(
         self,
@@ -317,6 +336,8 @@ def source_for_url(
         if "vcs_version" not in extras:
             extras["vcs_version"] = version
         return GitSource(url[4:], name=name, **extras)
+    elif parts.scheme == "file":
+        return LocalSource(parts.path, name, **extras)
     else:
         raise ValueError(f"unsupported source URL scheme: {parts.scheme}")
 

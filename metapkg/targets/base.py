@@ -5,9 +5,11 @@ from typing import (
     Iterable,
     Literal,
     Mapping,
+    NamedTuple,
 )
 
 import collections
+import hashlib
 import os
 import pathlib
 import re
@@ -28,6 +30,7 @@ from . import package as tgt_pkg
 if TYPE_CHECKING:
     from cleo.io.io import IO
     from poetry import packages as poetry_pkg
+    from poetry.utils import env as poetry_env
 
 
 class TargetAction:
@@ -35,10 +38,28 @@ class TargetAction:
         self._build = build
 
 
+class BuildRequest(NamedTuple):
+    io: IO
+    env: poetry_env.Env
+    root_pkg: mpkg_base.BundledPackage
+    deps: list[mpkg_base.BasePackage]
+    build_deps: list[mpkg_base.BasePackage]
+    workdir: str | pathlib.Path
+    outputdir: str | pathlib.Path
+    build_source: bool
+    build_debug: bool
+    revision: str
+    subdist: str | None
+    extra_opt: bool
+
+
 class Target:
     @property
     def name(self) -> str:
         raise NotImplementedError
+
+    def is_portable(self) -> bool:
+        return False
 
     def get_package_repository(self) -> mpkg_repo.Repository:
         raise NotImplementedError
@@ -46,22 +67,12 @@ class Target:
     def prepare(self) -> None:
         pass
 
-    def build(
-        self,
-        *,
-        io: IO,
-        root_pkg: mpkg_base.BundledPackage,
-        deps: list[mpkg_base.BasePackage],
-        build_deps: list[mpkg_base.BasePackage],
-        workdir: str | pathlib.Path,
-        outputdir: str | pathlib.Path,
-        build_source: bool,
-        build_debug: bool,
-        revision: str,
-        subdist: str | None,
-        extra_opt: bool,
-    ) -> None:
+    def get_builder(self) -> type[Build]:
         raise NotImplementedError
+
+    def build(self, request: BuildRequest) -> None:
+        build = self.get_builder()(self, request)
+        build.run()
 
     def get_capabilities(self) -> list[str]:
         return []
@@ -107,6 +118,31 @@ class Target:
         self, build: Build, path: str
     ) -> list[str]:
         raise NotImplementedError
+
+    def get_shlib_relpath_run_time_ldflags(
+        self, build: Build, path: str = ""
+    ) -> list[str]:
+        raise NotImplementedError
+
+    def get_global_cflags(self, build: Build) -> list[str]:
+        return []
+
+    def get_global_ldflags(self, build: Build) -> list[str]:
+        return []
+
+    def is_binary_code_file(self, build: Build, path: pathlib.Path) -> bool:
+        raise NotImplementedError
+
+    def get_shlib_refs(
+        self,
+        build: Build,
+        image_root: pathlib.Path,
+        install_path: pathlib.Path,
+    ) -> tuple[set[str], set[pathlib.Path]]:
+        raise NotImplementedError
+
+    def is_allowed_system_shlib(self, build: Build, shlib: str) -> bool:
+        return False
 
     def get_exe_suffix(self) -> str:
         raise NotImplementedError
@@ -291,6 +327,20 @@ class LinuxAddUserAction(AddUserAction):
 
 
 class LinuxTarget(PosixTarget):
+    _sys_shlibs = {
+        "libpthread",
+        "libutil",
+        "librt",
+        "libdl",
+        "libm",
+        "libc",
+        r"ld-linux-[\w-]+",
+    }
+    _sys_shlibs_re = re.compile(
+        "|".join(rf"({lib}\.so(\.\d+)*)" for lib in _sys_shlibs),
+        re.A,
+    )
+
     def __init__(self, distro_info: dict[str, Any]) -> None:
         self.distro = distro_info
 
@@ -349,6 +399,94 @@ class LinuxTarget(PosixTarget):
         self, build: Build, path: str
     ) -> list[str]:
         return [f"-Wl,-rpath,{path}"]
+
+    def get_shlib_relpath_run_time_ldflags(
+        self, build: Build, path: str = ""
+    ) -> list[str]:
+        if path and path.startswith("/"):
+            raise AssertionError(f"rpath must not be absolute: {path!r}")
+
+        if path:
+            rpath = f"$ORIGIN/{shlex.quote(path)}"
+        else:
+            rpath = f"$ORIGIN"
+
+        # NOTE: we explicitly disable "new dtags" to get DT_RPATH,
+        #       because we DO NOT want LD_LIBRARY_PATH to mess things
+        #       up for us: we always want correct shared objects to load.
+        #       Also, we must use the -Wl,@file approach, because of
+        #       the utter insanity that is trying to quote $ORIGIN across
+        #       sub-make and shell invocations.
+        flags = f"-zorigin --disable-new-dtags -rpath={rpath}"
+        flag_file_name = f"ld-{hashlib.md5(flags.encode()).hexdigest()}"
+        flag_file_path = build.write_helper(
+            flag_file_name, flags, relative_to="pkgbuild"
+        )
+        return [f"-Wl,@{flag_file_path}"]
+
+    def is_binary_code_file(self, build: Build, path: pathlib.Path) -> bool:
+        with open(path, "rb") as f:
+            header = f.read(18)
+            signature = header[:4]
+            if signature == b"\x7FELF":
+                if header[5] == 2:
+                    byteorder = "big"
+                elif header[5] == 1:
+                    byteorder = "little"
+                else:
+                    raise AssertionError(
+                        f"unexpected ELF endianness: {header[5]}"
+                    )
+                elf_type = int.from_bytes(
+                    header[16:18], byteorder=byteorder, signed=False
+                )
+                return elf_type in {0x02, 0x03}  # ET_EXEC, ET_DYN
+
+        return False
+
+    def get_shlib_refs(
+        self,
+        build: Build,
+        image_root: pathlib.Path,
+        install_path: pathlib.Path,
+    ) -> tuple[set[str], set[pathlib.Path]]:
+        # Scan the .dynamic section of the given ELF binary to find
+        # which shared objects it needs and what the library runpath is.
+        #
+        # We have to rely on parsing the output of readelf, as there
+        # seems to be no other reliable way to do this other than resorting
+        # to the use of complex ELF-parsing libraries, which might be buggier
+        # than binutils.
+        shlib_re = re.compile(r".*\(NEEDED\)\s+Shared library: \[([^\]]+)\]")
+        rpath_re = re.compile(
+            r".*\((?:RPATH|RUNPATH)\)\s+Library.*path: \[([^\]]+)\]"
+        )
+
+        shlibs = set()
+        rpaths = set()
+        output = tools.cmd("readelf", "-d", image_root / install_path)
+        for line in output.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if m := shlib_re.match(line):
+                shlibs.add(m.group(1))
+            if m := rpath_re.match(line):
+                for entry in m.group(1).split(os.pathsep):
+                    if entry.startswith("$ORIGIN"):
+                        # $ORIGIN means the directory of the referring binary.
+                        relpath = entry[len("$ORIGIN/") :]
+                        rpath = (
+                            pathlib.Path("/") / install_path.parent / relpath
+                        )
+                    else:
+                        rpath = pathlib.Path(entry)
+                    rpaths.add(rpath)
+
+        return shlibs, rpaths
+
+    def is_allowed_system_shlib(self, build: Build, shlib: str) -> bool:
+        return bool(self._sys_shlibs_re.fullmatch(shlib))
 
 
 class FHSTarget(PosixTarget):
@@ -414,40 +552,30 @@ class Build:
     def __init__(
         self,
         target: Target,
-        *,
-        io: IO,
-        root_pkg: mpkg_base.BundledPackage,
-        deps: list[mpkg_base.BasePackage],
-        build_deps: list[mpkg_base.BasePackage],
-        workdir: str | pathlib.Path,
-        outputdir: str | pathlib.Path,
-        build_source: bool,
-        build_debug: bool,
-        revision: str,
-        subdist: str | None,
-        extra_opt: bool,
+        request: BuildRequest,
     ) -> None:
-        self._droot = pathlib.Path(workdir)
-        self._outputroot = pathlib.Path(outputdir)
         self._target = target
-        self._io = io
-        self._root_pkg = root_pkg
-        self._deps = deps
-        self._build_deps = build_deps
-        self._build_source = build_source
-        self._build_debug = build_debug
-        self._revision = revision
-        self._subdist = subdist
-        self._extra_opt = extra_opt
+        self._io = request.io
+        self._env = request.env
+        self._droot = pathlib.Path(request.workdir)
+        self._outputroot = pathlib.Path(request.outputdir)
+        self._root_pkg = request.root_pkg
+        self._deps = request.deps
+        self._build_deps = request.build_deps
+        self._build_source = request.build_source
+        self._build_debug = request.build_debug
+        self._revision = request.revision
+        self._subdist = request.subdist
+        self._extra_opt = request.extra_opt
         self._bundled = [
             pkg
             for pkg in self._build_deps
             if not isinstance(
                 pkg, (tgt_pkg.SystemPackage, mpkg_base.DummyPackage)
             )
-            and pkg is not root_pkg
+            and pkg is not self._root_pkg
         ]
-        self._build_only = set(build_deps) - set(deps)
+        self._build_only = set(self._build_deps) - set(self._deps)
         self._installable = [
             pkg for pkg in self._bundled if pkg not in self._build_only
         ]
@@ -493,13 +621,50 @@ class Build:
         raise LookupError(f"package not found: {name}")
 
     def get_packages(
-        self, names: Iterable[str]
-    ) -> list[mpkg_base.BasePackage]:
-        packages = []
+        self,
+        names: Iterable[str],
+        *,
+        recursive: bool = False,
+        bundled_only: bool = True,
+    ) -> set[mpkg_base.BasePackage]:
+        return self._get_packages(
+            names, recursive=recursive, bundled_only=bundled_only
+        )
+
+    def _get_packages(
+        self,
+        names: Iterable[str],
+        *,
+        recursive: bool,
+        bundled_only: bool,
+        _memo: set[str] | None = None,
+    ) -> set[mpkg_base.BasePackage]:
+        if _memo is None:
+            _memo = set()
+
+        packages = set()
         for name in names:
             package = self.get_package(name)
-            if package is not None:
-                packages.append(package)
+            if bundled_only and package not in self._bundled:
+                continue
+            _memo.add(name)
+            if recursive:
+                packages.update(
+                    self._get_packages(
+                        (
+                            req.name
+                            for req in package.requires
+                            if req.name not in _memo
+                            and req.is_activated()
+                            and self._env.is_valid_for_marker(req.marker)
+                        ),
+                        recursive=True,
+                        bundled_only=bundled_only,
+                        _memo=_memo,
+                    )
+                )
+            packages.add(package)
+
         return packages
 
     def is_bundled(self, pkg: mpkg_base.BasePackage) -> bool:
@@ -620,6 +785,9 @@ class Build:
         *,
         package: mpkg_base.BasePackage | None = None,
         relative_to: Location = "pkgbuild",
+        args: Mapping[str, str | pathlib.Path | None] | None = None,
+        force_args_eq: bool = False,
+        linebreaks: bool = True,
     ) -> str:
         path = self._tools.get(command)
         if not path:
@@ -645,21 +813,23 @@ class Build:
 
                 cmd = f"{python} {shlex.quote(str(rel_path))}"
 
-            elif not rel_path.suffix:
+            elif rel_path.suffix == ".sh" or not rel_path.suffix:
                 cmd = shlex.quote(str(rel_path))
 
             else:
                 raise RuntimeError(f"unexpected tool type: {path}")
 
+        if args is not None:
+            cmd = self.sh_append_args(
+                cmd, args, force_args_eq=force_args_eq, linebreaks=linebreaks
+            )
+
         return cmd
 
-    def sh_format_command(
+    def sh_format_args(
         self,
-        path: str | pathlib.Path,
         args: Mapping[str, str | pathlib.Path | None],
         *,
-        extra_indent: int = 0,
-        user: str | None = None,
         force_args_eq: bool = False,
         linebreaks: bool = True,
     ) -> str:
@@ -676,18 +846,44 @@ class Build:
                 sep = "=" if arg.startswith("--") or force_args_eq else " "
                 args_parts.append(f"{arg}{sep}{val}")
 
-        if linebreaks:
-            sep = " \\\n    "
-        else:
-            sep = " "
-
+        sep = " \\\n    " if linebreaks else " "
         args_str = sep.join(args_parts)
 
         if linebreaks:
             args_str = textwrap.indent(args_str, " " * 4)
 
-        result = f"{shlex.quote(str(path))}{sep}{args_str}"
+        return args_str
 
+    def sh_append_args(
+        self,
+        cmd: str,
+        args: Mapping[str, str | pathlib.Path | None],
+        *,
+        force_args_eq: bool = False,
+        linebreaks: bool = True,
+    ) -> str:
+        args_str = self.sh_format_args(
+            args, force_args_eq=force_args_eq, linebreaks=linebreaks
+        )
+        sep = " \\\n    " if linebreaks else " "
+        return f"{cmd}{sep}{args_str}"
+
+    def sh_format_command(
+        self,
+        path: str | pathlib.Path,
+        args: Mapping[str, str | pathlib.Path | None],
+        *,
+        extra_indent: int = 0,
+        user: str | None = None,
+        force_args_eq: bool = False,
+        linebreaks: bool = True,
+    ) -> str:
+        result = self.sh_append_args(
+            shlex.quote(str(path)),
+            args,
+            force_args_eq=force_args_eq,
+            linebreaks=linebreaks,
+        )
         if extra_indent:
             result = textwrap.indent(result, " " * extra_indent)
 
@@ -1012,6 +1208,9 @@ class Build:
             if not self.is_bundled(pkg):
                 continue
 
+            if not pkg.get_shlib_paths(self):
+                continue
+
             for k, v in self.target.get_package_ld_env(self, pkg, wd).items():
                 env[k].append(v)
 
@@ -1022,6 +1221,37 @@ class Build:
 
         return env_list
 
+    def sh_get_bundled_shlib_ldflags(
+        self,
+        pkg: poetry_pkg.Package,
+        relative_to: Location = "pkgbuild",
+    ) -> str:
+        flags = []
+
+        assert self.is_bundled(pkg)
+
+        root_path = self.get_install_dir(pkg, relative_to=relative_to)
+        for shlib_path in pkg.get_shlib_paths(self):
+            # link-time dependency
+            link_time = root_path / shlib_path.relative_to("/")
+            flags.extend(
+                self.target.get_shlib_path_link_time_ldflags(
+                    self,
+                    f"$(pwd)/{shlex.quote(str(link_time))}",
+                ),
+            )
+
+            if pkg not in self._build_only:
+                # run-time dependency
+                flags.extend(
+                    self.target.get_shlib_path_run_time_ldflags(
+                        self,
+                        shlex.quote(str(shlib_path)),
+                    ),
+                )
+
+        return '" "'.join(flags)
+
     def sh_get_bundled_shlibs_ldflags(
         self,
         deps: Iterable[poetry_pkg.Package],
@@ -1030,28 +1260,12 @@ class Build:
         flags = []
 
         for pkg in deps:
-            if not self.is_bundled(pkg):
-                continue
-
-            root_path = self.get_install_dir(pkg, relative_to=relative_to)
-            for shlib_path in pkg.get_shlib_paths(self):
-                # link-time dependency
-                link_time = root_path / shlib_path.relative_to("/")
-                flags.extend(
-                    self.target.get_shlib_path_link_time_ldflags(
-                        self,
-                        f"$(pwd)/{shlex.quote(str(link_time))}",
-                    ),
-                )
-
-                if pkg not in self._build_only:
-                    # run-time dependency
-                    flags.extend(
-                        self.target.get_shlib_path_run_time_ldflags(
-                            self,
-                            shlex.quote(str(shlib_path)),
-                        ),
+            if self.is_bundled(pkg):
+                flags.append(
+                    self.sh_get_bundled_shlib_ldflags(
+                        pkg, relative_to=relative_to
                     )
+                )
 
         return '" "'.join(flags)
 
@@ -1072,3 +1286,42 @@ class Build:
                 flags.append(f"-I$(pwd)/{shlex.quote(str(inc_path))}")
 
         return '" "'.join(flags)
+
+    def sh_append_global_flags(
+        self,
+        args: Mapping[str, str | pathlib.Path | None] | None = None,
+    ) -> dict[str, str | pathlib.Path | None]:
+        global_cflags = self.target.get_global_cflags(self)
+        global_ldflags = self.target.get_global_ldflags(self)
+        if args is None:
+            args = {}
+        conf_args = dict(args)
+        if global_cflags:
+            self.sh_append_flags(conf_args, "CFLAGS", global_cflags)
+        if global_ldflags:
+            self.sh_append_flags(conf_args, "LDFLAGS", global_ldflags)
+        return conf_args
+
+    def sh_configure(
+        self,
+        path: str | pathlib.Path,
+        args: Mapping[str, str | pathlib.Path | None],
+    ) -> str:
+        conf_args = self.sh_append_global_flags(args)
+        return self.sh_format_command(path, conf_args, force_args_eq=True)
+
+    def sh_append_flags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        flags: list[str],
+    ) -> None:
+        flags_line = " ".join(shlex.quote(f) for f in flags)
+        existing_flags = args.get(key)
+        if existing_flags:
+            assert isinstance(existing_flags, str)
+            if not existing_flags.startswith("!"):
+                raise AssertionError(f"{key} must be pre-quoted")
+            args[key] = f'!{shlex.quote(flags_line)}" "{existing_flags[1:]}'
+        else:
+            args[key] = flags_line

@@ -53,7 +53,7 @@ class BundledRustPackage(base.BundledPackage):
         install_bindir = (
             build.get_install_dir(self, relative_to="pkgbuild") / bindir
         )
-        if isinstance(build.target, targets.generic.GenericLinuxTarget):
+        if isinstance(build.target, targets.generic.GenericMuslLinuxTarget):
             target = "--target x86_64-unknown-linux-musl"
         else:
             target = ""

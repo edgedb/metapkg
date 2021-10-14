@@ -51,8 +51,8 @@ class WindowsTarget(generic.GenericTarget):
 
 
 class ModernWindowsTarget(WindowsTarget):
-    def build(self, **kwargs: Any) -> None:
-        return winbuild.Build(self, **kwargs).run()
+    def get_builder(self) -> type[winbuild.Build]:
+        return winbuild.Build
 
 
 def get_specific_target(version: tuple[int, ...]) -> WindowsTarget:

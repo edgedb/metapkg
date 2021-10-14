@@ -39,9 +39,9 @@ def main() -> int:
     for path in sorted(to_remove, reverse=True):
         full_path = install_dir / path
         print("Removing {}".format(path), file=sys.stderr)
-        if full_path.is_dir():
+        if full_path.is_dir() and not full_path.is_symlink():
             shutil.rmtree(str(full_path))
-        elif full_path:
+        elif full_path.exists() or full_path.is_symlink():
             os.unlink(str(full_path))
 
     for path in install_set - no_install_set:

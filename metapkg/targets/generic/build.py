@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import collections
 import json
 import os
+import os.path
 import pathlib
+import platform
 import shlex
 import subprocess
 import textwrap
@@ -183,7 +186,9 @@ class Build(targets.Build):
         self._apply_patches()
         self._write_makefile()
         self._build()
-        self._package()
+        files = self._list_installed_files()
+        self._fixup_binaries(files)
+        self._package(files)
 
     def _apply_patches(self) -> None:
         proot = self.get_patches_root(relative_to="fsroot")
@@ -196,6 +201,9 @@ class Build(targets.Build):
                 cwd=sroot,
             )
 
+    def _get_global_env_vars(self) -> dict[str, str]:
+        return {}
+
     def _write_makefile(self) -> None:
         temp_root = self.get_temp_root(relative_to="sourceroot")
         image_root = self.get_image_root(relative_to="sourceroot")
@@ -204,7 +212,11 @@ class Build(targets.Build):
             """\
             .PHONY: build install
 
+            ROOT = $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+
             export SHELL = {bash}
+
+            {env}
 
             DESTDIR := /
 
@@ -232,6 +244,10 @@ class Build(targets.Build):
             ),
             copy_tree=self.sh_get_command(
                 "copy-tree", relative_to="sourceroot"
+            ),
+            env="\n".join(
+                f"export {var} = {val}"
+                for var, val in self._get_global_env_vars().items()
             ),
         )
 
@@ -313,8 +329,11 @@ class Build(targets.Build):
 
         lines.append(f'mkdir -p "{install_dir / bindir}"')
         for cmd in pkg.get_exposed_commands(self):
+            relpath = os.path.relpath(cmd.relative_to("/"), start=bindir)
             cmdname = f"{cmd.name}{pkg.slot_suffix}"
-            lines.append(f'ln -sf "{cmd}" "{install_dir / bindir}/{cmdname}"')
+            lines.append(
+                f'ln -sf "{relpath}" "{install_dir / bindir}/{cmdname}"'
+            )
             lines.append(f"echo {bindir / cmdname}")
 
         return "\n".join(lines)
@@ -329,23 +348,107 @@ class Build(targets.Build):
             stderr=subprocess.STDOUT,
         )
 
-    def _package(self) -> None:
-        pkg = self._root_pkg
-        title = pkg.name
-
+    def _list_installed_files(self) -> list[pathlib.Path]:
         image_root = self.get_image_root(relative_to="sourceroot")
         find = self.sh_get_command("find", relative_to="sourceroot")
-        files = (
+        listing = (
             tools.cmd(
                 find,
                 image_root,
                 "-type",
                 "f",
+                "-o",
+                "-type",
+                "l",
                 cwd=str(self._srcroot),
             )
             .strip()
             .split("\n")
         )
+        return [
+            pathlib.Path(entry).relative_to(image_root) for entry in listing
+        ]
+
+    def _fixup_rpath(
+        self, image_root: pathlib.Path, binary_relpath: pathlib.Path
+    ) -> None:
+        pass
+
+    def _strip(
+        self, image_root: pathlib.Path, binary_relpath: pathlib.Path
+    ) -> None:
+        pass
+
+    def _fixup_binaries(self, files: list[pathlib.Path]) -> None:
+        # Here we examine all produced executables for references to
+        # shared libraries outside of what's bundled in the package and
+        # what's allowed to be linked to on the target system (typically,
+        # just the C library).
+        image_root = self.get_image_root(relative_to="fsroot")
+        bin_paths: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
+        binaries = set()
+        refs = {}
+        root = pathlib.Path("/")
+        symlinks = []
+        # First, build the list of all binaries and their shlib references.
+        for file in files:
+            full_path = image_root / file
+            inst_path = root / file
+            if full_path.is_symlink():
+                # We'll deal with symlinks separately below.
+                symlinks.append((inst_path, full_path))
+                continue
+
+            if self.target.is_binary_code_file(self, full_path):
+                bin_paths[file.name].add(inst_path)
+                binaries.add(inst_path)
+                self._strip(image_root, file)
+                self._fixup_rpath(image_root, file)
+                refs[inst_path] = self.target.get_shlib_refs(
+                    self, image_root, file
+                )
+
+        # Now, scan for all symbolic links to binaries
+        # (it is common for .so files to be symlinks to their
+        # fully-versioned counterparts).
+        for inst_path, full_path in symlinks:
+            target = full_path.readlink()
+            if not target.is_absolute():
+                target = full_path.parent / target
+            else:
+                target = image_root / target.relative_to("/")
+            target_inst_path = root / target.relative_to(image_root)
+            if target_inst_path in binaries:
+                bin_paths[inst_path.name].add(inst_path)
+
+        # Finally, do the sanity check.
+        for binary, (shlibs, rpaths) in refs.items():
+            for shlib in shlibs:
+                if self.target.is_allowed_system_shlib(self, shlib):
+                    continue
+                bundled = bin_paths.get(shlib, set())
+                if any(
+                    (rpath / shlib).resolve() in bundled for rpath in rpaths
+                ):
+                    continue
+
+                rpath_list = ":".join(str(rpath) for rpath in rpaths)
+                if rpath_list:
+                    raise AssertionError(
+                        f"{binary} links to {shlib} which is neither an"
+                        f" allowed system library, nor a bundled library"
+                        f" in rpath: {rpath_list}"
+                    )
+                else:
+                    raise AssertionError(
+                        f"{binary} links to {shlib} which is not an"
+                        f" allowed system library, and {binary} does"
+                        f" not define a library rpath"
+                    )
+
+    def _package(self, files: list[pathlib.Path]) -> None:
+        pkg = self._root_pkg
+        title = pkg.name
 
         if not self._outputroot.exists():
             self._outputroot.mkdir(parents=True, exist_ok=True)
@@ -354,27 +457,29 @@ class Build(targets.Build):
                 f"target directory {self._outputroot} is not empty"
             )
 
+        image_root = self.get_image_root(relative_to="fsroot")
+
         version = pkg.pretty_version
         suffix = self._revision
         if self._subdist:
             suffix = f"{suffix}~{self._subdist}"
         an = f"{title}{pkg.slot_suffix}_{version}_{suffix}"
 
-        with open(self._outputroot / "package-version.json", "w") as f:
+        with open(self._outputroot / "package-version.json", "w") as vf:
             json.dump(
                 {
                     "installref": an,
                     **self._root_pkg.get_artifact_metadata(self),
                 },
-                f,
+                vf,
             )
 
         if pkg.get_package_layout(self) is packages.PackageFileLayout.FLAT:
             if len(files) == 1:
-                fn = pathlib.Path(files[0])
+                fn = files[0]
                 tools.cmd(
                     "cp",
-                    str(self._srcroot / files[0]),
+                    image_root / fn,
                     f"{self._outputroot / an}{fn.suffix}",
                 )
 
@@ -386,20 +491,96 @@ class Build(targets.Build):
                     compression=zipfile.ZIP_DEFLATED,
                 ) as z:
                     for file in files:
-                        z.write(
-                            str(self._srcroot / file),
-                            arcname=pathlib.Path(file).name,
-                        )
+                        z.write(image_root / file, arcname=file.name)
         else:
-            with zipfile.ZipFile(
-                self._outputroot / f"{an}.zip",
-                mode="w",
-                compression=zipfile.ZIP_DEFLATED,
-            ) as z:
-                for file in files:
-                    z.write(
-                        str(self._srcroot / file),
-                        arcname=(
-                            an / pathlib.Path(file).relative_to(image_root)
-                        ),
-                    )
+            archive = (self._outputroot / f"{an}.tar.gz").resolve()
+            top = f"{title}{pkg.slot_suffix}"
+            src = image_root / self.get_full_install_prefix().relative_to("/")
+            tools.cmd(
+                "tar",
+                "--transform",
+                f"flags=r;s|^|{top}/|",
+                "-c",
+                "-z",
+                "-f",
+                str(archive),
+                ".",
+                cwd=src,
+            )
+
+
+class GenericLinuxBuild(Build):
+    def get_tool_list(self) -> list[str]:
+        tools = super().get_tool_list()
+        tools.append("linux-static-linkdriver-wrapper.sh")
+        return tools
+
+    def _get_global_env_vars(self) -> dict[str, str]:
+        env = super()._get_global_env_vars()
+
+        wrapper = self.sh_get_command(
+            "linux-static-linkdriver-wrapper",
+            relative_to="sourceroot",
+        )
+
+        machine = platform.machine().upper()
+        env[
+            f"CARGO_TARGET_{machine}_UNKNOWN_LINUX_GNU_LINKER"
+        ] = f"$(ROOT)/{wrapper}"
+
+        return env
+
+    def _fixup_rpath(
+        self, image_root: pathlib.Path, binary_relpath: pathlib.Path
+    ) -> None:
+        inst_prefix = self.get_full_install_prefix()
+        full_path = image_root / binary_relpath
+        inst_path = pathlib.Path("/") / binary_relpath
+        rpath_record = tools.cmd(
+            "patchelf", "--print-rpath", full_path
+        ).strip()
+        rpaths = []
+        if rpath_record:
+            for entry in rpath_record.split(os.pathsep):
+                entry = entry.strip()
+                if not entry:
+                    continue
+
+                if entry.startswith("$ORIGIN"):
+                    # rpath is already relative
+                    rpaths.append(entry)
+                else:
+                    rpath = pathlib.Path(entry)
+                    if rpath.is_relative_to(inst_prefix):
+                        rel_rpath = os.path.relpath(
+                            rpath, start=inst_path.parent
+                        )
+                        rpaths.append(f"$ORIGIN/{rel_rpath}")
+                    else:
+                        print(
+                            f"RPATH {entry} points outside of install image, "
+                            f"removing"
+                        )
+
+        if rpaths:
+            new_rpath_record = os.pathsep.join(rp for rp in rpaths)
+            if new_rpath_record != rpath_record:
+                tools.cmd(
+                    "patchelf",
+                    "--force-rpath",
+                    "--set-rpath",
+                    new_rpath_record,
+                    full_path,
+                )
+        elif rpath_record:
+            tools.cmd(
+                "patchelf",
+                "--remove-rpath",
+                full_path,
+            )
+
+    def _strip(
+        self, image_root: pathlib.Path, binary_relpath: pathlib.Path
+    ) -> None:
+        full_path = image_root / binary_relpath
+        tools.cmd("strip", full_path)

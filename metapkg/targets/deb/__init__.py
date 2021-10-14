@@ -237,39 +237,12 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
         arch = tools.cmd("dpkg-architecture", "-qDEB_HOST_MULTIARCH").strip()
         return pathlib.Path("/usr/lib") / arch
 
-    def build(
-        self,
-        *,
-        io: cleo_io.IO,
-        root_pkg: mpkg.BundledPackage,
-        deps: list[mpkg.BasePackage],
-        build_deps: list[mpkg.BasePackage],
-        workdir: str | pathlib.Path,
-        outputdir: str | pathlib.Path,
-        build_source: bool,
-        build_debug: bool,
-        revision: str,
-        subdist: str | None,
-        extra_opt: bool,
-    ) -> None:
-        debuild.Build(
-            self,
-            io=io,
-            root_pkg=root_pkg,
-            deps=deps,
-            build_deps=build_deps,
-            workdir=workdir,
-            outputdir=outputdir,
-            build_source=build_source,
-            build_debug=build_debug,
-            revision=revision,
-            subdist=subdist,
-            extra_opt=extra_opt,
-        ).run()
+    def get_builder(self) -> type[debuild.Build]:
+        return debuild.Build
 
     def get_capabilities(self) -> list[str]:
         capabilities = super().get_capabilities()
-        return capabilities + ["systemd", "libffi", "tzdata"]
+        return capabilities + ["systemd", "tzdata"]
 
     def get_resource_path(
         self, build: targets.Build, resource: str

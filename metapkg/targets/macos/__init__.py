@@ -236,8 +236,21 @@ class GenericMacOSTarget(generic.GenericTarget):
         tools.cmd("/bin/sh", "-c", brew_inst, "--", "make")
         tools.cmd("/bin/sh", "-c", brew_inst, "--", "gnu-sed")
 
-    def build(self, **kwargs: Any) -> None:
-        return macbuild.GenericBuild(self, **kwargs).run()
+    def is_binary_code_file(
+        self, build: targets.Build, path: pathlib.Path
+    ) -> bool:
+        with open(path, "rb") as f:
+            signature = f.read(4)
+        # Mach-O binaries
+        return signature in {
+            b"\xFE\xED\xFA\xCE",
+            b"\xFE\xED\xFA\xCF",
+            b"\xCE\xFA\xED\xFE",
+            b"\xCF\xFA\xED\xFE",
+        }
+
+    def get_builder(self) -> type[macbuild.GenericBuild]:
+        return macbuild.GenericBuild
 
 
 class MacOSTarget(GenericMacOSTarget):
@@ -340,10 +353,15 @@ class MacOSTarget(GenericMacOSTarget):
     ) -> List[str]:
         return []
 
+    def get_shlib_relpath_run_time_ldflags(
+        self, build: targets.Build, path: str = ""
+    ) -> list[str]:
+        return []
+
 
 class ModernMacOSTarget(MacOSTarget):
-    def build(self, **kwargs: Any) -> None:
-        return macbuild.NativePackageBuild(self, **kwargs).run()
+    def get_builder(self) -> type[macbuild.NativePackageBuild]:
+        return macbuild.NativePackageBuild
 
 
 def get_specific_target(version: tuple[int, ...]) -> MacOSTarget:

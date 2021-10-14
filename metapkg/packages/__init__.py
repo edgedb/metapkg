@@ -3,6 +3,7 @@
 from .base import (
     BasePackage,
     BundledPackage,
+    BundledCPackage,
     Dependency,
     PackageFileLayout,
     MetaPackage,
@@ -18,6 +19,7 @@ __all__ = (
     "PackageFileLayout",
     "MetaPackage",
     "PythonPackage",
+    "BundledCPackage",
     "BundledPythonPackage",
     "BundledRustPackage",
 )

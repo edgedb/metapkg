@@ -186,8 +186,8 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
     def get_sys_bindir(self) -> pathlib.Path:
         return pathlib.Path(tools.cmd("rpm", "--eval", "%_bindir").strip())
 
-    def build(self, **kwargs: Any) -> None:
-        return rpmbuild.Build(self, **kwargs).run()
+    def get_builder(self) -> type[rpmbuild.Build]:
+        return rpmbuild.Build
 
     def get_system_dependencies(self, dep_name: str) -> list[str]:
         try:
@@ -213,7 +213,7 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
 
     def get_capabilities(self) -> list[str]:
         capabilities = super().get_capabilities()
-        return capabilities + ["systemd", "libffi", "tzdata"]
+        return capabilities + ["systemd", "tzdata"]
 
     def get_resource_path(
         self, build: targets.Build, resource: str

@@ -259,7 +259,9 @@ class BasePythonPackage(base.BasePackage):
     def get_configure_script(self, build: targets.Build) -> str:
         return ""
 
-    def get_build_wheel_env(self, build: targets.Build) -> dict[str, str]:
+    def sh_get_build_wheel_env(
+        self, build: targets.Build, *, site_packages_var: str
+    ) -> dict[str, str]:
         return {}
 
     def get_build_script(self, build: targets.Build) -> str:
@@ -276,7 +278,19 @@ class BasePythonPackage(base.BasePackage):
             f"import site; " f'print(site.getsitepackages(["{dest}"])[0])'
         )
 
+        src_dest = build.get_temp_root(
+            relative_to="pkgsource"
+        ) / build.get_full_install_prefix().relative_to("/")
+
+        src_sitescript = (
+            f"import site; " f'print(site.getsitepackages(["{src_dest}"])[0])'
+        )
+
         wheeldir_script = 'import pathlib; print(pathlib.Path(".").resolve())'
+
+        abspath = (
+            "import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve())"
+        )
 
         pkgname = getattr(self, "dist_name", None)
         if pkgname is None:
@@ -287,6 +301,9 @@ class BasePythonPackage(base.BasePackage):
         env = {
             "SETUPTOOLS_SCM_PRETEND_VERSION": self.pretty_version,
         }
+
+        dep_names = [dep.name for dep in self.build_requires]
+        build_deps = build.get_packages(dep_names)
 
         if pkgname == "wheel":
             build_command = f'"{src_python}" setup.py sdist -d ${{_wheeldir}}'
@@ -309,10 +326,14 @@ class BasePythonPackage(base.BasePackage):
             build_command = " ".join(
                 shlex.quote(c) if c[0] != "$" else c for c in args
             )
-            env.update(self.get_build_wheel_env(build))
+            env.update(
+                self.sh_get_build_wheel_env(
+                    build, site_packages_var="${_sitepkg_from_src}"
+                )
+            )
 
             cflags = build.sh_get_bundled_shlibs_cflags(
-                build.get_packages(dep.name for dep in self.build_requires),
+                build_deps,
                 relative_to="pkgsource",
             )
 
@@ -323,7 +344,7 @@ class BasePythonPackage(base.BasePackage):
                     env["CFLAGS"] = f"!{cflags}"
 
             ldflags = build.sh_get_bundled_shlibs_ldflags(
-                build.get_packages(dep.name for dep in self.build_requires),
+                build_deps,
                 relative_to="pkgsource",
             )
 
@@ -335,12 +356,16 @@ class BasePythonPackage(base.BasePackage):
 
             binary = True
 
+        all_build_deps = build.get_packages(dep_names, recursive=True)
         env_str = build.sh_format_command("env", env, force_args_eq=True)
+        env_str += " " + " ".join(build.get_ld_env(all_build_deps, "${_wd}"))
 
         return textwrap.dedent(
             f"""\
             _wheeldir=$("{build_python}" -c '{wheeldir_script}')
             _target=$("{build_python}" -c '{sitescript}')
+            _sitepkg_from_src=$("{build_python}" -c '{src_sitescript}')
+            _wd=$("{build_python}" -c '{abspath}' "$(pwd)")
             (cd "{sdir}"; \\
              {env_str} \\
                  {build_command})
@@ -513,7 +538,7 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         return reqs
 
     def get_build_requirements(self) -> list[poetry_dep.Dependency]:
-        reqs = super().get_requirements()
+        reqs = super().get_build_requirements()
         reqs.append(python_dependency)
         return reqs
 
@@ -533,8 +558,14 @@ class FlitCore(PythonPackage):
 
 
 class Tomli(PythonPackage):
-    def get_build_wheel_env(self, build: targets.Build) -> dict[str, str]:
-        env = dict(super().get_build_wheel_env(build))
+    def sh_get_build_wheel_env(
+        self, build: targets.Build, *, site_packages_var: str
+    ) -> dict[str, str]:
+        env = dict(
+            super().sh_get_build_wheel_env(
+                build, site_packages_var=site_packages_var
+            )
+        )
         sdir = build.get_source_dir(self, relative_to="pkgbuild")
         env["EXTRA_PYTHONPATH"] = str(sdir)
         return env

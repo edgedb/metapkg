@@ -6,6 +6,7 @@ import platform
 
 from .base import (
     Build,
+    BuildRequest,
     Target,
     Location,
     LinuxTarget,
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 
 __all__ = (
     "Build",
+    "BuildRequest",
     "EnsureDirAction",
     "AddUserAction",
     "Location",
