@@ -75,6 +75,8 @@ class GenericTarget(targets.FHSTarget):
             return pathlib.Path("$HOME") / ".config"
         elif aspect == "data":
             return root / prefix / "data"
+        elif aspect == "legal":
+            return root / prefix / "licenses"
         elif aspect == "bin":
             return root / prefix / "bin"
         elif aspect == "systembin":

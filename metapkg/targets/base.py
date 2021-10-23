@@ -516,6 +516,15 @@ class FHSTarget(PosixTarget):
             return pathlib.Path("$HOME") / ".config"
         elif aspect == "data":
             return root / "usr" / "share" / build.root_package.name_slot
+        elif aspect == "legal":
+            return (
+                root
+                / "usr"
+                / "share"
+                / "doc"
+                / build.root_package.name_slot
+                / "licenses"
+            )
         elif aspect == "bin":
             return root / prefix / "bin"
         elif aspect == "systembin":
@@ -900,6 +909,7 @@ class Build:
             "lib",
             "runstate",
             "localstate",
+            "legal",
             "userconf",
         ):
             path = self.get_install_path(aspect)
@@ -952,7 +962,8 @@ class Build:
         script = textwrap.dedent(
             """\
             #!{bash}
-            set -ex
+            set -Exe -o pipefail
+            shopt -s dotglob nullglob
 
             {text}
         """

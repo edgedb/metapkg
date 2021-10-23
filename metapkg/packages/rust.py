@@ -45,6 +45,7 @@ class BundledRustPackage(base.BundledPackage):
         return ""
 
     def get_build_install_script(self, build: targets.Build) -> str:
+        script = super().get_build_install_script(build)
         cargo = build.sh_get_command("cargo")
         sed = build.sh_get_command("sed")
         installdest = build.get_temp_dir(self, relative_to="pkgbuild")
@@ -57,7 +58,7 @@ class BundledRustPackage(base.BundledPackage):
             target = "--target x86_64-unknown-linux-musl"
         else:
             target = ""
-        return textwrap.dedent(
+        script += textwrap.dedent(
             f"""\
             {sed} -i -e '/\\[package\\]/,/\\[.*\\]/{{
                     s/^version\\s*=.*/version = "{self.version.text}"/;
@@ -69,5 +70,6 @@ class BundledRustPackage(base.BundledPackage):
                 --locked
             mkdir -p "{install_bindir}"
             cp -a "{installdest}/bin/"* "{install_bindir}/"
-        """
+            """
         )
+        return script

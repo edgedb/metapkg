@@ -422,9 +422,6 @@ class BasePythonPackage(base.BasePackage):
         else:
             return wheel_install
 
-    def get_install_script(self, build: targets.Build) -> str:
-        return ""
-
     def get_install_list_script(self, build: targets.Build) -> str:
         common_script = super().get_install_list_script(build)
 

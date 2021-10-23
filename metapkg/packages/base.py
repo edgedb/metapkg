@@ -64,6 +64,9 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
     def get_build_requirements(self) -> list[Dependency]:
         return []
 
+    def get_license_files_pattern(self) -> str:
+        return "{LICENSE*,COPYING,NOTICE,COPYRIGHT}"
+
     def get_configure_script(self, build: targets.Build) -> str:
         raise NotImplementedError(f"{self}.configure()")
 
@@ -71,10 +74,28 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
         raise NotImplementedError(f"{self}.build()")
 
     def get_build_install_script(self, build: targets.Build) -> str:
-        return ""
+        script = ""
 
-    def get_install_script(self, build: targets.Build) -> str:
-        return ""
+        licenses = self.get_license_files_pattern()
+        if licenses:
+            sdir = build.get_source_dir(self, relative_to="pkgbuild")
+            legaldir = build.get_install_path("legal").relative_to("/")
+            lic_dest = (
+                build.get_install_dir(self, relative_to="pkgbuild") / legaldir
+            )
+            prefix = str(lic_dest / self.name)
+            script += textwrap.dedent(
+                f"""\
+                mkdir -p "{lic_dest}"
+                for _lic_src in "{sdir}"/{licenses}; do
+                    if [ -e "$_lic_src" ]; then
+                        cp "$_lic_src" "{prefix}-$(basename "$_lic_src")"
+                    fi
+                done
+                """
+            )
+
+        return script
 
     def get_build_tools(self, build: targets.Build) -> dict[str, pathlib.Path]:
         return {}
@@ -84,14 +105,43 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
     ) -> dict[str, list[tuple[str, str]]]:
         return {}
 
+    def _get_file_list_script(
+        self,
+        build: targets.Build,
+        listname: str,
+        *,
+        entries: list[str],
+    ) -> str:
+        if entries:
+            script = self.write_file_list_script(build, listname, entries)
+        else:
+            script = ""
+
+        return script
+
+    def get_file_install_entries(self, build: targets.Build) -> list[str]:
+        entries = []
+        if self.get_license_files_pattern():
+            entries.append("{legaldir}/*")
+        return entries
+
     def get_install_list_script(self, build: targets.Build) -> str:
-        return ""
+        entries = self.get_file_install_entries(build)
+        return self._get_file_list_script(build, "install", entries=entries)
+
+    def get_file_no_install_entries(self, build: targets.Build) -> list[str]:
+        return []
 
     def get_no_install_list_script(self, build: targets.Build) -> str:
-        return ""
+        entries = self.get_file_no_install_entries(build)
+        return self._get_file_list_script(build, "no_install", entries=entries)
+
+    def get_file_ignore_entries(self, build: targets.Build) -> list[str]:
+        return []
 
     def get_ignore_list_script(self, build: targets.Build) -> str:
-        return ""
+        entries = self.get_file_ignore_entries(build)
+        return self._get_file_list_script(build, "ignore", entries=entries)
 
     def get_private_libraries(self, build: targets.Build) -> list[str]:
         return []
@@ -118,6 +168,51 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
 
     def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return []
+
+    def write_file_list_script(
+        self, build: targets.Build, listname: str, entries: list[str]
+    ) -> str:
+        installdest = build.get_install_dir(self, relative_to="pkgbuild")
+
+        paths: dict[str, str | pathlib.Path] = {}
+        for aspect in ("systembin", "bin", "data", "include", "lib", "legal"):
+            path = build.get_install_path(aspect).relative_to("/")
+            paths[f"{aspect}dir"] = path
+
+        paths["prefix"] = build.get_full_install_prefix().relative_to("/")
+        paths["exesuffix"] = build.get_exe_suffix()
+
+        processed_entries = []
+        for entry in entries:
+            processed_entries.append(
+                entry.strip().format(**paths).replace("/", os.sep)
+            )
+
+        pyscript = textwrap.dedent(
+            """\
+            import glob
+            import pathlib
+
+            tmp = pathlib.Path({installdest!r})
+
+            patterns = {patterns}
+
+            for pattern in patterns:
+                for path in glob.glob(str(tmp / pattern), recursive=True):
+                    p = pathlib.Path(path)
+                    if p.exists():
+                        print(p.relative_to(tmp))
+        """
+        ).format(
+            installdest=str(installdest),
+            patterns=pprint.pformat(processed_entries),
+        )
+
+        scriptfile_name = f"_gen_{listname}_list_{self.unique_name}.py"
+
+        return build.sh_write_python_helper(
+            scriptfile_name, pyscript, relative_to="pkgbuild"
+        )
 
 
 BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
@@ -354,51 +449,6 @@ class BundledPackage(BasePackage):
     def is_root(self) -> bool:
         return False
 
-    def write_file_list_script(
-        self, build: targets.Build, listname: str, entries: list[str]
-    ) -> str:
-        installdest = build.get_install_dir(self, relative_to="pkgbuild")
-
-        paths: dict[str, str | pathlib.Path] = {}
-        for aspect in ("systembin", "bin", "data", "include", "lib"):
-            path = build.get_install_path(aspect).relative_to("/")
-            paths[f"{aspect}dir"] = path
-
-        paths["prefix"] = build.get_full_install_prefix().relative_to("/")
-        paths["exesuffix"] = build.get_exe_suffix()
-
-        processed_entries = []
-        for entry in entries:
-            processed_entries.append(
-                entry.strip().format(**paths).replace("/", os.sep)
-            )
-
-        pyscript = textwrap.dedent(
-            """\
-            import glob
-            import pathlib
-
-            tmp = pathlib.Path({installdest!r})
-
-            patterns = {patterns}
-
-            for pattern in patterns:
-                for path in glob.glob(str(tmp / pattern), recursive=True):
-                    p = pathlib.Path(path)
-                    if p.exists():
-                        print(p.relative_to(tmp))
-        """
-        ).format(
-            installdest=str(installdest),
-            patterns=pprint.pformat(processed_entries),
-        )
-
-        scriptfile_name = f"_gen_{listname}_list_{self.unique_name}.py"
-
-        return build.sh_write_python_helper(
-            scriptfile_name, pyscript, relative_to="pkgbuild"
-        )
-
     @overload
     def read_support_files(
         self, build: targets.Build, file_glob: str, binary: Literal[False]
@@ -444,13 +494,11 @@ class BundledPackage(BasePackage):
 
         return result
 
-    def _get_file_list_script(
+    def _read_install_entries(
         self,
         build: targets.Build,
         listname: str,
-        *,
-        extra_files: Sequence[pathlib.Path] | None = None,
-    ) -> str:
+    ) -> list[str]:
         mod = sys.modules[type(self).__module__]
         path = pathlib.Path(mod.__file__).parent / f"{listname}.list"
 
@@ -460,27 +508,19 @@ class BundledPackage(BasePackage):
             with open(path, "r") as f:
                 entries.extend(f)
 
-        if extra_files:
-            entries.extend(str(p.relative_to("/")) for p in extra_files)
+        return entries
 
-        if entries:
-            script = self.write_file_list_script(build, listname, entries)
-        else:
-            script = ""
+    def get_file_install_entries(self, build: targets.Build) -> list[str]:
+        entries = super().get_file_install_entries(build)
+        return entries + self._read_install_entries(build, "install")
 
-        return script
+    def get_file_no_install_entries(self, build: targets.Build) -> list[str]:
+        entries = super().get_file_no_install_entries(build)
+        return entries + self._read_install_entries(build, "no_install")
 
-    def get_install_list_script(self, build: targets.Build) -> str:
-        return self._get_file_list_script(build, "install")
-
-    def get_no_install_list_script(self, build: targets.Build) -> str:
-        return self._get_file_list_script(build, "no_install")
-
-    def get_ignore_list_script(self, build: targets.Build) -> str:
-        return self._get_file_list_script(build, "ignore")
-
-    def get_build_install_script(self, build: targets.Build) -> str:
-        return ""
+    def get_file_ignore_entries(self, build: targets.Build) -> list[str]:
+        entries = super().get_file_ignore_entries(build)
+        return entries + self._read_install_entries(build, "ignore")
 
     def get_resources(self, build: targets.Build) -> dict[str, bytes]:
         return self.read_support_files(build, "resources/*", binary=True)
@@ -568,11 +608,14 @@ class BundledCPackage(BundledPackage):
         )
 
     def get_build_install_script(self, build: targets.Build) -> str:
+        script = super().get_build_install_script(build)
         installdest = build.get_install_dir(self, relative_to="pkgbuild")
         make = build.sh_get_command("make")
 
-        return textwrap.dedent(
+        script += textwrap.dedent(
             f"""\
             {make} DESTDIR=$(pwd)/"{installdest}" install
-        """
+            """
         )
+
+        return script
