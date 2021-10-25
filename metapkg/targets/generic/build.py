@@ -465,15 +465,6 @@ class Build(targets.Build):
             suffix = f"{suffix}~{self._subdist}"
         an = f"{title}{pkg.slot_suffix}_{version}_{suffix}"
 
-        with open(self._outputroot / "package-version.json", "w") as vf:
-            json.dump(
-                {
-                    "installref": an,
-                    **self._root_pkg.get_artifact_metadata(self),
-                },
-                vf,
-            )
-
         if pkg.get_package_layout(self) is packages.PackageFileLayout.FLAT:
             if len(files) == 1:
                 fn = files[0]
@@ -483,7 +474,7 @@ class Build(targets.Build):
                     f"{self._outputroot / an}{fn.suffix}",
                 )
 
-                return
+                installref = an
             else:
                 with zipfile.ZipFile(
                     self._outputroot / f"{an}.zip",
@@ -492,8 +483,10 @@ class Build(targets.Build):
                 ) as z:
                     for file in files:
                         z.write(image_root / file, arcname=file.name)
+
+                installref = f"{an}.zip"
         else:
-            archive = (self._outputroot / f"{an}.tar.gz").resolve()
+            archive = (self._outputroot / f"{an}.tar").resolve()
             top = f"{title}{pkg.slot_suffix}"
             src = image_root / self.get_full_install_prefix().relative_to("/")
             tools.cmd(
@@ -501,11 +494,35 @@ class Build(targets.Build):
                 "--transform",
                 f"flags=r;s|^|{top}/|",
                 "-c",
-                "-z",
                 "-f",
                 str(archive),
                 ".",
                 cwd=src,
+            )
+
+            tools.cmd(
+                "zstd",
+                "-19",
+                str(archive),
+                cwd=self._outputroot,
+            )
+
+            tools.cmd(
+                "gzip",
+                "-9",
+                str(archive),
+                cwd=self._outputroot,
+            )
+
+            installref = f"{an}.tar.gz"
+
+        with open(self._outputroot / "package-version.json", "w") as vf:
+            json.dump(
+                {
+                    "installref": installref,
+                    **self._root_pkg.get_artifact_metadata(self),
+                },
+                vf,
             )
 
 
