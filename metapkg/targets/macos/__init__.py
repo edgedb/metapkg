@@ -505,7 +505,6 @@ class MacOSPortableTarget(MacOSTarget):
         # to be able to manipulate rpath with install_name_tool.
         return flags + [
             "-mmacosx-version-min=10.10",
-            "-Wl,-macos_version_min,10.10",
             "-Wl,-headerpad_max_install_names",
         ]
 
