@@ -494,7 +494,7 @@ class Build(targets.Build):
             tools.cmd(
                 tar,
                 "--transform",
-                f"flags=r;s|^|{top}/|",
+                f"flags=r;s|^\\./|{top}/|",
                 "-c",
                 "-f",
                 str(archive),
