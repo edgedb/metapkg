@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import mimetypes
 import os
@@ -10,7 +12,7 @@ from metapkg.targets import generic
 from metapkg import tools
 
 
-class GenericBuild(generic.Build):
+class MacOSBuild(generic.Build):
     def define_tools(self) -> None:
         super().define_tools()
         self._system_tools["bash"] = "/usr/local/bin/bash"
@@ -19,9 +21,10 @@ class GenericBuild(generic.Build):
             f"-j{os.cpu_count()} SHELL=/usr/local/bin/bash"
         )
         self._system_tools["sed"] = "/usr/local/bin/gsed"
+        self._system_tools["tar"] = "/usr/local/bin/gtar"
 
 
-class NativePackageBuild(GenericBuild):
+class NativePackageBuild(MacOSBuild):
     def _package(self, files: list[pathlib.Path]) -> None:
         if self._outputroot is not None:
             if not self._outputroot.exists():
@@ -229,4 +232,70 @@ class NativePackageBuild(GenericBuild):
                         **self._root_pkg.get_artifact_metadata(self),
                     },
                     f,
+                )
+
+
+class GenericMacOSBuild(MacOSBuild):
+    def _fixup_rpath(
+        self, image_root: pathlib.Path, binary_relpath: pathlib.Path
+    ) -> None:
+        inst_prefix = self.get_full_install_prefix()
+        full_path = image_root / binary_relpath
+        inst_path = pathlib.Path("/") / binary_relpath
+        shlibs, existing_rpaths = self.target.get_shlib_refs(
+            self, image_root, binary_relpath, resolve=False
+        )
+        rpaths = set()
+        shlib_alters: set[tuple[str, str]] = set()
+        if existing_rpaths:
+            for rpath in existing_rpaths:
+                if rpath.parts[0] != "@loader_path":
+                    if rpath.is_relative_to(inst_prefix):
+                        rel_rpath = pathlib.Path(
+                            f"@loader_path"
+                        ) / os.path.relpath(rpath, start=inst_path.parent)
+                        for shlib in shlibs:
+                            if shlib.is_relative_to(rpath):
+                                rel_shlib = pathlib.Path(
+                                    "@rpath"
+                                ) / os.path.relpath(shlib, start=rpath)
+                                shlib_alters.add((str(shlib), str(rel_shlib)))
+                        rpath = rel_rpath
+                    else:
+                        print(
+                            f"RPATH {rpath} points outside of install image, "
+                            f"removing"
+                        )
+                rpaths.add(rpath)
+
+        args: list[str | pathlib.Path] = []
+        for added in rpaths - existing_rpaths:
+            args.extend(("-add_rpath", added))
+
+        for old, new in shlib_alters:
+            args.extend(("-change", old, new))
+
+        if args:
+            args.append(full_path)
+
+            tools.cmd(
+                "install_name_tool",
+                *args,
+            )
+
+        for removed in existing_rpaths - rpaths:
+            present_rpaths = existing_rpaths
+            # Unfortunately, macOS ld creates duplicate LC_RPATH
+            # entries (from duplicate -rpath command line arguments),
+            # and install_name_tool only removes the _first_ matching
+            # entry rather than all of them.
+            while removed in present_rpaths:
+                tools.cmd(
+                    "install_name_tool",
+                    "-delete_rpath",
+                    removed,
+                    full_path,
+                )
+                _, present_rpaths = self.target.get_shlib_refs(
+                    self, image_root, binary_relpath, resolve=False
                 )

@@ -166,6 +166,9 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
     def get_shlib_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return []
 
+    def get_shlibs(self, build: targets.Build) -> list[str]:
+        return []
+
     def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return []
 
@@ -579,7 +582,7 @@ class BundledCPackage(BundledPackage):
                 )
             )
         if ldflags:
-            conf_args["LDFLAGS"] = "!" + "' '".join(ldflags)
+            build.sh_append_flags(conf_args, "LDFLAGS", ldflags)
 
         if "--prefix" not in args:
             conf_args["--prefix"] = str(build.get_full_install_prefix())

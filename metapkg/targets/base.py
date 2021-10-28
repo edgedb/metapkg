@@ -127,6 +127,9 @@ class Target:
     def get_global_cflags(self, build: Build) -> list[str]:
         return []
 
+    def get_global_cxxflags(self, build: Build) -> list[str]:
+        return self.get_global_cflags(build)
+
     def get_global_ldflags(self, build: Build) -> list[str]:
         return []
 
@@ -138,10 +141,14 @@ class Target:
         build: Build,
         image_root: pathlib.Path,
         install_path: pathlib.Path,
-    ) -> tuple[set[str], set[pathlib.Path]]:
+        *,
+        resolve: bool = True,
+    ) -> tuple[set[pathlib.Path], set[pathlib.Path]]:
         raise NotImplementedError
 
-    def is_allowed_system_shlib(self, build: Build, shlib: str) -> bool:
+    def is_allowed_system_shlib(
+        self, build: Build, shlib: pathlib.Path
+    ) -> bool:
         return False
 
     def get_exe_suffix(self) -> str:
@@ -449,7 +456,9 @@ class LinuxTarget(PosixTarget):
         build: Build,
         image_root: pathlib.Path,
         install_path: pathlib.Path,
-    ) -> tuple[set[str], set[pathlib.Path]]:
+        *,
+        resolve: bool = True,
+    ) -> tuple[set[pathlib.Path], set[pathlib.Path]]:
         # Scan the .dynamic section of the given ELF binary to find
         # which shared objects it needs and what the library runpath is.
         #
@@ -470,10 +479,10 @@ class LinuxTarget(PosixTarget):
             if not line:
                 continue
             if m := shlib_re.match(line):
-                shlibs.add(m.group(1))
+                shlibs.add(pathlib.Path(m.group(1)))
             if m := rpath_re.match(line):
                 for entry in m.group(1).split(os.pathsep):
-                    if entry.startswith("$ORIGIN"):
+                    if entry.startswith("$ORIGIN") and resolve:
                         # $ORIGIN means the directory of the referring binary.
                         relpath = entry[len("$ORIGIN/") :]
                         rpath = (
@@ -485,8 +494,10 @@ class LinuxTarget(PosixTarget):
 
         return shlibs, rpaths
 
-    def is_allowed_system_shlib(self, build: Build, shlib: str) -> bool:
-        return bool(self._sys_shlibs_re.fullmatch(shlib))
+    def is_allowed_system_shlib(
+        self, build: Build, shlib: pathlib.Path
+    ) -> bool:
+        return bool(self._sys_shlibs_re.fullmatch(str(shlib)))
 
 
 class FHSTarget(PosixTarget):
@@ -715,6 +726,7 @@ class Build:
         self._system_tools["useradd"] = "useradd"
         self._system_tools["groupadd"] = "groupadd"
         self._system_tools["sed"] = "sed"
+        self._system_tools["tar"] = "tar"
         self._system_tools["bash"] = "/bin/bash"
         self._system_tools["find"] = "find"
 
@@ -1248,7 +1260,7 @@ class Build:
             flags.extend(
                 self.target.get_shlib_path_link_time_ldflags(
                     self,
-                    f"$(pwd)/{shlex.quote(str(link_time))}",
+                    f"$(pwd -P)/{shlex.quote(str(link_time))}",
                 ),
             )
 
@@ -1260,6 +1272,9 @@ class Build:
                         shlex.quote(str(shlib_path)),
                     ),
                 )
+
+                for shlib in pkg.get_shlibs(self):
+                    flags.append(f"-l{shlib}")
 
         return '" "'.join(flags)
 
@@ -1278,6 +1293,22 @@ class Build:
                     )
                 )
 
+        return '" "'.join(filter(None, flags))
+
+    def sh_get_bundled_shlib_cflags(
+        self,
+        pkg: poetry_pkg.Package,
+        relative_to: Location = "pkgbuild",
+    ) -> str:
+        flags = []
+
+        assert self.is_bundled(pkg)
+
+        root_path = self.get_install_dir(pkg, relative_to=relative_to)
+        for include_path in pkg.get_include_paths(self):
+            inc_path = root_path / include_path.relative_to("/")
+            flags.append(f"-I$(pwd -P)/{shlex.quote(str(inc_path))}")
+
         return '" "'.join(flags)
 
     def sh_get_bundled_shlibs_cflags(
@@ -1288,29 +1319,35 @@ class Build:
         flags = []
 
         for pkg in deps:
-            if not self.is_bundled(pkg):
-                continue
+            if self.is_bundled(pkg):
+                flags.append(
+                    self.sh_get_bundled_shlib_cflags(
+                        pkg, relative_to=relative_to
+                    )
+                )
 
-            root_path = self.get_install_dir(pkg, relative_to=relative_to)
-            for include_path in pkg.get_include_paths(self):
-                inc_path = root_path / include_path.relative_to("/")
-                flags.append(f"-I$(pwd)/{shlex.quote(str(inc_path))}")
-
-        return '" "'.join(flags)
+        return '" "'.join(filter(None, flags))
 
     def sh_append_global_flags(
         self,
         args: Mapping[str, str | pathlib.Path | None] | None = None,
     ) -> dict[str, str | pathlib.Path | None]:
         global_cflags = self.target.get_global_cflags(self)
+        global_cxxflags = self.target.get_global_cxxflags(self)
         global_ldflags = self.target.get_global_ldflags(self)
         if args is None:
             args = {}
         conf_args = dict(args)
         if global_cflags:
             self.sh_append_flags(conf_args, "CFLAGS", global_cflags)
+        if global_cxxflags:
+            self.sh_append_flags(conf_args, "CXXFLAGS", global_cxxflags)
         if global_ldflags:
             self.sh_append_flags(conf_args, "LDFLAGS", global_ldflags)
+            rust_ldflags = []
+            for f in global_ldflags:
+                rust_ldflags.extend(["-C", f"link-arg={f}"])
+            self.sh_append_flags(conf_args, "RUSTFLAGS", rust_ldflags)
         return conf_args
 
     def sh_configure(
@@ -1325,14 +1362,19 @@ class Build:
         self,
         args: dict[str, str | pathlib.Path | None],
         key: str,
-        flags: list[str],
+        flags: list[str] | str,
     ) -> None:
-        flags_line = " ".join(shlex.quote(f) for f in flags)
+        if isinstance(flags, str):
+            flags_line = flags
+        else:
+            flags_line = '" "'.join(shlex.quote(f) for f in flags)
         existing_flags = args.get(key)
         if existing_flags:
             assert isinstance(existing_flags, str)
             if not existing_flags.startswith("!"):
-                raise AssertionError(f"{key} must be pre-quoted")
-            args[key] = f'!{shlex.quote(flags_line)}" "{existing_flags[1:]}'
+                raise AssertionError(
+                    f"{key} must be pre-quoted: {existing_flags}"
+                )
+            args[key] = f'{existing_flags}" "{flags_line}'
         else:
-            args[key] = flags_line
+            args[key] = f"!{flags_line}"

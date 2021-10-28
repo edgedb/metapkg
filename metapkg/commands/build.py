@@ -91,24 +91,7 @@ class Build(base.Command):
         )
         af_repo.bundle_repo.add_package(root)
 
-        target: targets.Target
-        if generic:
-            current_system = platform.system()
-            if current_system == "Linux":
-                if libc == "musl":
-                    target = targets.generic.GenericMuslLinuxTarget()
-                elif libc == "glibc" or not libc:
-                    target = targets.generic.GenericLinuxTarget()
-                else:
-                    self.error(f"Unsupported libc: {libc}")
-                    return 1
-            elif current_system == "Darwin":
-                target = targets.macos.GenericMacOSTarget()
-            else:
-                target = targets.generic.GenericTarget()
-        else:
-            target = targets.detect_target(self.io)
-
+        target = targets.detect_target(self.io, portable=generic, libc=libc)
         target.prepare()
 
         target_capabilities = target.get_capabilities()

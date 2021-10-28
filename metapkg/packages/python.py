@@ -298,9 +298,12 @@ class BasePythonPackage(base.BasePackage):
             if pkgname.startswith("pypkg-"):
                 pkgname = pkgname[len("pypkg-") :]
 
-        env = {
-            "SETUPTOOLS_SCM_PRETEND_VERSION": self.pretty_version,
-        }
+        env = build.sh_append_global_flags(
+            {
+                "SETUPTOOLS_SCM_PRETEND_VERSION": self.pretty_version,
+                "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+            }
+        )
 
         dep_names = [dep.name for dep in self.build_requires]
         build_deps = build.get_packages(dep_names)
@@ -338,10 +341,7 @@ class BasePythonPackage(base.BasePackage):
             )
 
             if cflags:
-                if "CFLAGS" in env:
-                    env["CFLAGS"] = f"!{cflags}' '{env['CFLAGS']}"
-                else:
-                    env["CFLAGS"] = f"!{cflags}"
+                build.sh_append_flags(env, "CFLAGS", cflags)
 
             ldflags = build.sh_get_bundled_shlibs_ldflags(
                 build_deps,
@@ -349,10 +349,7 @@ class BasePythonPackage(base.BasePackage):
             )
 
             if ldflags:
-                if "LDFLAGS" in env:
-                    env["LDFLAGS"] = f"!{ldflags}' '{env['CFLAGS']}"
-                else:
-                    env["LDFLAGS"] = f"!{ldflags}"
+                build.sh_append_flags(env, "LDFLAGS", ldflags)
 
             binary = True
 
@@ -400,9 +397,16 @@ class BasePythonPackage(base.BasePackage):
         else:
             binary = True
 
+        env = {
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        }
+
+        env_str = build.sh_format_command("env", env, force_args_eq=True)
+
         wheel_install = textwrap.dedent(
             f"""\
             _wheeldir=$("{python}" -c '{wheeldir_script}')
+            {env_str} \\
             "{python}" -m pip install \\
                 --no-build-isolation \\
                 --ignore-installed \\

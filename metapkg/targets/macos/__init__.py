@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import *
 
 import pathlib
+import re
 import shlex
 import textwrap
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 PACKAGE_WHITELIST = [
     "bison",
     "flex",
+    "libffi",
+    "libffi-dev",
     "perl",
     "pam",
     "pam-dev",
@@ -214,8 +217,8 @@ class MacOSRepository(repository.Repository):
         if dependency.name in PACKAGE_WHITELIST:
             pkg = SystemPackage(
                 dependency.name,
-                version="1.0",
-                pretty_version="1.0",
+                version="999.0",
+                pretty_version="999.0",
                 system_name=dependency.name,
             )
             self.add_package(pkg)
@@ -225,16 +228,53 @@ class MacOSRepository(repository.Repository):
             return []
 
 
-class GenericMacOSTarget(generic.GenericTarget):
+_frameworks_base = "/System/Library/Frameworks"
+_frameworks = [
+    "CoreFoundation",
+    "IOKit",
+    "SystemConfiguration",
+]
+
+_lib_base = "/usr/lib"
+_libs = [
+    r"libSystem(\.B)?",
+    r"libc\+\+\.1",
+    r"libffi",
+    r"libiconv\.2",
+    r"libresolv\.9",
+    r"libz\.1",
+]
+
+_sys_shlibs = [fr"{_lib_base}/{lib}\.dylib" for lib in _libs] + [
+    fr"{_frameworks_base}/{fw}\.framework/Versions/A/{fw}"
+    for fw in _frameworks
+]
+
+_sys_shlibs_re = re.compile(
+    "|".join(f"({lib})" for lib in _sys_shlibs),
+    re.A,
+)
+
+
+class MacOSTarget(generic.GenericTarget):
+    @property
+    def name(self) -> str:
+        return f"Generic macOS"
+
+    def get_package_repository(self) -> MacOSRepository:
+        return MacOSRepository()
+
+    def _get_necessary_host_tools(self) -> list[str]:
+        return ["bash", "make", "gnu-sed", "gnu-tar"]
+
     def prepare(self) -> None:
         tools.cmd("brew", "update")
         brew_inst = (
             'if brew ls --versions "$1"; then brew upgrade "$1"; '
             'else brew install "$1"; fi'
         )
-        tools.cmd("/bin/sh", "-c", brew_inst, "--", "bash")
-        tools.cmd("/bin/sh", "-c", brew_inst, "--", "make")
-        tools.cmd("/bin/sh", "-c", brew_inst, "--", "gnu-sed")
+        for tool in self._get_necessary_host_tools():
+            tools.cmd("/bin/sh", "-c", brew_inst, "--", tool)
 
     def is_binary_code_file(
         self, build: targets.Build, path: pathlib.Path
@@ -249,11 +289,124 @@ class GenericMacOSTarget(generic.GenericTarget):
             b"\xCF\xFA\xED\xFE",
         }
 
-    def get_builder(self) -> type[macbuild.GenericBuild]:
-        return macbuild.GenericBuild
+    def is_allowed_system_shlib(
+        self, build: targets.Build, shlib: pathlib.Path
+    ) -> bool:
+        return bool(_sys_shlibs_re.fullmatch(str(shlib)))
+
+    def get_shlib_refs(
+        self,
+        build: targets.Build,
+        image_root: pathlib.Path,
+        install_path: pathlib.Path,
+        *,
+        resolve: bool = True,
+    ) -> tuple[set[pathlib.Path], set[pathlib.Path]]:
+        shlibs = set()
+        rpaths = set()
+        output = tools.cmd("otool", "-l", image_root / install_path)
+        section_re = re.compile(r"^Section$", re.I)
+        load_cmd_re = re.compile(r"^Load command (\d+)\s*$", re.I)
+        lc_load_dylib_cmd_re = re.compile(r"^\s*cmd\s+LC_LOAD_DYLIB\s*$")
+        lc_load_dylib_name_re = re.compile(r"^\s*name\s+([^(]+).*$")
+        lc_rpath_cmd_re = re.compile(r"^\s*cmd\s+LC_RPATH\s*$")
+        lc_rpath_path_re = re.compile(r"^\s*path\s+([^(]+).*$")
+
+        state = "skip"
+        for line in output.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if state == "skip":
+                if load_cmd_re.match(line):
+                    state = "load_cmd"
+            elif state == "load_cmd":
+                if lc_load_dylib_cmd_re.match(line):
+                    state = "lc_load_dylib"
+                elif lc_rpath_cmd_re.match(line):
+                    state = "lc_rpath"
+                elif section_re.match(line):
+                    state = "skip"
+            elif state == "lc_load_dylib":
+                if m := lc_load_dylib_name_re.match(line):
+                    dylib = pathlib.Path(m.group(1).strip())
+                    if dylib.parts[0] == "@rpath" and resolve:
+                        dylib = pathlib.Path(*dylib.parts[1:])
+                    shlibs.add(dylib)
+                    state = "skip"
+                elif section_re.match(line):
+                    state = "skip"
+                elif load_cmd_re.match(line):
+                    state = "load_cmd"
+            elif state == "lc_rpath":
+                if m := lc_rpath_path_re.match(line):
+                    entry = m.group(1).strip()
+                    if entry.startswith("@loader_path") and resolve:
+                        relpath = entry[len("@loader_path/") :]
+                        rpath = (
+                            pathlib.Path("/") / install_path.parent / relpath
+                        )
+                    else:
+                        rpath = pathlib.Path(entry)
+                    rpaths.add(rpath)
+                    state = "skip"
+                elif section_re.match(line):
+                    state = "skip"
+                elif load_cmd_re.match(line):
+                    state = "load_cmd"
+
+        return shlibs, rpaths
+
+    def get_builder(self) -> type[macbuild.MacOSBuild]:
+        raise NotImplementedError
+
+    def get_su_script(
+        self, build: targets.Build, script: str, user: str
+    ) -> str:
+        return f"su '{user}' -c {shlex.quote(script)}\n"
+
+    def get_action(
+        self, name: str, build: targets.Build
+    ) -> targets.TargetAction:
+        if name == "adduser":
+            return MacOSAddUserAction(build)
+        else:
+            return super().get_action(name, build)
+
+    def get_package_ld_env(
+        self, build: targets.Build, package: mpkg.BasePackage, wd: str
+    ) -> dict[str, str]:
+        pkg_install_root = build.get_install_dir(
+            package, relative_to="pkgbuild"
+        )
+        pkg_lib_path = pkg_install_root / build.get_install_path(
+            "lib"
+        ).relative_to("/")
+
+        return {
+            "DYLD_LIBRARY_PATH": f"{wd}/{pkg_lib_path}",
+        }
+
+    def get_ld_env_keys(self, build: targets.Build) -> List[str]:
+        return ["DYLD_LIBRARY_PATH"]
+
+    def get_shlib_path_link_time_ldflags(
+        self, build: targets.Build, path: str
+    ) -> list[str]:
+        return [f"-L{path}"]
+
+    def get_shlib_path_run_time_ldflags(
+        self, build: targets.Build, path: str
+    ) -> list[str]:
+        return [f"-Wl,-rpath,{path}"]
+
+    def get_shlib_relpath_run_time_ldflags(
+        self, build: targets.Build, path: str = ""
+    ) -> list[str]:
+        return []
 
 
-class MacOSTarget(GenericMacOSTarget):
+class MacOSNativePackageTarget(MacOSTarget):
     def __init__(self, version: tuple[int, ...]) -> None:
         self.version = version
 
@@ -272,19 +425,6 @@ class MacOSTarget(GenericMacOSTarget):
         else:
             return package.identifier
 
-    def get_su_script(
-        self, build: targets.Build, script: str, user: str
-    ) -> str:
-        return f"su '{user}' -c {shlex.quote(script)}\n"
-
-    def get_action(
-        self, name: str, build: targets.Build
-    ) -> targets.TargetAction:
-        if name == "adduser":
-            return MacOSAddUserAction(build)
-        else:
-            return super().get_action(name, build)
-
     def get_install_path(
         self, build: targets.Build, aspect: str
     ) -> pathlib.Path:
@@ -298,9 +438,6 @@ class MacOSTarget(GenericMacOSTarget):
             return self.get_install_root(build).parent.parent / "bin"
         else:
             return super().get_install_path(build, aspect)
-
-    def get_package_repository(self) -> MacOSRepository:
-        return MacOSRepository()
 
     def get_framework_root(self, build: targets.Build) -> pathlib.Path:
         rpkg = build.root_package
@@ -325,49 +462,63 @@ class MacOSTarget(GenericMacOSTarget):
     def get_package_ld_env(
         self, build: targets.Build, package: mpkg.BasePackage, wd: str
     ) -> dict[str, str]:
+        env = super().get_package_ld_env(build, package, wd)
         pkg_install_root = build.get_install_dir(
             package, relative_to="pkgbuild"
         )
-        pkg_lib_path = pkg_install_root / build.get_install_path(
-            "lib"
-        ).relative_to("/")
-
         fw_root = self.get_framework_root(build).parent
         pkg_fw_root = pkg_install_root / fw_root.relative_to("/")
-
-        return {
-            "DYLD_LIBRARY_PATH": f"{wd}/{pkg_lib_path}",
-            "DYLD_FRAMEWORK_PATH": f"{wd}/{pkg_fw_root}",
-        }
+        env["DYLD_FRAMEWORK_PATH"] = f"{wd}/{pkg_fw_root}"
+        return env
 
     def get_ld_env_keys(self, build: targets.Build) -> List[str]:
-        return ["DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH"]
+        return super().get_ld_env_keys(build) + ["DYLD_FRAMEWORK_PATH"]
 
-    def get_shlib_path_link_time_ldflags(
-        self, build: targets.Build, path: str
-    ) -> list[str]:
-        return [f"-L{path}"]
-
-    def get_shlib_path_run_time_ldflags(
-        self, build: targets.Build, path: str
-    ) -> List[str]:
-        return []
-
-    def get_shlib_relpath_run_time_ldflags(
-        self, build: targets.Build, path: str = ""
-    ) -> list[str]:
-        return []
-
-
-class ModernMacOSTarget(MacOSTarget):
     def get_builder(self) -> type[macbuild.NativePackageBuild]:
         return macbuild.NativePackageBuild
 
 
-def get_specific_target(version: tuple[int, ...]) -> MacOSTarget:
+class ModernMacOSNativePackageTarget(MacOSNativePackageTarget):
+    pass
 
+
+class MacOSPortableTarget(MacOSTarget):
+    def is_portable(self) -> bool:
+        return True
+
+    def get_global_cflags(self, build: targets.Build) -> list[str]:
+        flags = super().get_global_cflags(build)
+        return flags + [
+            "-g",
+            "-O2",
+            "-D_FORTIFY_SOURCE=2",
+            "-fstack-protector-strong",
+            "-Wdate-time",
+            "-Wformat",
+            "-Werror=format-security",
+            "-mmacosx-version-min=10.10",
+        ]
+
+    def get_global_ldflags(self, build: targets.Build) -> list[str]:
+        flags = super().get_global_ldflags(build)
+        # -headerpad_max_install_names is needed because we want
+        # to be able to manipulate rpath with install_name_tool.
+        return flags + [
+            "-mmacosx-version-min=10.10",
+            "-Wl,-macos_version_min,10.10",
+            "-Wl,-headerpad_max_install_names",
+        ]
+
+    def get_builder(self) -> type[macbuild.GenericMacOSBuild]:
+        return macbuild.GenericMacOSBuild
+
+    def _get_necessary_host_tools(self) -> list[str]:
+        return super()._get_necessary_host_tools() + ["zstd"]
+
+
+def get_specific_target(version: tuple[int, ...]) -> MacOSNativePackageTarget:
     if version >= (10, 10):
-        return ModernMacOSTarget(version)
+        return ModernMacOSNativePackageTarget(version)
     else:
         raise NotImplementedError(
             f'macOS version {".".join(str(v) for v in version)}'

@@ -423,9 +423,10 @@ class Build(targets.Build):
 
         # Finally, do the sanity check.
         for binary, (shlibs, rpaths) in refs.items():
-            for shlib in shlibs:
-                if self.target.is_allowed_system_shlib(self, shlib):
+            for shlib_path in shlibs:
+                if self.target.is_allowed_system_shlib(self, shlib_path):
                     continue
+                shlib = str(shlib_path)
                 bundled = bin_paths.get(shlib, set())
                 if any(
                     (rpath / shlib).resolve() in bundled for rpath in rpaths
@@ -489,8 +490,9 @@ class Build(targets.Build):
             archive = (self._outputroot / f"{an}.tar").resolve()
             top = f"{title}{pkg.slot_suffix}"
             src = image_root / self.get_full_install_prefix().relative_to("/")
+            tar = self.sh_get_command("tar")
             tools.cmd(
-                "tar",
+                tar,
                 "--transform",
                 f"flags=r;s|^|{top}/|",
                 "-c",
