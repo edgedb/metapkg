@@ -58,16 +58,20 @@ class BundledRustPackage(base.BundledPackage):
             target = "--target x86_64-unknown-linux-musl"
         else:
             target = ""
+
+        env = build.sh_append_global_flags({})
+        env_str = build.sh_format_command("env", env, force_args_eq=True)
         script += textwrap.dedent(
             f"""\
             {sed} -i -e '/\\[package\\]/,/\\[.*\\]/{{
                     s/^version\\s*=.*/version = "{self.version.text}"/;
                 }}' \\
                 "{src}/Cargo.toml"
-            {cargo} install {target} \\
-                --root "{installdest}" \\
-                --path "{src}" \\
-                --locked
+            {env_str} \\
+                {cargo} install {target} \\
+                    --root "{installdest}" \\
+                    --path "{src}" \\
+                    --locked
             mkdir -p "{install_bindir}"
             cp -a "{installdest}/bin/"* "{install_bindir}/"
             """
