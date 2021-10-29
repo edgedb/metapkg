@@ -232,6 +232,7 @@ _frameworks_base = "/System/Library/Frameworks"
 _frameworks = [
     "CoreFoundation",
     "IOKit",
+    "Security",
     "SystemConfiguration",
 ]
 
