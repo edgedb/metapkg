@@ -1244,6 +1244,18 @@ class Build:
 
         return env_list
 
+    def sh_join_flags(
+        self,
+        flags: list[str] | tuple[str, ...],
+    ) -> str:
+        return '" "'.join(filter(None, flags))
+
+    def sh_format_flags(
+        self,
+        flags: list[str] | tuple[str, ...],
+    ) -> str:
+        return self.sh_join_flags([shlex.quote(f) for f in flags if f])
+
     def sh_get_bundled_shlib_ldflags(
         self,
         pkg: poetry_pkg.Package,
@@ -1276,7 +1288,7 @@ class Build:
                 for shlib in pkg.get_shlibs(self):
                     flags.append(f"-l{shlib}")
 
-        return '" "'.join(flags)
+        return self.sh_join_flags(flags)
 
     def sh_get_bundled_shlibs_ldflags(
         self,
@@ -1293,7 +1305,7 @@ class Build:
                     )
                 )
 
-        return '" "'.join(filter(None, flags))
+        return self.sh_join_flags(flags)
 
     def sh_get_bundled_shlib_cflags(
         self,
@@ -1309,7 +1321,7 @@ class Build:
             inc_path = root_path / include_path.relative_to("/")
             flags.append(f"-I$(pwd -P)/{shlex.quote(str(inc_path))}")
 
-        return '" "'.join(flags)
+        return self.sh_join_flags(flags)
 
     def sh_get_bundled_shlibs_cflags(
         self,
@@ -1326,7 +1338,7 @@ class Build:
                     )
                 )
 
-        return '" "'.join(filter(None, flags))
+        return self.sh_join_flags(flags)
 
     def sh_append_global_flags(
         self,
@@ -1362,12 +1374,12 @@ class Build:
         self,
         args: dict[str, str | pathlib.Path | None],
         key: str,
-        flags: list[str] | str,
+        flags: list[str] | tuple[str, ...] | str,
     ) -> None:
         if isinstance(flags, str):
             flags_line = flags
         else:
-            flags_line = '" "'.join(shlex.quote(f) for f in flags)
+            flags_line = self.sh_format_flags(flags)
         existing_flags = args.get(key)
         if existing_flags:
             assert isinstance(existing_flags, str)
@@ -1375,6 +1387,6 @@ class Build:
                 raise AssertionError(
                     f"{key} must be pre-quoted: {existing_flags}"
                 )
-            args[key] = f'{existing_flags}" "{flags_line}'
+            args[key] = self.sh_join_flags([existing_flags, flags_line])
         else:
-            args[key] = f"!{flags_line}"
+            args[key] = "!" + flags_line
