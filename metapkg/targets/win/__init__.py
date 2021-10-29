@@ -1,8 +1,9 @@
 from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
-    Any,
 )
+
+import pathlib
 
 from metapkg import packages as mpkg
 from metapkg.packages import repository
@@ -48,6 +49,22 @@ class WindowsTarget(generic.GenericTarget):
 
     def get_exe_suffix(self) -> str:
         return ".exe"
+
+    def is_binary_code_file(
+        self, build: targets.Build, path: pathlib.Path
+    ) -> bool:
+        return path.suffix in {".exe", ".dll"}
+
+    def get_shlib_refs(
+        self,
+        build: targets.Build,
+        image_root: pathlib.Path,
+        install_path: pathlib.Path,
+        *,
+        resolve: bool = True,
+    ) -> tuple[set[pathlib.Path], set[pathlib.Path]]:
+        # YOLO for now.
+        return (set(), set())
 
 
 class ModernWindowsTarget(WindowsTarget):
