@@ -448,6 +448,9 @@ class MacOSNativePackageTarget(MacOSTarget):
         rpkg = build.root_package
         return self.get_framework_root(build) / "Versions" / rpkg.slot
 
+    def get_install_prefix(self, build: targets.Build) -> pathlib.Path:
+        return pathlib.Path(".")
+
     def get_resource_path(
         self, build: targets.Build, resource: str
     ) -> pathlib.Path | None:
