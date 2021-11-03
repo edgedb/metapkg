@@ -22,6 +22,8 @@ setup(
         "poetry~=1.2.0a1",
         "toml~=0.10.2",
         "distlib~=0.3.2",
+        'python-magic~=0.4.14; platform_system=="Linux"',
+        'python-magic-bin~=0.4.14; platform_system!="Linux"',
         "wheel>=0.32.3",
         "setuptools-rust>=0.11.4",
         "tomli>=1.2",
