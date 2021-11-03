@@ -437,6 +437,12 @@ class MacOSNativePackageTarget(MacOSTarget):
             return pathlib.Path("/") / "var" / "run"
         elif aspect == "systembin":
             return self.get_install_root(build).parent.parent / "bin"
+        elif aspect == "data":
+            return (
+                self.get_install_root(build)
+                / "share"
+                / build.root_package.name_slot
+            )
         else:
             return super().get_install_path(build, aspect)
 
@@ -449,7 +455,7 @@ class MacOSNativePackageTarget(MacOSTarget):
         return self.get_framework_root(build) / "Versions" / rpkg.slot
 
     def get_install_prefix(self, build: targets.Build) -> pathlib.Path:
-        return pathlib.Path(".")
+        return pathlib.Path("lib") / build.root_package.name_slot
 
     def get_resource_path(
         self, build: targets.Build, resource: str
