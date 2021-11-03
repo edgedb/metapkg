@@ -406,6 +406,25 @@ class MacOSTarget(generic.GenericTarget):
     ) -> list[str]:
         return []
 
+    def get_global_cflags(self, build: targets.Build) -> list[str]:
+        flags = super().get_global_cflags(build)
+        return flags + [
+            "-g",
+            "-O2",
+            "-D_FORTIFY_SOURCE=2",
+            "-fstack-protector-strong",
+            "-Wdate-time",
+            "-Wformat",
+            "-Werror=format-security",
+            "-mmacosx-version-min=10.10",
+        ]
+
+    def get_global_ldflags(self, build: targets.Build) -> list[str]:
+        flags = super().get_global_ldflags(build)
+        return flags + [
+            "-mmacosx-version-min=10.10",
+        ]
+
 
 class MacOSNativePackageTarget(MacOSTarget):
     def __init__(self, version: tuple[int, ...]) -> None:
@@ -496,25 +515,12 @@ class MacOSPortableTarget(MacOSTarget):
     def is_portable(self) -> bool:
         return True
 
-    def get_global_cflags(self, build: targets.Build) -> list[str]:
-        flags = super().get_global_cflags(build)
-        return flags + [
-            "-g",
-            "-O2",
-            "-D_FORTIFY_SOURCE=2",
-            "-fstack-protector-strong",
-            "-Wdate-time",
-            "-Wformat",
-            "-Werror=format-security",
-            "-mmacosx-version-min=10.10",
-        ]
 
     def get_global_ldflags(self, build: targets.Build) -> list[str]:
         flags = super().get_global_ldflags(build)
         # -headerpad_max_install_names is needed because we want
         # to be able to manipulate rpath with install_name_tool.
         return flags + [
-            "-mmacosx-version-min=10.10",
             "-Wl,-headerpad_max_install_names",
         ]
 
