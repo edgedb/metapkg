@@ -219,10 +219,14 @@ class DebRepository(repository.Repository):
         return metas
 
 
-class BaseDebTarget(targets.FHSTarget, targets.LinuxTarget):
-    def __init__(self, distro_info: dict[str, Any]) -> None:
-        targets.FHSTarget.__init__(self)
-        targets.LinuxTarget.__init__(self, distro_info=distro_info)
+class BaseDebTarget(targets.FHSTarget, targets.LinuxDistroTarget):
+    def __init__(
+        self, distro_info: dict[str, Any], arch: str, libc: str
+    ) -> None:
+        targets.FHSTarget.__init__(self, arch)
+        targets.LinuxDistroTarget.__init__(
+            self, distro_info=distro_info, arch=arch, libc=libc
+        )
 
     def prepare(self) -> None:
         tools.cmd("apt-get", "update")
@@ -287,8 +291,10 @@ class UbuntuXenialOrNewerTarget(BaseDebTarget):
 
 
 class UbuntuBionicOrNewerTarget(ModernDebianTarget):
-    def __init__(self, distro_info: dict[str, Any]) -> None:
-        self.distro = distro_info
+    def __init__(
+        self, distro_info: dict[str, Any], arch: str, libc: str
+    ) -> None:
+        super().__init__(distro_info, arch, libc)
         if " " in self.distro["codename"]:
             # distro described in full, e,g, "Bionic Beaver",
             # normalize that to a single lowercase word as
@@ -297,11 +303,13 @@ class UbuntuBionicOrNewerTarget(ModernDebianTarget):
             self.distro["codename"] = c
 
 
-def get_specific_target(distro_info: dict[str, Any]) -> BaseDebTarget:
+def get_specific_target(
+    distro_info: dict[str, Any], arch: str, libc: str
+) -> BaseDebTarget:
     if distro_info["id"] == "debian":
         ver = int(distro_info["version_parts"]["major"])
         if ver >= 9:
-            return DebianStretchOrNewerTarget(distro_info)
+            return DebianStretchOrNewerTarget(distro_info, arch, libc)
         else:
             raise NotImplementedError(
                 f'{distro_info["id"]} {distro_info["codename"]} '
@@ -313,9 +321,9 @@ def get_specific_target(distro_info: dict[str, Any]) -> BaseDebTarget:
         minor = int(distro_info["version_parts"]["minor"])
 
         if (major, minor) >= (18, 4):
-            return UbuntuBionicOrNewerTarget(distro_info)
+            return UbuntuBionicOrNewerTarget(distro_info, arch, libc)
         elif (major, minor) >= (16, 4):
-            return UbuntuXenialOrNewerTarget(distro_info)
+            return UbuntuXenialOrNewerTarget(distro_info, arch, libc)
         else:
             raise NotImplementedError(
                 f'{distro_info["id"]} {distro_info["codename"]} '

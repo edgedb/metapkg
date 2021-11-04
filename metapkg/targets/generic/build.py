@@ -11,6 +11,8 @@ import subprocess
 import textwrap
 import zipfile
 
+import magic
+
 from metapkg import packages
 from metapkg import targets
 from metapkg import tools
@@ -186,6 +188,8 @@ class Build(targets.Build):
         self._apply_patches()
         self._write_makefile()
         self._build()
+
+    def package(self) -> None:
         files = self._list_installed_files()
         self._fixup_binaries(files)
         self._package(files)
@@ -451,53 +455,83 @@ class Build(targets.Build):
         pkg = self._root_pkg
         title = pkg.name
 
-        if not self._outputroot.exists():
-            self._outputroot.mkdir(parents=True, exist_ok=True)
-        elif tuple(self._outputroot.iterdir()):
-            raise RuntimeError(
-                f"target directory {self._outputroot} is not empty"
-            )
-
+        src_root = self.get_source_abspath()
         image_root = self.get_image_root(relative_to="fsroot")
 
-        version = pkg.pretty_version
-        suffix = self._revision
-        if self._subdist:
-            suffix = f"{suffix}~{self._subdist}"
-        an = f"{title}{pkg.slot_suffix}_{version}_{suffix}"
+        version = pkg.version.to_string(short=False)
+        an = f"{title}-{version}"
+        if not pkg.version_includes_revision():
+            an = f"{an}_{self._revision}"
+        archives = self.get_intermediate_output_dir()
+        archives_abs = self.get_intermediate_output_dir(relative_to="fsroot")
 
         if pkg.get_package_layout(self) is packages.PackageFileLayout.FLAT:
             if len(files) == 1:
                 fn = files[0]
+                dest = f"{archives / an}{fn.suffix}"
                 tools.cmd(
                     "cp",
                     image_root / fn,
-                    f"{self._outputroot / an}{fn.suffix}",
+                    dest,
+                    cwd=src_root,
                 )
 
-                installref = an
+                mime = magic.from_file(str(src_root / dest), mime=True)
+
+                tools.cmd(
+                    "zstd",
+                    "-19",
+                    f"{an}{fn.suffix}",
+                    cwd=archives_abs,
+                )
+
+                installrefs = [
+                    f"{an}{fn.suffix}",
+                    f"{an}{fn.suffix}.zst",
+                ]
+
+                installrefs_ct = {
+                    f"{an}{fn.suffix}": {
+                        "type": mime,
+                        "encoding": "identity",
+                        "suffix": fn.suffix,
+                    },
+                    f"{an}{fn.suffix}.zst": {
+                        "type": mime,
+                        "encoding": "zstd",
+                        "suffix": ".zst",
+                    },
+                }
             else:
                 with zipfile.ZipFile(
-                    self._outputroot / f"{an}.zip",
+                    archives_abs / f"{an}.zip",
                     mode="w",
                     compression=zipfile.ZIP_DEFLATED,
                 ) as z:
                     for file in files:
                         z.write(image_root / file, arcname=file.name)
 
-                installref = f"{an}.zip"
+                installrefs = [
+                    f"{an}.zip",
+                ]
+
+                installrefs_ct = {
+                    f"{an}.zip": {
+                        "type": "application/zip",
+                        "encoding": "identity",
+                        "suffix": ".zip",
+                    }
+                }
         else:
-            archive = (self._outputroot / f"{an}.tar").resolve()
-            top = f"{title}{pkg.slot_suffix}"
             src = image_root / self.get_full_install_prefix().relative_to("/")
-            tar = self.sh_get_command("tar")
+            tarball = f"{an}.tar"
             tools.cmd(
-                tar,
+                self.sh_get_command("tar"),
                 "--transform",
-                f"flags=r;s|^\\./|{top}/|",
+                f"flags=r;s|^\\./|{an}/|",
                 "-c",
                 "-f",
-                str(archive),
+                os.path.relpath(archives_abs / tarball, start=src),
                 ".",
                 cwd=src,
             )
@@ -505,23 +539,41 @@ class Build(targets.Build):
             tools.cmd(
                 "zstd",
                 "-19",
-                str(archive),
-                cwd=self._outputroot,
+                tarball,
+                cwd=archives_abs,
             )
 
             tools.cmd(
                 "gzip",
                 "-9",
-                str(archive),
-                cwd=self._outputroot,
+                tarball,
+                cwd=archives_abs,
             )
 
-            installref = f"{an}.tar.gz"
+            installrefs = [
+                f"{tarball}.gz",
+                f"{tarball}.zst",
+            ]
 
-        with open(self._outputroot / "package-version.json", "w") as vf:
+            installrefs_ct = {
+                f"{tarball}.gz": {
+                    "type": "application/x-tar",
+                    "encoding": "gzip",
+                    "suffix": ".tar.gz",
+                },
+                f"{tarball}.zst": {
+                    "type": "application/x-tar",
+                    "encoding": "zstd",
+                    "suffix": ".tar.zst",
+                },
+            }
+
+        with open(archives_abs / "build-metadata.json", "w") as vf:
             json.dump(
                 {
-                    "installref": installref,
+                    "installrefs": installrefs,
+                    "contents": installrefs_ct,
+                    "repository": "generic",
                     **self._root_pkg.get_artifact_metadata(self),
                 },
                 vf,

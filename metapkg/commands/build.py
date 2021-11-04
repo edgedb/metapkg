@@ -63,6 +63,9 @@ class Build(base.Command):
         extra_opt = self.option("extra-optimizations")
         jobs = self.option("jobs")
 
+        target = targets.detect_target(self.io, portable=generic, libc=libc)
+        target.prepare()
+
         modname, _, clsname = pkgname.rpartition(":")
 
         mod = importlib.import_module(modname)
@@ -72,7 +75,11 @@ class Build(base.Command):
                 pkgcls.sources[0]["extras"] = {}
             pkgcls.sources[0]["extras"]["version"] = src_ref
         root_pkg = pkgcls.resolve(
-            self.io, version=version, is_release=is_release
+            self.io,
+            version=version,
+            revision=revision,
+            is_release=is_release,
+            target=target,
         )
 
         sources = root_pkg.get_sources()
@@ -92,9 +99,6 @@ class Build(base.Command):
             poetry_dep.Dependency(root_pkg.name, root_pkg.version)
         )
         af_repo.bundle_repo.add_package(root)
-
-        target = targets.detect_target(self.io, portable=generic, libc=libc)
-        target.prepare()
 
         target_capabilities = target.get_capabilities()
         extras = [f"capability-{c}" for c in target_capabilities]

@@ -262,6 +262,10 @@ class MacOSTarget(generic.GenericTarget):
     def name(self) -> str:
         return f"Generic macOS"
 
+    @property
+    def triple(self) -> str:
+        return f"{self.arch}-apple-darwin"
+
     def get_package_repository(self) -> MacOSRepository:
         return MacOSRepository()
 
@@ -427,12 +431,17 @@ class MacOSTarget(generic.GenericTarget):
 
 
 class MacOSNativePackageTarget(MacOSTarget):
-    def __init__(self, version: tuple[int, ...]) -> None:
+    def __init__(self, version: tuple[int, ...], arch: str) -> None:
+        super().__init__(arch)
         self.version = version
 
     @property
     def name(self) -> str:
         return f'macOS {".".join(str(v) for v in self.version)}'
+
+    @property
+    def ident(self) -> str:
+        return f"macospkg"
 
     def get_package_system_ident(
         self,
@@ -515,6 +524,9 @@ class MacOSPortableTarget(MacOSTarget):
     def is_portable(self) -> bool:
         return True
 
+    @property
+    def ident(self) -> str:
+        return f"macosportable"
 
     def get_global_ldflags(self, build: targets.Build) -> list[str]:
         flags = super().get_global_ldflags(build)
@@ -531,9 +543,14 @@ class MacOSPortableTarget(MacOSTarget):
         return super()._get_necessary_host_tools() + ["zstd"]
 
 
-def get_specific_target(version: tuple[int, ...]) -> MacOSNativePackageTarget:
+def get_specific_target(
+    version: tuple[int, ...], arch: str, portable: bool
+) -> MacOSTarget:
     if version >= (10, 10):
-        return ModernMacOSNativePackageTarget(version)
+        if portable:
+            return MacOSPortableTarget(arch)
+        else:
+            return ModernMacOSNativePackageTarget(version, arch)
     else:
         raise NotImplementedError(
             f'macOS version {".".join(str(v) for v in version)}'

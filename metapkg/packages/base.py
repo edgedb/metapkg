@@ -1,10 +1,10 @@
 from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
+    Any,
     ClassVar,
     Literal,
     Mapping,
-    Sequence,
     TypeVar,
     overload,
 )
@@ -21,10 +21,11 @@ import shlex
 import sys
 import textwrap
 
+from poetry.core import vcs
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
-from poetry.core import vcs
+from poetry.core.semver import version as poetry_version
 
 from . import repository
 from . import sources as af_sources
@@ -253,6 +254,9 @@ class BundledPackage(BasePackage):
     def name_slot(self) -> str:
         return f"{self.name}{self.slot_suffix}"
 
+    def version_includes_revision(self) -> bool:
+        return False
+
     @classmethod
     def get_source_url_variables(cls, version: str) -> dict[str, str]:
         return {}
@@ -348,7 +352,9 @@ class BundledPackage(BasePackage):
         *,
         ref: str | None = None,
         version: str | None = None,
+        revision: str | None = None,
         is_release: bool = False,
+        target: targets.Target,
     ) -> BundledPackage:
         if version is None:
             version = cls.resolve_version(io)
@@ -392,7 +398,7 @@ class BundledPackage(BasePackage):
                 f"title attribute"
             )
 
-        super().__init__(self.name, version)
+        super().__init__(self.name, version, pretty_version=pretty_version)
 
         if requires is not None:
             reqs = list(requires)
@@ -558,11 +564,86 @@ class BundledPackage(BasePackage):
     ) -> list[tuple[str, str]]:
         return []
 
-    def get_artifact_metadata(self, build: targets.Build) -> dict[str, str]:
-        if self.slot:
-            return {"version_slot": self.slot}
+    def get_artifact_metadata(self, build: targets.Build) -> dict[str, Any]:
+        pv = poetry_version.Version.parse(self.pretty_version)
+
+        prerelease = []
+        if pv.pre is not None:
+            prerelease.append(
+                {
+                    "phase": pv.pre.phase,
+                    "number": pv.pre.number,
+                }
+            )
+
+        if pv.dev is not None:
+            prerelease.append(
+                {
+                    "phase": pv.dev.phase,
+                    "number": pv.dev.number,
+                }
+            )
+
+        if pv.local:
+            local: tuple[str, ...]
+            if not isinstance(pv.local, tuple):
+                local = (pv.local,)
+            else:
+                local = pv.local
+
+            ver_metadata = self.parse_version_metadata(build, local)
         else:
-            return {}
+            ver_metadata = {}
+
+        metadata = {
+            "name": self.name,
+            "version": self.version.to_string(short=False),
+            "version_details": {
+                "major": pv.major,
+                "minor": pv.minor,
+                "patch": pv.patch,
+                "prerelease": prerelease,
+                "metadata": ver_metadata,
+            },
+            "revision": build.revision,
+            "target": build.target.triple,
+            "architecture": build.target.machine_architecture,
+            "dist": build.target.ident,
+            "channel": build.channel,
+        }
+
+        if self.slot:
+            metadata["version_slot"] = self.slot
+
+        return metadata
+
+    def parse_version_metadata(
+        self, build: targets.Build, segments: tuple[str, ...]
+    ) -> dict[str, str]:
+        result = {}
+        pfx_map = self.get_version_metadata_fields()
+        for segment in segments:
+            for pfx_len in (1, 2):
+                key = pfx_map.get(segment[:pfx_len])
+                if key is not None:
+                    result[key] = segment[pfx_len:]
+                    break
+            else:
+                raise RuntimeError(
+                    f"unrecognized version metadata field `{segment}`"
+                )
+
+        return result
+
+    def get_version_metadata_fields(self) -> dict[str, str]:
+        return {
+            "r": "build_revision",
+            "d": "source_date",
+            "g": "scm_revision",
+            "t": "target",
+            "s": "build_hash",
+            "b": "build_type",
+        }
 
 
 class BundledCPackage(BundledPackage):

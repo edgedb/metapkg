@@ -37,4 +37,7 @@ def cmd(
         else:
             raise
     else:
-        return p.stdout  # type: ignore
+        output = p.stdout
+        if output is not None:
+            output = output.rstrip()
+        return output  # type: ignore

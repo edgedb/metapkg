@@ -94,14 +94,6 @@ class MacOSBuild(generic.Build):
 
 class NativePackageBuild(MacOSBuild):
     def _package(self, files: list[pathlib.Path]) -> None:
-        if self._outputroot is not None:
-            if not self._outputroot.exists():
-                self._outputroot.mkdir(parents=True, exist_ok=True)
-            elif tuple(self._outputroot.iterdir()):
-                raise RuntimeError(
-                    f"target directory {self._outputroot} is not empty"
-                )
-
         pkg = self._root_pkg
         title = pkg.name
         version = pkg.pretty_version
@@ -271,36 +263,38 @@ class NativePackageBuild(MacOSBuild):
         with open(distribution, "w") as f:
             f.write(dist_xml.toprettyxml())
 
+        archives = self.get_intermediate_output_dir(relative_to="fsroot")
+
         suffix = self._revision
         if self._subdist:
             suffix = f"{suffix}~{self._subdist}"
 
-        finalname = f"{title}{pkg.slot_suffix}_{version}_{suffix}.pkg"
+        root_version = f"{pkg.slot_suffix}_{version}_{suffix}"
+        finalname = f"{title}{root_version}.pkg"
 
-        if self._outputroot is not None:
-            tools.cmd(
-                "productbuild",
-                "--package-path",
-                pkgpath.parent,
-                "--resources",
-                rsrcdir,
-                "--identifier",
-                ident,
-                "--version",
-                version,
-                "--distribution",
-                distribution,
-                self._outputroot / finalname,
+        tools.cmd(
+            "productbuild",
+            "--package-path",
+            pkgpath.parent,
+            "--resources",
+            rsrcdir,
+            "--identifier",
+            ident,
+            "--version",
+            version,
+            "--distribution",
+            distribution,
+            archives / finalname,
+        )
+
+        with open(archives / "build-metadata.json", "w") as f:
+            json.dump(
+                {
+                    "installrefs": [finalname],
+                    **self._root_pkg.get_artifact_metadata(self),
+                },
+                f,
             )
-
-            with open(self._outputroot / "package-version.json", "w") as f:
-                json.dump(
-                    {
-                        "installref": finalname,
-                        **self._root_pkg.get_artifact_metadata(self),
-                    },
-                    f,
-                )
 
 
 class GenericMacOSBuild(MacOSBuild):

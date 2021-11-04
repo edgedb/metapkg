@@ -14,3 +14,6 @@ class Build(generic.Build):
         find = shutil.which("find")
         assert find is not None, "could not locate `find`"
         self._system_tools["find"] = find
+        tar = shutil.which("tar")
+        assert tar is not None, "could not locate `tar`"
+        self._system_tools["tar"] = tar

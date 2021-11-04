@@ -218,7 +218,7 @@ class GitSource(BaseSource):
         *,
         vcs_version: str | None = None,
         exclude_submodules: frozenset[str] | None = None,
-        clone_depth: int = 50,
+        clone_depth: int = 0,
     ) -> None:
         super().__init__(url, name)
         self.ref = vcs_version
