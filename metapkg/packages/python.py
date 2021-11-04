@@ -12,6 +12,7 @@ import textwrap
 
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import package as poetry_pkg
+from poetry.core.semver import version as poetry_version
 from poetry.repositories import pypi_repository
 
 from metapkg import packages as mpkg
@@ -25,7 +26,6 @@ from .utils import python_dependency_from_pep_508
 
 if TYPE_CHECKING:
     from cleo.io import io as cleo_io
-
 
 python_dependency = poetry_dep.Dependency(name="python", constraint=">=3.7")
 wheel_dependency = poetry_dep.Dependency(name="pypkg-wheel", constraint="*")
@@ -507,7 +507,9 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         *,
         ref: str | None = None,
         version: str | None = None,
+        revision: str | None = None,
         is_release: bool = False,
+        target: targets.Target,
     ) -> BundledPythonPackage:
         repo_dir = cls.resolve_vcs_source(io, ref=ref)
         setup_py = repo_dir / "setup.py"
@@ -523,15 +525,41 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
             requires.append(dep)
 
         if version is None:
-            version = dist.version
+            pretty_version = dist.version
+            version = cls.canonicalize_version(
+                io,
+                version=poetry_version.Version.parse(pretty_version),
+                revision=revision,
+                is_release=is_release,
+                target=target,
+            )
+        else:
+            pretty_version = None
 
-        package = cls(version, requires=requires, source_version=ref or "HEAD")
+        package = cls(
+            version,
+            pretty_version=pretty_version,
+            requires=requires,
+            source_version=ref or "HEAD",
+        )
         package.dist_name = dist.name
         package.build_requires = get_build_requires_from_srcdir(
             package, repo_dir
         )
 
         return package
+
+    @classmethod
+    def canonicalize_version(
+        cls,
+        io: cleo_io.IO,
+        version: poetry_version.Version,
+        *,
+        revision: str | None = None,
+        is_release: bool = False,
+        target: targets.Target,
+    ) -> poetry_version.Version:
+        return version
 
     def get_requirements(self) -> list[poetry_dep.Dependency]:
         reqs = super().get_requirements()

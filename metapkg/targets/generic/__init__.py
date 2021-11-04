@@ -47,9 +47,6 @@ class GenericRepository(repository.Repository):
 
 
 class GenericTarget(targets.FHSTarget):
-    def __init__(self) -> None:
-        pass
-
     @property
     def name(self) -> str:
         return f"Generic POSIX"

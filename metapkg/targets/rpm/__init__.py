@@ -172,10 +172,14 @@ class RPMRepository(repository.Repository):
         return meta
 
 
-class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
-    def __init__(self, distro_info: dict[str, Any]) -> None:
-        targets.FHSTarget.__init__(self)
-        targets.LinuxTarget.__init__(self, distro_info=distro_info)
+class BaseRPMTarget(targets.FHSTarget, targets.LinuxDistroTarget):
+    def __init__(
+        self, distro_info: dict[str, Any], arch: str, libc: str
+    ) -> None:
+        targets.FHSTarget.__init__(self, arch)
+        targets.LinuxDistroTarget.__init__(
+            self, distro_info=distro_info, arch=arch, libc=libc
+        )
 
     def get_package_repository(self) -> RPMRepository:
         return RPMRepository()
@@ -207,8 +211,10 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxTarget):
 
 
 class RHEL7OrNewerTarget(BaseRPMTarget):
-    def __init__(self, distro_info: dict[str, Any]) -> None:
-        super().__init__(distro_info)
+    def __init__(
+        self, distro_info: dict[str, Any], arch: str, libc: str
+    ) -> None:
+        super().__init__(distro_info, arch, libc)
         self.distro["codename"] = f'el{self.distro["version_parts"]["major"]}'
 
     def get_capabilities(self) -> list[str]:
@@ -227,8 +233,10 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
 
 
 class FedoraTarget(RHEL7OrNewerTarget):
-    def __init__(self, distro_info: dict[str, Any]) -> None:
-        super().__init__(distro_info)
+    def __init__(
+        self, distro_info: dict[str, Any], arch: str, libc: str
+    ) -> None:
+        super().__init__(distro_info, arch, libc)
         self.distro["codename"] = f'fc{self.distro["version_parts"]["major"]}'
 
     def install_build_deps(self, build: rpmbuild.Build, spec: str) -> None:
@@ -243,11 +251,13 @@ class FedoraTarget(RHEL7OrNewerTarget):
         )
 
 
-def get_specific_target(distro_info: dict[str, Any]) -> BaseRPMTarget:
+def get_specific_target(
+    distro_info: dict[str, Any], arch: str, libc: str
+) -> BaseRPMTarget:
     if distro_info["id"] in {"centos", "rhel"}:
         ver = int(distro_info["version_parts"]["major"])
         if ver >= 7:
-            return RHEL7OrNewerTarget(distro_info)
+            return RHEL7OrNewerTarget(distro_info, arch, libc)
         else:
             raise NotImplementedError(
                 f'{distro_info["id"]} {distro_info["codename"]} '
@@ -262,7 +272,7 @@ def get_specific_target(distro_info: dict[str, Any]) -> BaseRPMTarget:
                 f"is not supported"
             )
         else:
-            return FedoraTarget(distro_info)
+            return FedoraTarget(distro_info, arch, libc)
 
     else:
         raise NotImplementedError(f'{distro_info["id"]} is not supported')

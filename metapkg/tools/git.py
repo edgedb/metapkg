@@ -49,7 +49,7 @@ def update_repo(
     repo_url: str,
     *,
     exclude_submodules: frozenset[str] | None = None,
-    clone_depth: int = 50,
+    clone_depth: int = 0,
     ref: str | None = None,
     io: cleo_io.IO,
 ) -> pathlib.Path:

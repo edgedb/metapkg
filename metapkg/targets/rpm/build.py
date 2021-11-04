@@ -18,7 +18,7 @@ from metapkg import tools
 
 
 class Build(targets.Build):
-    _target: targets.LinuxTarget
+    _target: targets.LinuxDistroTarget
 
     def prepare(self) -> None:
         super().prepare()
@@ -202,7 +202,7 @@ class Build(targets.Build):
             common_package = ""
 
         rev = f'{self._revision}{self._subdist if self._subdist else ""}'
-        root_v = self._format_version(self._root_pkg.pretty_version)
+        root_v = self._format_version(self._root_pkg.version.to_string())
         root_version = f"{root_v}-{rev}%{{?dist}}"
         meta_pkgs = self._root_pkg.get_meta_packages(self, root_version)
         meta_pkg_specs = []
@@ -304,7 +304,7 @@ class Build(targets.Build):
             license=self._root_pkg.license,
             url=self._root_pkg.url,
             group=self._root_pkg.group,
-            version=self._format_version(self._root_pkg.pretty_version),
+            version=self._format_version(self._root_pkg.version.to_string()),
             build_reqs=self._get_build_reqs_spec(),
             runtime_reqs=self._get_runtime_reqs_spec(sysreqs),
             conflicts=self._get_conflict_spec(conflicts),
@@ -348,7 +348,7 @@ class Build(targets.Build):
         changelog = textwrap.dedent(
             """\
             * {date} {maintainer} {version}
-            - New version.
+            - {metadata}
         """
         ).format(
             maintainer="MagicStack Inc. <hello@magic.io>",
@@ -356,6 +356,7 @@ class Build(targets.Build):
             date=datetime.datetime.now(datetime.timezone.utc).strftime(
                 "%a %b %d %Y"
             ),
+            metadata=json.dumps(self._root_pkg.get_artifact_metadata(self)),
         )
 
         return changelog
@@ -391,7 +392,7 @@ class Build(targets.Build):
             lines.append(f"Requires: {pkg.system_name}")
 
         if self._bin_shims:
-            root_v = self._format_version(self._root_pkg.pretty_version)
+            root_v = self._format_version(self._root_pkg.version.to_string())
             lines.append(f"Requires: {self._root_pkg.name}-common >= {root_v}")
 
         categorymap = {
@@ -607,13 +608,6 @@ class Build(targets.Build):
             return ""
 
     def _rpmbuild(self) -> None:
-        if not self._outputroot.exists():
-            self._outputroot.mkdir(parents=True, exist_ok=True)
-        elif tuple(self._outputroot.iterdir()):
-            raise RuntimeError(
-                f"target directory {self._outputroot} is not empty"
-            )
-
         tools.cmd(
             "yum",
             "install",
@@ -659,29 +653,43 @@ class Build(targets.Build):
             stderr=subprocess.STDOUT,
         )
 
-        if self._outputroot is not None:
-            rpms = (
-                self.get_dir("RPMS", relative_to="fsroot") / platform.machine()
+    def package(self) -> None:
+        archives = self.get_intermediate_output_dir(relative_to="fsroot")
+
+        contents = {}
+
+        rpms = self.get_dir("RPMS", relative_to="fsroot") / platform.machine()
+        for rpm_path in glob.glob(str(rpms / "*.rpm")):
+            rpm = pathlib.Path(rpm_path)
+            shutil.copy2(rpm, archives / rpm.name)
+            contents[rpm.name] = {
+                "type": "application/x-rpm",
+                "encoding": "identity",
+                "suffix": ".rpm",
+            }
+
+        srpms = self.get_dir("SRPMS", relative_to="fsroot")
+        for rpm_path in glob.glob(str(srpms / "*.rpm")):
+            rpm = pathlib.Path(rpm_path)
+            shutil.copy2(rpm, archives / rpm.name)
+            contents[rpm.name] = {
+                "type": "application/x-rpm",
+                "encoding": "identity",
+                "suffix": ".rpm",
+            }
+
+        distro = self._target.distro["codename"]
+        rev = f'{self._revision}{self._subdist if self._subdist else ""}'
+        root_v = self._format_version(self._root_pkg.version.to_string())
+        root_version = f"{root_v}-{rev}.{distro}"
+        with open(archives / "build-metadata.json", "w") as f:
+            installref = f"{self._root_pkg.name_slot}-{root_version}"
+            json.dump(
+                {
+                    "installrefs": [installref],
+                    "repository": "rpm",
+                    "contents": contents,
+                    **self._root_pkg.get_artifact_metadata(self),
+                },
+                f,
             )
-            for rpm_path in glob.glob(str(rpms / "*.rpm")):
-                rpm = pathlib.Path(rpm_path)
-                shutil.copy2(rpm, self._outputroot / rpm.name)
-
-            srpms = self.get_dir("SRPMS", relative_to="fsroot")
-            for rpm_path in glob.glob(str(srpms / "*.rpm")):
-                rpm = pathlib.Path(rpm_path)
-                shutil.copy2(rpm, self._outputroot / rpm.name)
-
-            distro = self._target.distro["codename"]
-            rev = f'{self._revision}{self._subdist if self._subdist else ""}'
-            root_v = self._format_version(self._root_pkg.pretty_version)
-            root_version = f"{root_v}-{rev}.{distro}"
-            with open(self._outputroot / "package-version.json", "w") as f:
-                installref = f"{self._root_pkg.name_slot}-{root_version}"
-                json.dump(
-                    {
-                        "installref": installref,
-                        **self._root_pkg.get_artifact_metadata(self),
-                    },
-                    f,
-                )

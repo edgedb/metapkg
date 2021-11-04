@@ -55,9 +55,24 @@ class BuildRequest(NamedTuple):
 
 
 class Target:
+    def __init__(self, arch: str) -> None:
+        self.arch = arch
+
     @property
     def name(self) -> str:
         raise NotImplementedError
+
+    @property
+    def ident(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def triple(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def machine_architecture(self) -> str:
+        return self.arch
 
     def is_portable(self) -> bool:
         return False
@@ -349,12 +364,13 @@ class LinuxTarget(PosixTarget):
         re.A,
     )
 
-    def __init__(self, distro_info: dict[str, Any]) -> None:
-        self.distro = distro_info
+    def __init__(self, arch: str, libc: str) -> None:
+        super().__init__(arch)
+        self.libc = libc
 
     @property
-    def name(self) -> str:
-        return f'{self.distro["id"]}-{self.distro["version"]}'
+    def triple(self) -> str:
+        return f"{self.arch}-unknown-linux-{self.libc}"
 
     def get_action(self, name: str, build: Build) -> TargetAction:
         if name == "adduser":
@@ -501,6 +517,22 @@ class LinuxTarget(PosixTarget):
         return bool(self._sys_shlibs_re.fullmatch(str(shlib)))
 
 
+class LinuxDistroTarget(LinuxTarget):
+    def __init__(
+        self, distro_info: dict[str, Any], arch: str, libc: str
+    ) -> None:
+        super().__init__(arch, libc)
+        self.distro = distro_info
+
+    @property
+    def name(self) -> str:
+        return f'{self.distro["id"]}-{self.distro["version"]}'
+
+    @property
+    def ident(self) -> str:
+        return f'{self.distro["codename"]}'
+
+
 class FHSTarget(PosixTarget):
     def get_arch_libdir(self) -> pathlib.Path:
         raise NotImplementedError
@@ -619,6 +651,14 @@ class Build:
     def target(self) -> Target:
         return self._target
 
+    @property
+    def channel(self) -> str | None:
+        return self._subdist
+
+    @property
+    def revision(self) -> str:
+        return self._revision
+
     def get_source_abspath(self) -> pathlib.Path:
         raise NotImplementedError
 
@@ -706,12 +746,15 @@ class Build:
 
     def run(self) -> None:
         self._io.write_line(
-            f"<info>Building {self._root_pkg} on "
-            f"{self._target.name}</info>"
+            f"<info>Building {self._root_pkg} for "
+            f"{self._target.triple} ({self._target.name})</info>"
         )
 
         self.prepare()
         self.build()
+        self.prepare_packaging()
+        self.package()
+        self.shrinkwrap()
 
     def define_tools(self) -> None:
         # Undefining MAKELEVEL is required because
@@ -739,6 +782,40 @@ class Build:
 
     def build(self) -> None:
         raise NotImplementedError
+
+    def prepare_packaging(self) -> None:
+        self.get_intermediate_output_dir(relative_to="fsroot").mkdir(
+            exist_ok=True, parents=True
+        )
+
+    def package(self) -> None:
+        raise NotImplementedError
+
+    def shrinkwrap(self) -> None:
+        if not self._outputroot.exists():
+            self._outputroot.mkdir(parents=True, exist_ok=True)
+
+        pkg = self._root_pkg
+        pkg_name = pkg.name
+        pkg_ver = pkg.version.to_string(short=False)
+        tgt_ident = self.target.ident
+        tarball = f"{pkg_name}__{pkg_ver}__{tgt_ident}.tar"
+        tar = self.sh_get_command("tar")
+        intermediates = self.get_intermediate_output_dir(relative_to="fsroot")
+        shipment = os.path.relpath(
+            str((self._outputroot / tarball).resolve()),
+            start=intermediates,
+        )
+        tools.cmd(
+            tar,
+            "--transform",
+            f"flags=r;s|^\\./||",
+            "-c",
+            "-f",
+            shipment,
+            ".",
+            cwd=intermediates,
+        )
 
     def get_dir(
         self,
@@ -795,6 +872,13 @@ class Build:
         relative_to: Location = "sourceroot",
     ) -> pathlib.Path:
         raise NotImplementedError
+
+    def get_intermediate_output_dir(
+        self,
+        *,
+        relative_to: Location = "sourceroot",
+    ) -> pathlib.Path:
+        return self.get_temp_root(relative_to=relative_to) / "intermediate"
 
     def get_extras_root(
         self, *, relative_to: Location = "sourceroot"

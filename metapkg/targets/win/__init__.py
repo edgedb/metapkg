@@ -26,12 +26,17 @@ class WindowsRepository(repository.Repository):
 
 
 class WindowsTarget(generic.GenericTarget):
-    def __init__(self, version: tuple[int, ...]) -> None:
+    def __init__(self, version: tuple[int, ...], arch: str) -> None:
+        super().__init__(arch)
         self.version = version
 
     @property
     def name(self) -> str:
         return f'Windows {".".join(str(v) for v in self.version)}'
+
+    @property
+    def triple(self) -> str:
+        return f"{self.arch}-pc-windows-msvc"
 
     def get_package_system_ident(
         self,
@@ -68,14 +73,27 @@ class WindowsTarget(generic.GenericTarget):
 
 
 class ModernWindowsTarget(WindowsTarget):
+    pass
+
+
+class ModernWindowsPortableTarget(ModernWindowsTarget):
+    @property
+    def ident(self) -> str:
+        return f"windowsportable"
+
+    def is_portable(self) -> bool:
+        return True
+
     def get_builder(self) -> type[winbuild.Build]:
         return winbuild.Build
 
 
-def get_specific_target(version: tuple[int, ...]) -> WindowsTarget:
+def get_specific_target(
+    version: tuple[int, ...], arch: str, portable: bool
+) -> WindowsTarget:
 
     if version >= (10, 0):
-        return ModernWindowsTarget(version)
+        return ModernWindowsPortableTarget(version, arch)
     else:
         raise NotImplementedError(
             f'Windows version {".".join(str(v) for v in version)}'

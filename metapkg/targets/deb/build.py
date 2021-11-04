@@ -17,7 +17,7 @@ from metapkg import tools
 
 
 class Build(targets.Build):
-    _target: targets.LinuxTarget
+    _target: targets.LinuxDistroTarget
 
     def prepare(self) -> None:
         super().prepare()
@@ -292,6 +292,7 @@ class Build(targets.Build):
              dh-exec (>= 0.13~),
              dpkg-dev (>= 1.16.1~),
              {build_deps}
+            XCBS-Metapkg-Metadata: {metadata}
 
             Package: {name}
             Architecture: any
@@ -319,6 +320,7 @@ class Build(targets.Build):
             maintainer="MagicStack Inc. <hello@magic.io>",
             common_pkg=common_package,
             meta_pkgs="\n\n".join(meta_pkg_specs),
+            metadata=json.dumps(self._root_pkg.get_artifact_metadata(self)),
         )
 
         with open(self._debroot / "control", "w") as f:
@@ -573,14 +575,6 @@ class Build(targets.Build):
         return "\n".join(lines)
 
     def _dpkg_buildpackage(self) -> None:
-        if self._outputroot is not None:
-            if not self._outputroot.exists():
-                self._outputroot.mkdir(parents=True, exist_ok=True)
-            elif tuple(self._outputroot.iterdir()):
-                raise RuntimeError(
-                    f"target directory {self._outputroot} is not empty"
-                )
-
         env = os.environ.copy()
         env["DEBIAN_FRONTEND"] = "noninteractive"
 
@@ -630,38 +624,52 @@ class Build(targets.Build):
             stderr=subprocess.STDOUT,
         )
 
-        if self._outputroot is not None:
-            # Ubuntu likes to call their dbgsym packages ddebs,
-            # whereas Debian tools, including reprepro like it
-            # to just be a .deb.
-            for changes in self._pkgroot.glob("*.changes"):
-                with open(changes, "r+t") as f:
-                    f.seek(0)
-                    patched = f.read().replace(".ddeb", ".deb")
-                    f.seek(0)
-                    f.write(patched)
+        # Ubuntu likes to call their dbgsym packages ddebs,
+        # whereas Debian tools, including reprepro like it
+        # to just be a .deb.
+        for changes in self._pkgroot.glob("*.changes"):
+            with open(changes, "r+t") as f:
+                f.seek(0)
+                patched = f.read().replace(".ddeb", ".deb")
+                f.seek(0)
+                f.write(patched)
 
-            for entry in self._pkgroot.iterdir():
-                if not entry.is_dir():
-                    if entry.suffix == ".ddeb":
-                        output_name = entry.stem + ".deb"
-                    else:
-                        output_name = entry.name
-                    shutil.copy2(entry, self._outputroot / output_name)
+    def package(self) -> None:
+        archives = self.get_intermediate_output_dir(relative_to="fsroot")
+        contents = {}
 
-            assert isinstance(self._target, targets.LinuxTarget)
-            distro = self._target.distro["codename"]
-            if self._subdist:
-                distro = f"{distro}.{self._subdist}"
-            root_version = (
-                f"{self._root_pkg.version.text}-{self._revision}~{distro}"
+        for entry in self._pkgroot.iterdir():
+            if not entry.is_dir():
+                output_name = entry.name
+                if entry.suffix == ".ddeb":
+                    output_name = entry.stem + ".deb"
+                elif entry.suffix not in {".deb", ".changes", ".buildinfo"}:
+                    continue
+                if entry.suffix == ".deb":
+                    mime = "application/vnd.debian.binary-package"
+                else:
+                    mime = "text/plain"
+                contents[output_name] = {
+                    "type": mime,
+                    "encoding": "identity",
+                    "suffix": entry.suffix,
+                }
+                shutil.copy2(entry, archives / output_name)
+
+        distro = self._target.distro["codename"]
+        if self._subdist:
+            distro = f"{distro}.{self._subdist}"
+        root_version = (
+            f"{self._root_pkg.version.text}-{self._revision}~{distro}"
+        )
+        with open(archives / "build-metadata.json", "w") as f:
+            installref = f"{self._root_pkg.name_slot}={root_version}"
+            json.dump(
+                {
+                    "installrefs": [installref],
+                    "contents": contents,
+                    "repository": "apt",
+                    **self._root_pkg.get_artifact_metadata(self),
+                },
+                f,
             )
-            with open(self._outputroot / "package-version.json", "w") as f:
-                installref = f"{self._root_pkg.name_slot}={root_version}"
-                json.dump(
-                    {
-                        "installref": installref,
-                        **self._root_pkg.get_artifact_metadata(self),
-                    },
-                    f,
-                )
