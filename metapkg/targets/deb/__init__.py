@@ -43,7 +43,7 @@ PACKAGE_MAP = {
 
 
 GROUP_MAP = {
-    "Application/Databases": "database",
+    "Applications/Databases": "database",
 }
 
 

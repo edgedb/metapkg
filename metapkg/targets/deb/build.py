@@ -210,8 +210,6 @@ class Build(targets.Build):
             common_package = ""
 
         distro = self._target.distro["codename"]
-        if self._subdist:
-            distro = f"{distro}.{self._subdist}"
         root_version = (
             f"{self._root_pkg.version.text}-{self._revision}~{distro}"
         )
@@ -280,6 +278,14 @@ class Build(targets.Build):
         else:
             provides_spec = ""
 
+        section = self._target.get_package_group(  # type: ignore
+            self._root_pkg
+        )
+        if self._subdist and self._subdist != "stable":
+            # This is how reprepro determines which Component this
+            # package should go to.
+            section = f"{section}/{self._subdist}"
+
         control = textwrap.dedent(
             """\
             Source: {name}
@@ -287,12 +293,12 @@ class Build(targets.Build):
             Section: {section}
             Maintainer: {maintainer}
             Standards-Version: 4.1.5
+            XCBS-Metapkg-Metadata: {metadata}
             Build-Depends:
              debhelper (>= 9~),
              dh-exec (>= 0.13~),
              dpkg-dev (>= 1.16.1~),
              {build_deps}
-            XCBS-Metapkg-Metadata: {metadata}
 
             Package: {name}
             Architecture: any
@@ -313,9 +319,7 @@ class Build(targets.Build):
             build_deps=build_deps,
             conflicts_spec=conflicts_spec,
             provides_spec=provides_spec,
-            section=(
-                self._target.get_package_group(self._root_pkg)  # type: ignore
-            ),
+            section=section,
             description=self._root_pkg.description,
             maintainer="MagicStack Inc. <hello@magic.io>",
             common_pkg=common_package,
@@ -332,9 +336,6 @@ class Build(targets.Build):
 
     def _write_changelog(self) -> None:
         distro = self._target.distro["codename"]
-        if self._subdist:
-            distro = f"{distro}.{self._subdist}"
-
         changelog = textwrap.dedent(
             """\
             {name} ({version}) {distro}; urgency=medium
@@ -657,8 +658,6 @@ class Build(targets.Build):
                 shutil.copy2(entry, archives / output_name)
 
         distro = self._target.distro["codename"]
-        if self._subdist:
-            distro = f"{distro}.{self._subdist}"
         root_version = (
             f"{self._root_pkg.version.text}-{self._revision}~{distro}"
         )
