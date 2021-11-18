@@ -172,14 +172,16 @@ class Build(base.Command):
                 build_pkgs = [pkg_map[pn] for pn in sorter.static_order()]
             except graphlib.CycleError as e:
                 cycle = e.args[1]
+                if len(cycle) > 3 or cycle == last_cycle:
+                    raise
+
                 dep = pkg_map[cycle[-1]]
                 pkg_with_dep = pkg_map[cycle[-2]]
-                if (
-                    dep.name not in pkg_with_dep.get_cyclic_runtime_deps()
-                    or len(cycle) > 3
-                    or cycle == last_cycle
-                ):
-                    raise e
+                if dep.name not in pkg_with_dep.get_cyclic_runtime_deps():
+                    dep, pkg_with_dep = pkg_with_dep, dep
+                    if dep.name not in pkg_with_dep.get_cyclic_runtime_deps():
+                        raise
+
                 last_cycle = current_cycle
                 current_cycle = cycle
                 cyclic_runtime_deps[pkg_with_dep].append(dep)
