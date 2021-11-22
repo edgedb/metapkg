@@ -60,6 +60,7 @@ class BundledRustPackage(base.BundledPackage):
             target = ""
 
         env = build.sh_append_global_flags({})
+        env["RUST_BACKTRACE"] = "1"
         env_str = build.sh_format_command("env", env, force_args_eq=True)
         script += textwrap.dedent(
             f"""\
@@ -69,6 +70,7 @@ class BundledRustPackage(base.BundledPackage):
                 "{src}/Cargo.toml"
             {env_str} \\
                 {cargo} install {target} \\
+                    --verbose --verbose \\
                     --root "{installdest}" \\
                     --path "{src}" \\
                     --locked
