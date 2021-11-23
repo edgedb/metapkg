@@ -51,6 +51,7 @@ class BuildRequest(NamedTuple):
     revision: str
     subdist: str | None
     extra_opt: bool
+    jobs: int
 
 
 class Target:
@@ -587,6 +588,7 @@ class Build:
         self._revision = request.revision
         self._subdist = request.subdist
         self._extra_opt = request.extra_opt
+        self._jobs = request.jobs
         self._bundled = [
             pkg
             for pkg in self._build_deps
@@ -715,9 +717,11 @@ class Build:
         # Undefining MAKELEVEL is required because
         # some package makefiles have
         # conditions on MAKELEVEL.
-        self._system_tools["make"] = "env -u MAKELEVEL make -j{}".format(
-            os.cpu_count()
-        )
+        if self._jobs == 0:
+            dash_j = f"-j{os.cpu_count()}"
+        else:
+            dash_j = f"-j{self._jobs}"
+        self._system_tools["make"] = f"env -u MAKELEVEL make {dash_j}"
         self._system_tools["cp"] = "cp"
         self._system_tools["cargo"] = "cargo"
         self._system_tools["python"] = "python3"

@@ -27,6 +27,7 @@ class Build(base.Command):
 
     build
         { name : Package to build. }
+        { --jobs= : Use up to N processes in parallel to build. }
         { --dest= : Destination path. }
         { --keepwork : Do not remove the work directory. }
         { --generic : Build a generic target. }
@@ -60,6 +61,7 @@ class Build(base.Command):
         subdist = self.option("pkg-subdist")
         is_release = self.option("release")
         extra_opt = self.option("extra-optimizations")
+        jobs = self.option("jobs")
 
         modname, _, clsname = pkgname.rpartition(":")
 
@@ -218,6 +220,7 @@ class Build(base.Command):
                     revision=revision or "1",
                     subdist=subdist,
                     extra_opt=extra_opt,
+                    jobs=jobs or 0,
                 ),
             )
         finally:

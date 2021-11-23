@@ -16,9 +16,13 @@ class MacOSBuild(generic.Build):
     def define_tools(self) -> None:
         super().define_tools()
         self._system_tools["bash"] = "/usr/local/bin/bash"
+        if self._jobs == 0:
+            dash_j = f"-j{os.cpu_count()}"
+        else:
+            dash_j = f"-j{self._jobs}"
         self._system_tools["make"] = (
             "env -u MAKELEVEL /usr/local/bin/gmake "
-            f"-j{os.cpu_count()} SHELL=/usr/local/bin/bash"
+            f"{dash_j} SHELL=/usr/local/bin/bash"
         )
         self._system_tools["sed"] = "/usr/local/bin/gsed"
         self._system_tools["tar"] = "/usr/local/bin/gtar"
