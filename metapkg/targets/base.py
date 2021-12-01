@@ -802,20 +802,18 @@ class Build:
         tarball = f"{pkg_name}__{pkg_ver}__{tgt_ident}.tar"
         tar = self.sh_get_command("tar")
         intermediates = self.get_intermediate_output_dir(relative_to="fsroot")
-        shipment = os.path.relpath(
-            str((self._outputroot / tarball).resolve()),
-            start=intermediates,
-        )
+        shipment = str(self.get_temp_root(relative_to="fsroot") / tarball)
         tools.cmd(
             tar,
             "--transform",
             f"flags=r;s|^\\./||",
             "-c",
             "-f",
-            shipment,
+            os.path.relpath(shipment, start=intermediates),
             ".",
             cwd=intermediates,
         )
+        shutil.copy2(shipment, self._outputroot)
 
     def get_dir(
         self,
