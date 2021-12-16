@@ -128,6 +128,9 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
 
     def get_install_list_script(self, build: targets.Build) -> str:
         entries = self.get_file_install_entries(build)
+        entries += [
+            str(p.relative_to("/")) for p in self.get_service_scripts(build)
+        ]
         return self._get_file_list_script(build, "install", entries=entries)
 
     def get_file_no_install_entries(self, build: targets.Build) -> list[str]:
@@ -157,6 +160,11 @@ class BasePackage(poetry_pkg.Package):  # type: ignore
 
     def get_after_install_script(self, build: targets.Build) -> str:
         return ""
+
+    def get_service_scripts(
+        self, build: targets.Build
+    ) -> dict[pathlib.Path, str]:
+        return {}
 
     def get_bin_shims(self, build: targets.Build) -> dict[str, str]:
         return {}
@@ -531,8 +539,41 @@ class BundledPackage(BasePackage):
         entries = super().get_file_ignore_entries(build)
         return entries + self._read_install_entries(build, "ignore")
 
+    def get_build_install_script(self, build: targets.Build) -> str:
+        service_scripts = self.get_service_scripts(build)
+        if service_scripts:
+            install = build.sh_get_command("cp", relative_to="pkgbuild")
+            extras_dir = build.get_extras_root(relative_to="pkgbuild")
+            install_dir = build.get_install_dir(self, relative_to="pkgbuild")
+            ensuredir = build.target.get_action("ensuredir", build)
+            if TYPE_CHECKING:
+                assert isinstance(ensuredir, targets.EnsureDirAction)
+
+            commands = []
+
+            for path, _content in service_scripts.items():
+                path = path.relative_to("/")
+                commands.append(
+                    ensuredir.get_script(path=str((install_dir / path).parent))
+                )
+                args: dict[str, str | None] = {
+                    str(extras_dir / path): None,
+                    str(install_dir / path): None,
+                }
+                cmd = build.sh_format_command(install, args)
+                commands.append(cmd)
+
+            return "\n".join(commands)
+        else:
+            return ""
+
     def get_resources(self, build: targets.Build) -> dict[str, bytes]:
         return self.read_support_files(build, "resources/*", binary=True)
+
+    def get_service_scripts(
+        self, build: targets.Build
+    ) -> dict[pathlib.Path, str]:
+        return build.target.service_scripts_for_package(build, self)
 
     def get_bin_shims(self, build: targets.Build) -> dict[str, str]:
         return self.read_support_files(build, "shims/*")
