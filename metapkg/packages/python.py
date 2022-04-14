@@ -357,15 +357,24 @@ class BasePythonPackage(base.BasePackage):
         env_str = build.sh_format_command("env", env, force_args_eq=True)
         env_str += " " + " ".join(build.get_ld_env(all_build_deps, "${_wd}"))
 
+        build_cmds = [build_command]
+        build_cmds.extend(self.get_extra_python_build_commands(build))
+
+        build_command = "\n".join(
+            f"{env_str} \\\n{textwrap.indent(cmd, ' ' * 4)}"
+            for cmd in build_cmds
+        )
+
         return textwrap.dedent(
             f"""\
             _wheeldir=$("{build_python}" -c '{wheeldir_script}')
             _target=$("{build_python}" -c '{sitescript}')
             _sitepkg_from_src=$("{build_python}" -c '{src_sitescript}')
             _wd=$("{build_python}" -c '{abspath}' "$(pwd)")
-            (cd "{sdir}"; \\
-             {env_str} \\
-                 {build_command})
+            (
+                cd "{sdir}"
+                {textwrap.indent(build_command, ' ' * 16)}
+            )
             "{build_python}" -m pip install \\
                 --no-build-isolation \\
                 --no-warn-script-location \\
@@ -378,6 +387,12 @@ class BasePythonPackage(base.BasePackage):
                 "{pkgname}"
         """
         )
+
+    def get_extra_python_build_commands(
+        self,
+        build: targets.Build,
+    ) -> list[str]:
+        return []
 
     def get_build_install_script(self, build: targets.Build) -> str:
         common_script = super().get_build_install_script(build)
