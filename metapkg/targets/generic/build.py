@@ -520,25 +520,9 @@ class Build(targets.Build):
                     },
                 }
             else:
-                with zipfile.ZipFile(
-                    archives_abs / f"{an}.zip",
-                    mode="w",
-                    compression=zipfile.ZIP_DEFLATED,
-                ) as z:
-                    for file in files:
-                        z.write(image_root / file, arcname=file.name)
-
-                installrefs = [
-                    f"{an}.zip",
-                ]
-
-                installrefs_ct = {
-                    f"{an}.zip": {
-                        "type": "application/zip",
-                        "encoding": "identity",
-                        "suffix": ".zip",
-                    }
-                }
+                raise AssertionError(
+                    "Single-file package build produced multiple files!"
+                )
         else:
             src = image_root / self.get_full_install_prefix().relative_to("/")
             tarball = f"{an}.tar"
