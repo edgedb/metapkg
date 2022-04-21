@@ -392,9 +392,7 @@ class BundledPackage(BasePackage):
     def get_patches(
         self,
     ) -> dict[str, list[tuple[str, str]]]:
-        modpath = pathlib.Path(
-            sys.modules[self.__module__].__path__[0]  # type: ignore
-        )
+        modpath = pathlib.Path(sys.modules[self.__module__].__path__[0])
         patches_dir = modpath / "patches"
 
         patches = collections.defaultdict(list)
@@ -509,7 +507,9 @@ class BundledPackage(BasePackage):
     ) -> dict[str, str] | dict[str, bytes]:
 
         mod = sys.modules[type(self).__module__]
-        path = pathlib.Path(mod.__file__).parent / file_glob
+        mod_file = mod.__file__
+        assert mod_file is not None
+        path = pathlib.Path(mod_file).parent / file_glob
 
         result = {}
 
@@ -537,7 +537,9 @@ class BundledPackage(BasePackage):
         listname: str,
     ) -> list[str]:
         mod = sys.modules[type(self).__module__]
-        path = pathlib.Path(mod.__file__).parent / f"{listname}.list"
+        mod_file = mod.__file__
+        assert mod_file is not None
+        path = pathlib.Path(mod_file).parent / f"{listname}.list"
 
         entries: list[str] = []
 

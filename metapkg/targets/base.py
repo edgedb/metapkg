@@ -473,6 +473,7 @@ class LinuxTarget(PosixTarget):
             header = f.read(18)
             signature = header[:4]
             if signature == b"\x7FELF":
+                byteorder: Literal["big", "little"]
                 if header[5] == 2:
                     byteorder = "big"
                 elif header[5] == 1:
@@ -482,7 +483,9 @@ class LinuxTarget(PosixTarget):
                         f"unexpected ELF endianness: {header[5]}"
                     )
                 elf_type = int.from_bytes(
-                    header[16:18], byteorder=byteorder, signed=False
+                    header[16:18],
+                    byteorder=byteorder,
+                    signed=False,
                 )
                 return elf_type in {0x02, 0x03}  # ET_EXEC, ET_DYN
 
@@ -1125,11 +1128,10 @@ class Build:
             if bundled_tools:
                 self._tools.update(bundled_tools)
 
-        source_dirs = [pathlib.Path(helpers_pkg.__path__[0])]  # type: ignore
-        specific_helpers = (
-            pathlib.Path(sys.modules[self.__module__].__file__).parent
-            / "_helpers"
-        )
+        source_dirs = [pathlib.Path(helpers_pkg.__path__[0])]
+        mod_file = sys.modules[self.__module__].__file__
+        assert mod_file is not None
+        specific_helpers = pathlib.Path(mod_file).parent / "_helpers"
         if specific_helpers.exists():
             source_dirs.insert(0, specific_helpers)
 
