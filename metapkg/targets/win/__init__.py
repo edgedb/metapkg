@@ -60,6 +60,12 @@ class WindowsTarget(generic.GenericTarget):
     ) -> bool:
         return path.suffix in {".exe", ".dll"}
 
+    def is_dynamically_linked(
+        self, build: targets.Build, path: pathlib.Path
+    ) -> bool:
+        # Windows binaries are always dynamically linked
+        return True
+
     def get_shlib_refs(
         self,
         build: targets.Build,

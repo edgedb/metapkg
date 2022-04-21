@@ -294,6 +294,12 @@ class MacOSTarget(generic.GenericTarget):
             b"\xCF\xFA\xED\xFE",
         }
 
+    def is_dynamically_linked(
+        self, build: targets.Build, path: pathlib.Path
+    ) -> bool:
+        # macOS binaries are always dynamically linked
+        return True
+
     def is_allowed_system_shlib(
         self, build: targets.Build, shlib: pathlib.Path
     ) -> bool:

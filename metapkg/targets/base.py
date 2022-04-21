@@ -16,6 +16,7 @@ import re
 import shlex
 import shutil
 import stat
+import subprocess
 import sys
 import textwrap
 
@@ -155,6 +156,9 @@ class Target:
         return []
 
     def is_binary_code_file(self, build: Build, path: pathlib.Path) -> bool:
+        raise NotImplementedError
+
+    def is_dynamically_linked(self, build: Build, path: pathlib.Path) -> bool:
         raise NotImplementedError
 
     def get_shlib_refs(
@@ -490,6 +494,20 @@ class LinuxTarget(PosixTarget):
                 return elf_type in {0x02, 0x03}  # ET_EXEC, ET_DYN
 
         return False
+
+    def is_dynamically_linked(self, build: Build, path: pathlib.Path) -> bool:
+        try:
+            tools.cmd(
+                "patchelf",
+                "--print-rpath",
+                path,
+                hide_stderr=True,
+                errors_are_fatal=False,
+            )
+        except subprocess.CalledProcessError:
+            return False
+        else:
+            return True
 
     def get_shlib_refs(
         self,

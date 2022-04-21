@@ -423,10 +423,11 @@ class Build(targets.Build):
                 bin_paths[file.name].add(inst_path)
                 binaries.add(inst_path)
                 self._strip(image_root, file)
-                self._fixup_rpath(image_root, file)
-                refs[inst_path] = self.target.get_shlib_refs(
-                    self, image_root, file
-                )
+                if self.target.is_dynamically_linked(self, full_path):
+                    self._fixup_rpath(image_root, file)
+                    refs[inst_path] = self.target.get_shlib_refs(
+                        self, image_root, file
+                    )
 
         # Now, scan for all symbolic links to binaries
         # (it is common for .so files to be symlinks to their
