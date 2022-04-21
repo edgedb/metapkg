@@ -361,9 +361,11 @@ class BundledPackage(BasePackage):
         return tools.git.Git(repo_dir)
 
     @classmethod
-    def resolve_vcs_version(cls, io: cleo_io.IO) -> str:
+    def resolve_vcs_version(
+        cls, io: cleo_io.IO, version: str | None = None
+    ) -> str:
         repo = cls.resolve_vcs_repo(io)
-        return repo.rev_parse("HEAD").strip()  # type: ignore
+        return repo.rev_parse(version or "HEAD").strip()  # type: ignore
 
     @classmethod
     def resolve_version(cls, io: cleo_io.IO) -> str:
@@ -384,6 +386,9 @@ class BundledPackage(BasePackage):
         if version is None:
             version = cls.resolve_version(io)
             source_version = cls.resolve_vcs_version(io)
+        else:
+            source_version = cls.resolve_vcs_version(io, version)
+
         return cls(version=version, source_version=source_version)
 
     def get_sources(self) -> list[af_sources.BaseSource]:
