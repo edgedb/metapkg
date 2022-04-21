@@ -246,8 +246,8 @@ _libs = [
     r"libz\.1",
 ]
 
-_sys_shlibs = [fr"{_lib_base}/{lib}\.dylib" for lib in _libs] + [
-    fr"{_frameworks_base}/{fw}\.framework/Versions/A/{fw}"
+_sys_shlibs = [rf"{_lib_base}/{lib}\.dylib" for lib in _libs] + [
+    rf"{_frameworks_base}/{fw}\.framework/Versions/A/{fw}"
     for fw in _frameworks
 ]
 
