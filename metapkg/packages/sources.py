@@ -219,11 +219,13 @@ class GitSource(BaseSource):
         vcs_version: str | None = None,
         exclude_submodules: frozenset[str] | None = None,
         clone_depth: int = 0,
+        include_gitdir: bool = False,
     ) -> None:
         super().__init__(url, name)
         self.ref = vcs_version
         self.exclude_submodules = exclude_submodules
         self.clone_depth = clone_depth
+        self.include_gitdir = include_gitdir
 
     def download(self, io: cleo_io.IO) -> pathlib.Path:
         return tools.git.update_repo(
@@ -283,41 +285,55 @@ class GitSource(BaseSource):
                         "HEAD",
                     )
 
-                    if platform.system() == "Darwin":
-                        with tarfile.open(f.name) as modf, tarfile.open(
-                            target_path, "a"
-                        ) as tf:
-                            for m in modf.getmembers():
-                                if m.issym():
-                                    # Skip broken symlinks.
-                                    target = os.path.normpath(
-                                        "/".join(
-                                            filter(
-                                                None,
-                                                (
-                                                    os.path.dirname(m.name),
-                                                    m.linkname,
-                                                ),
-                                            )
-                                        )
-                                    )
-                                    try:
-                                        modf.getmember(target)
-                                    except KeyError:
-                                        continue
-                                tf.addfile(m, modf.extractfile(m))
+                    self._tar_append(pathlib.Path(f.name), target_path)
 
-                    else:
-                        tools.cmd(
-                            "tar",
-                            "--concatenate",
-                            "--file",
-                            target_path,
-                            f.name,
-                        )
+        if self.include_gitdir:
+            repo_dir = tools.git.repodir(self.url)
+            repo_gitdir = repo_dir / ".git"
+            prefix = f"{pkg.unique_name}/.git/"
+            with tarfile.open(target_path, "a") as tf:
+                tf.add(repo_gitdir, prefix)
 
         tools.cmd("gzip", target_path, cwd=target_dir)
         return pathlib.Path(f"{target_path}.gz")
+
+    def _tar_append(
+        self,
+        source_tarball: pathlib.Path,
+        target_tarball: pathlib.Path,
+    ) -> None:
+        if platform.system() == "Darwin":
+            with tarfile.open(source_tarball) as modf, tarfile.open(
+                target_tarball, "a"
+            ) as tf:
+                for m in modf.getmembers():
+                    if m.issym():
+                        # Skip broken symlinks.
+                        target = os.path.normpath(
+                            "/".join(
+                                filter(
+                                    None,
+                                    (
+                                        os.path.dirname(m.name),
+                                        m.linkname,
+                                    ),
+                                )
+                            )
+                        )
+                        try:
+                            modf.getmember(target)
+                        except KeyError:
+                            continue
+                    tf.addfile(m, modf.extractfile(m))
+
+        else:
+            tools.cmd(
+                "tar",
+                "--concatenate",
+                "--file",
+                target_tarball,
+                source_tarball,
+            )
 
 
 def source_for_url(
