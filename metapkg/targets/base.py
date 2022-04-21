@@ -1510,23 +1510,39 @@ class Build:
     def sh_append_global_flags(
         self,
         args: Mapping[str, str | pathlib.Path | None] | None = None,
+        flag_names: Mapping[str, str] | None = None,
     ) -> dict[str, str | pathlib.Path | None]:
         global_cflags = self.target.get_global_cflags(self)
         global_cxxflags = self.target.get_global_cxxflags(self)
         global_ldflags = self.target.get_global_ldflags(self)
         if args is None:
             args = {}
+        flag_name_map = {
+            "CFLAGS": "CFLAGS",
+            "CXXFLAGS": "CXXFLAGS",
+            "LDFLAGS": "LDFLAGS",
+            "RUSTFLAGS": "RUSTFLAGS",
+        }
+        flag_name_map.update(flag_names or {})
         conf_args = dict(args)
         if global_cflags:
-            self.sh_append_flags(conf_args, "CFLAGS", global_cflags)
+            self.sh_append_flags(
+                conf_args, flag_name_map["CFLAGS"], global_cflags
+            )
         if global_cxxflags:
-            self.sh_append_flags(conf_args, "CXXFLAGS", global_cxxflags)
+            self.sh_append_flags(
+                conf_args, flag_name_map["CXXFLAGS"], global_cxxflags
+            )
         if global_ldflags:
-            self.sh_append_flags(conf_args, "LDFLAGS", global_ldflags)
+            self.sh_append_flags(
+                conf_args, flag_name_map["LDFLAGS"], global_ldflags
+            )
             rust_ldflags = []
             for f in global_ldflags:
                 rust_ldflags.extend(["-C", f"link-arg={f}"])
-            self.sh_append_flags(conf_args, "RUSTFLAGS", rust_ldflags)
+            self.sh_append_flags(
+                conf_args, flag_name_map["RUSTFLAGS"], rust_ldflags
+            )
         return conf_args
 
     def sh_append_run_time_ldflags(
