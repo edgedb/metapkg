@@ -37,7 +37,7 @@ class BundledRustPackage(base.BundledPackage):
 
         if version is None:
             _, _, version_base = out.rpartition("#")
-            git_rev = cls.resolve_version(io)
+            git_rev = cls.resolve_vcs_version(io)
 
             if not is_release:
                 commits = tools.cmd(

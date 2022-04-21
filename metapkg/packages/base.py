@@ -14,10 +14,10 @@ import copy
 import dataclasses
 import enum
 import glob
+import hashlib
 import os
 import pathlib
 import pprint
-import shlex
 import sys
 import textwrap
 
@@ -265,7 +265,7 @@ class BundledPackage(BasePackage):
         return f"{self.name}{self.slot_suffix}"
 
     def version_includes_revision(self) -> bool:
-        return False
+        return True
 
     @classmethod
     def get_source_url_variables(cls, version: str) -> dict[str, str]:
@@ -368,8 +368,12 @@ class BundledPackage(BasePackage):
         return repo.rev_parse(version or "HEAD").strip()  # type: ignore
 
     @classmethod
-    def resolve_version(cls, io: cleo_io.IO) -> str:
-        return cls.resolve_vcs_version(io)
+    def version_from_vcs_version(cls, io: cleo_io.IO, vcs_version: str) -> str:
+        repo = cls.resolve_vcs_repo(io)
+        ver = repo.run("describe", "--tags", vcs_version).strip()
+        if ver.startswith("v"):
+            ver = ver[1:]
+        return ver
 
     @classmethod
     def resolve(
@@ -382,14 +386,40 @@ class BundledPackage(BasePackage):
         is_release: bool = False,
         target: targets.Target,
     ) -> BundledPackage:
-        source_version = None
-        if version is None:
-            version = cls.resolve_version(io)
-            source_version = cls.resolve_vcs_version(io)
-        else:
-            source_version = cls.resolve_vcs_version(io, version)
+        source_version = cls.resolve_vcs_version(io, version)
+        version = cls.version_from_vcs_version(io, source_version)
+        repo = cls.resolve_vcs_repo(io)
 
-        return cls(version=version, source_version=source_version)
+        git_date = repo.run(
+            "show",
+            "-s",
+            "--format=%cd",
+            "--date=format-local:%Y%m%d%H",
+            source_version,
+            env={**os.environ, **{"TZ": "UTC", "LANG": "C"}},
+        )
+        if not revision:
+            revision = "1"
+        metadata = ".".join(
+            (
+                f"r{revision}",
+                f"d{git_date}",
+                f"g{source_version[:9]}",
+            )
+        )
+
+        ver = poetry_version.Version.parse(version).without_local()
+        version_base = ver.to_string()
+        pv = f"{version_base}+{metadata}"
+        version_hash = hashlib.sha256(pv.encode("utf-8")).hexdigest()
+        pretty_version = f"{pv}.s{version_hash[:7]}"
+        version = f"{version_base}+{version_hash[:7]}"
+
+        return cls(
+            version=version,
+            pretty_version=pretty_version,
+            source_version=source_version,
+        )
 
     def get_sources(self) -> list[af_sources.BaseSource]:
         return self._get_sources(version=self.source_version)
@@ -632,7 +662,7 @@ class BundledPackage(BasePackage):
     ) -> list[tuple[str, str]]:
         return []
 
-    def get_artifact_metadata(self, build: targets.Build) -> dict[str, Any]:
+    def get_version_details(self) -> dict[str, Any]:
         pv = poetry_version.Version.parse(self.pretty_version)
 
         prerelease = []
@@ -659,20 +689,23 @@ class BundledPackage(BasePackage):
             else:
                 local = pv.local
 
-            ver_metadata = self.parse_version_metadata(build, local)
+            ver_metadata = self.parse_version_metadata(local)
         else:
             ver_metadata = {}
 
+        return {
+            "major": pv.major,
+            "minor": pv.minor,
+            "patch": pv.patch,
+            "prerelease": prerelease,
+            "metadata": ver_metadata,
+        }
+
+    def get_artifact_metadata(self, build: targets.Build) -> dict[str, Any]:
         metadata = {
             "name": self.name,
             "version": self.version.to_string(short=False),
-            "version_details": {
-                "major": pv.major,
-                "minor": pv.minor,
-                "patch": pv.patch,
-                "prerelease": prerelease,
-                "metadata": ver_metadata,
-            },
+            "version_details": self.get_version_details(),
             "revision": build.revision,
             "target": build.target.triple,
             "architecture": build.target.machine_architecture,
@@ -686,7 +719,8 @@ class BundledPackage(BasePackage):
         return metadata
 
     def parse_version_metadata(
-        self, build: targets.Build, segments: tuple[str, ...]
+        self,
+        segments: tuple[str, ...],
     ) -> dict[str, str]:
         result = {}
         pfx_map = self.get_version_metadata_fields()
