@@ -431,7 +431,7 @@ class BasePythonPackage(base.BasePackage):
                 --force-reinstall \\
                 --no-warn-script-location -f "file://${{_wheeldir}}" \\
                 {'--only-binary' if binary else '--no-binary'} :all: \\
-                --root "{root}" \\
+                --root "$(pwd -P)/{root}" \\
                 "{pkgname}"
         """
         )

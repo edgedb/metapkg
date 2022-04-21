@@ -21,12 +21,12 @@ import shlex
 import sys
 import textwrap
 
-from poetry.core import vcs
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
 from poetry.core.semver import version as poetry_version
 
+from metapkg import tools
 from . import repository
 from . import sources as af_sources
 
@@ -247,6 +247,8 @@ class BundledPackage(BasePackage):
     artifact_requirements: list[str | poetry_dep.Dependency] = []
     artifact_build_requirements: list[str | poetry_dep.Dependency] = []
 
+    options: dict[str, Any]
+
     @property
     def slot(self) -> str:
         return ""
@@ -349,9 +351,23 @@ class BundledPackage(BasePackage):
         return repo_dir
 
     @classmethod
-    def resolve_version(cls, io: cleo_io.IO) -> str:
+    def resolve_vcs_repo(
+        cls,
+        io: cleo_io.IO,
+        *,
+        ref: str | None = None,
+    ) -> tools.git.Git:
         repo_dir = cls.resolve_vcs_source(io)
-        return vcs.Git(repo_dir).rev_parse("HEAD").strip()  # type: ignore
+        return tools.git.Git(repo_dir)
+
+    @classmethod
+    def resolve_vcs_version(cls, io: cleo_io.IO) -> str:
+        repo = cls.resolve_vcs_repo(io)
+        return repo.rev_parse("HEAD").strip()  # type: ignore
+
+    @classmethod
+    def resolve_version(cls, io: cleo_io.IO) -> str:
+        return cls.resolve_vcs_version(io)
 
     @classmethod
     def resolve(
@@ -364,9 +380,11 @@ class BundledPackage(BasePackage):
         is_release: bool = False,
         target: targets.Target,
     ) -> BundledPackage:
+        source_version = None
         if version is None:
             version = cls.resolve_version(io)
-        return cls(version=version)
+            source_version = cls.resolve_vcs_version(io)
+        return cls(version=version, source_version=source_version)
 
     def get_sources(self) -> list[af_sources.BaseSource]:
         return self._get_sources(version=self.source_version)
@@ -398,6 +416,7 @@ class BundledPackage(BasePackage):
         *,
         source_version: str | None = None,
         requires: list[poetry_pkg.Package] | None = None,
+        options: Mapping[str, Any] | None = None,
     ) -> None:
 
         if self.title is None:
@@ -425,6 +444,7 @@ class BundledPackage(BasePackage):
 
         self.build_requires = self.get_build_requirements()
         self.description = type(self).description  # type: ignore
+        self.options = dict(options) if options is not None else {}
         if source_version is None:
             self.source_version = self.pretty_version
         else:
@@ -695,17 +715,7 @@ class BundledCPackage(BundledPackage):
         args: Mapping[str, str | pathlib.Path | None],
     ) -> str:
         conf_args = dict(args)
-        shlib_paths = self.get_shlib_paths(build)
-        ldflags = []
-        for shlib_path in shlib_paths:
-            ldflags.extend(
-                build.target.get_shlib_path_run_time_ldflags(
-                    build, shlex.quote(str(shlib_path))
-                )
-            )
-        if ldflags:
-            build.sh_append_flags(conf_args, "LDFLAGS", ldflags)
-
+        build.sh_append_run_time_ldflags(conf_args, self)
         if "--prefix" not in args:
             conf_args["--prefix"] = str(build.get_full_install_prefix())
 

@@ -1509,13 +1509,21 @@ class Build:
             self.sh_append_flags(conf_args, "RUSTFLAGS", rust_ldflags)
         return conf_args
 
-    def sh_configure(
+    def sh_append_run_time_ldflags(
         self,
-        path: str | pathlib.Path,
-        args: Mapping[str, str | pathlib.Path | None],
-    ) -> str:
-        conf_args = self.sh_append_global_flags(args)
-        return self.sh_format_command(path, conf_args, force_args_eq=True)
+        args: dict[str, str | pathlib.Path | None],
+        pkg: poetry_pkg.Package,
+    ) -> None:
+        shlib_paths = pkg.get_shlib_paths(self)
+        ldflags = []
+        for shlib_path in shlib_paths:
+            ldflags.extend(
+                self.target.get_shlib_path_run_time_ldflags(
+                    self, shlex.quote(str(shlib_path))
+                )
+            )
+        if ldflags:
+            self.sh_append_flags(args, "LDFLAGS", ldflags)
 
     def sh_append_flags(
         self,
@@ -1537,3 +1545,11 @@ class Build:
             args[key] = self.sh_join_flags([existing_flags, flags_line])
         else:
             args[key] = "!" + flags_line
+
+    def sh_configure(
+        self,
+        path: str | pathlib.Path,
+        args: Mapping[str, str | pathlib.Path | None],
+    ) -> str:
+        conf_args = self.sh_append_global_flags(args)
+        return self.sh_format_command(path, conf_args, force_args_eq=True)

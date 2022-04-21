@@ -28,7 +28,7 @@ class Build(targets.Build):
         self._pkgroot = self._droot / self._root_pkg.name_slot
         self._srcroot = self._pkgroot / self._root_pkg.name_slot
 
-        self._artifactroot = pathlib.Path("_artifacts")
+        self._artifactroot = pathlib.Path("..") / "_artifacts"
         self._buildroot = self._artifactroot / "build"
         self._tmproot = self._artifactroot / "tmp"
         self._installroot = self._artifactroot / "install"
@@ -72,7 +72,13 @@ class Build(targets.Build):
             else:
                 return pathlib.Path("..") / ".." / path
         elif relative_to == "pkgbuild":
-            return pathlib.Path("..") / ".." / ".." / path
+            return (
+                pathlib.Path("..")
+                / ".."
+                / ".."
+                / self._root_pkg.name_slot
+                / path
+            )
         elif relative_to == "fsroot":
             return (self.get_source_abspath() / path).resolve()
         else:
@@ -82,7 +88,7 @@ class Build(targets.Build):
         self, *, relative_to: targets.Location = "sourceroot"
     ) -> pathlib.Path:
         return self.get_dir(
-            pathlib.Path("build") / "helpers", relative_to=relative_to
+            self._artifactroot / "helpers", relative_to=relative_to
         )
 
     def get_source_root(
@@ -255,7 +261,7 @@ class Build(targets.Build):
             ),
         )
 
-        with open(self._srcroot / "Makefile", "w") as f:
+        with open(self._srcroot / "Makefile.metapkg", "w") as f:
             f.write(makefile)
 
     def _get_package_install_script(self, pkg: packages.BasePackage) -> str:
@@ -354,6 +360,7 @@ class Build(targets.Build):
     def _build(self) -> None:
         make = self.sh_get_command("make", relative_to="sourceroot")
         command = shlex.split(make)
+        command.extend(["-f", "Makefile.metapkg"])
         tools.cmd(
             *command,
             cwd=str(self._srcroot),

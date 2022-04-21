@@ -20,12 +20,15 @@ if TYPE_CHECKING:
 
 
 class Git(vcs.Git):  # type: ignore
-    def run(self, *args: Any, **kwargs: Any) -> str:
-        if self._work_dir and self._work_dir.exists():
-            wd = self._work_dir.as_posix()
-        else:
-            wd = None
-        result = cmd.cmd("git", *args, cwd=wd, **kwargs)
+    def run(
+        self,
+        *args: Any,
+        folder: pathlib.Path | None = None,
+        **kwargs: Any,
+    ) -> str:
+        if not folder and self._work_dir and self._work_dir.exists():
+            folder = self._work_dir.as_posix()
+        result = cmd.cmd("git", *args, cwd=folder, **kwargs)
         result = result.strip(" \n\t")
         return result
 
