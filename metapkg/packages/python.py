@@ -520,13 +520,13 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         cls,
         io: cleo_io.IO,
         *,
-        ref: str | None = None,
         version: str | None = None,
         revision: str | None = None,
         is_release: bool = False,
         target: targets.Target,
     ) -> BundledPythonPackage:
-        repo_dir = cls.resolve_vcs_source(io, ref=ref)
+        repo = cls.resolve_vcs_repo(io, version)
+        repo_dir = repo.work_tree
         setup_py = repo_dir / "setup.py"
 
         if not setup_py.exists():
@@ -539,23 +539,20 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
             dep = python_dependency_from_pep_508(req)
             requires.append(dep)
 
-        if version is None:
-            pretty_version = dist.version
-            version = cls.canonicalize_version(
-                io,
-                version=poetry_version.Version.parse(pretty_version),
-                revision=revision,
-                is_release=is_release,
-                target=target,
-            )
-        else:
-            pretty_version = None
+        pretty_version = dist.version
+        ver = cls.canonicalize_version(
+            io,
+            version=poetry_version.Version.parse(pretty_version),
+            revision=revision,
+            is_release=is_release,
+            target=target,
+        )
 
         package = cls(
-            version,
+            ver,
             pretty_version=pretty_version,
             requires=requires,
-            source_version=ref or "HEAD",
+            source_version=cls.resolve_vcs_version(io, repo),
         )
         package.dist_name = dist.name
         package.build_requires = get_build_requires_from_srcdir(

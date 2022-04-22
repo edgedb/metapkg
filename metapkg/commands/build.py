@@ -35,8 +35,7 @@ class Build(base.Command):
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
         { --release : Whether this build is a release. }
-        { --source-ref= : VCS ref to build. }
-        { --pkg-version= : Override package version. }
+        { --source-ref= : Source version to build (VCS ref or tarball version). }
         { --pkg-revision= : Override package revision number (defaults to 1). }
         { --pkg-subdist= : Set package sub-distribution (e.g. nightly). }
         { --extra-optimizations : Enable extra optimization
@@ -55,8 +54,7 @@ class Build(base.Command):
         libc = self.option("libc")
         build_source = self.option("build-source")
         build_debug = self.option("build-debug")
-        src_ref = self.option("source-ref")
-        version = self.option("pkg-version")
+        version = self.option("source-ref")
         revision = self.option("pkg-revision")
         subdist = self.option("pkg-subdist")
         is_release = self.option("release")
@@ -70,10 +68,6 @@ class Build(base.Command):
 
         mod = importlib.import_module(modname)
         pkgcls = getattr(mod, clsname)
-        if src_ref:
-            if "extras" not in pkgcls.sources[0]:
-                pkgcls.sources[0]["extras"] = {}
-            pkgcls.sources[0]["extras"]["version"] = src_ref
         root_pkg = pkgcls.resolve(
             self.io,
             version=version,

@@ -25,6 +25,7 @@ from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
 from poetry.core.semver import version as poetry_version
+from poetry.core.version import pep440 as poetry_pep440
 
 from metapkg import tools
 from . import repository
@@ -249,6 +250,8 @@ class BundledPackage(BasePackage):
 
     options: dict[str, Any]
 
+    resolved_sources: list[af_sources.BaseSource] = []
+
     @property
     def slot(self) -> str:
         return ""
@@ -354,25 +357,49 @@ class BundledPackage(BasePackage):
     def resolve_vcs_repo(
         cls,
         io: cleo_io.IO,
-        *,
-        ref: str | None = None,
+        version: str | None = None,
     ) -> tools.git.Git:
-        repo_dir = cls.resolve_vcs_source(io)
+        repo_dir = cls.resolve_vcs_source(io, ref=version)
         return tools.git.Git(repo_dir)
 
     @classmethod
     def resolve_vcs_version(
-        cls, io: cleo_io.IO, version: str | None = None
+        cls,
+        io: cleo_io.IO,
+        repo: tools.git.Git,
+        version: str | None = None,
     ) -> str:
-        repo = cls.resolve_vcs_repo(io)
         return repo.rev_parse(version or "HEAD").strip()  # type: ignore
 
     @classmethod
-    def version_from_vcs_version(cls, io: cleo_io.IO, vcs_version: str) -> str:
-        repo = cls.resolve_vcs_repo(io)
+    def version_from_vcs_version(
+        cls,
+        io: cleo_io.IO,
+        repo: tools.git.Git,
+        vcs_version: str,
+        is_release: bool,
+    ) -> str:
         ver = repo.run("describe", "--tags", vcs_version).strip()
         if ver.startswith("v"):
             ver = ver[1:]
+
+        if not is_release:
+            commits = repo.run(
+                "rev-list",
+                "--count",
+                vcs_version,
+            )
+
+            ver = (
+                poetry_version.Version.parse(ver)
+                .replace(
+                    local=None,
+                    pre=None,
+                    dev=poetry_pep440.ReleaseTag("dev", commits),
+                )
+                .to_string(short=False)
+            )
+
         return ver
 
     @classmethod
@@ -380,15 +407,17 @@ class BundledPackage(BasePackage):
         cls,
         io: cleo_io.IO,
         *,
-        ref: str | None = None,
         version: str | None = None,
         revision: str | None = None,
         is_release: bool = False,
         target: targets.Target,
     ) -> BundledPackage:
-        source_version = cls.resolve_vcs_version(io, version)
-        version = cls.version_from_vcs_version(io, source_version)
-        repo = cls.resolve_vcs_repo(io)
+        repo = cls.resolve_vcs_repo(io, version)
+        sources = cls._get_sources(version)
+        source_version = cls.resolve_vcs_version(io, repo, version)
+        version = cls.version_from_vcs_version(
+            io, repo, source_version, is_release
+        )
 
         git_date = repo.run(
             "show",
@@ -398,31 +427,38 @@ class BundledPackage(BasePackage):
             source_version,
             env={**os.environ, **{"TZ": "UTC", "LANG": "C"}},
         )
+
         if not revision:
             revision = "1"
-        metadata = ".".join(
-            (
+
+        ver = poetry_version.Version.parse(version)
+        ver = ver.replace(
+            local=(ver.local or ())
+            + (
                 f"r{revision}",
                 f"d{git_date}",
                 f"g{source_version[:9]}",
             )
         )
 
-        ver = poetry_version.Version.parse(version).without_local()
-        version_base = ver.to_string()
-        pv = f"{version_base}+{metadata}"
-        version_hash = hashlib.sha256(pv.encode("utf-8")).hexdigest()
-        pretty_version = f"{pv}.s{version_hash[:7]}"
+        full_ver = ver.to_string()
+        version_base = ver.without_local().to_string()
+        version_hash = hashlib.sha256(full_ver.encode("utf-8")).hexdigest()
+        pretty_version = f"{full_ver}.s{version_hash[:7]}"
         version = f"{version_base}+{version_hash[:7]}"
 
         return cls(
             version=version,
             pretty_version=pretty_version,
             source_version=source_version,
+            resolved_sources=sources,
         )
 
     def get_sources(self) -> list[af_sources.BaseSource]:
-        return self._get_sources(version=self.source_version)
+        if self.resolved_sources:
+            return self.resolved_sources
+        else:
+            return self._get_sources(version=self.source_version)
 
     def get_patches(
         self,
@@ -450,6 +486,7 @@ class BundledPackage(BasePackage):
         source_version: str | None = None,
         requires: list[poetry_pkg.Package] | None = None,
         options: Mapping[str, Any] | None = None,
+        resolved_sources: list[af_sources.BaseSource] | None = None,
     ) -> None:
 
         if self.title is None:
@@ -474,6 +511,11 @@ class BundledPackage(BasePackage):
                 ] = poetry_depgroup.DependencyGroup("default")
         for req in reqs:
             self._dependency_groups["default"].add_dependency(req)
+
+        if resolved_sources is not None:
+            self.resolved_sources = list(resolved_sources)
+        else:
+            self.resolved_sources = []
 
         self.build_requires = self.get_build_requirements()
         self.description = type(self).description  # type: ignore

@@ -32,6 +32,12 @@ class Git(vcs.Git):  # type: ignore
         result = result.strip(" \n\t")
         return result
 
+    @property
+    def work_tree(self) -> pathlib.Path:
+        work_tree = self._work_dir
+        assert work_tree is not None
+        return work_tree  # type: ignore
+
 
 def _repodir(repo_url: str) -> pathlib.Path:
     u = urllib.parse.urlparse(repo_url)
@@ -70,7 +76,7 @@ def update_repo(
         if ref is not None:
             args += (
                 "origin",
-                f"{ref}:{ref}",
+                f"{ref}",
             )
         if clone_depth:
             args += (f"--depth={clone_depth}",)
@@ -79,7 +85,7 @@ def update_repo(
         tracking = status[1]
 
         if ref:
-            remote = ref
+            remote = "FETCH_HEAD"
         else:
             local, _, remote = tracking.partition("...")
             if not remote:

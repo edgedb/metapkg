@@ -250,17 +250,12 @@ class GitSource(BaseSource):
             name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
         target_path = target_dir / name_tpl.format(part="", comp="")
 
-        if self.ref is not None:
-            ref = self.ref
-        else:
-            ref = "HEAD"
-
         repo.run(
             "archive",
             f"--output={target_path}",
             "--format=tar",
             f"--prefix={pkg.unique_name}/",
-            ref,
+            "HEAD",
         )
 
         submodules = repo.run("submodule", "foreach", "--recursive").strip(
