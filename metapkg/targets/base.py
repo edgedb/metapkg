@@ -43,16 +43,16 @@ class BuildRequest(NamedTuple):
     io: IO
     env: poetry_env.Env
     root_pkg: mpkg_base.BundledPackage
-    deps: list[mpkg_base.BasePackage]
-    build_deps: list[mpkg_base.BasePackage]
-    workdir: str | pathlib.Path
-    outputdir: str | pathlib.Path
-    build_source: bool
-    build_debug: bool
-    revision: str
-    subdist: str | None
-    extra_opt: bool
-    jobs: int
+    deps: list[mpkg_base.BasePackage] = []
+    build_deps: list[mpkg_base.BasePackage] = []
+    workdir: str | pathlib.Path = ""
+    outputdir: str | pathlib.Path = ""
+    build_source: bool = False
+    build_debug: bool = False
+    revision: str = "1"
+    subdist: str | None = None
+    extra_opt: bool = False
+    jobs: int = 1
 
 
 class Target:
@@ -87,8 +87,11 @@ class Target:
     def get_builder(self) -> type[Build]:
         raise NotImplementedError
 
+    def get_builder_instance(self, request: BuildRequest) -> Build:
+        return self.get_builder()(self, request)
+
     def build(self, request: BuildRequest) -> None:
-        build = self.get_builder()(self, request)
+        build = self.get_builder_instance(request)
         build.run()
 
     def get_capabilities(self) -> list[str]:
