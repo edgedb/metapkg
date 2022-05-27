@@ -9,6 +9,7 @@ import os
 import pathlib
 import platform
 import re
+import shlex
 import shutil
 import tarfile
 import tempfile
@@ -20,6 +21,7 @@ import requests
 
 from metapkg import cache
 from metapkg import packages as mpkg
+from metapkg import targets
 from metapkg import tools
 
 from cleo.ui import progress_bar
@@ -148,15 +150,16 @@ class HttpsSource(BaseSource):
 
         return destination
 
-    def tarball(
+    def _tarball(
         self,
-        pkg: mpkg.BasePackage,
+        pkg: typing.Optional[mpkg.BasePackage] = None,
         name_tpl: typing.Optional[str] = None,
         *,
         target_dir: pathlib.Path,
         io: cleo_io.IO,
     ) -> pathlib.Path:
         if name_tpl is None:
+            assert pkg is not None
             name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
         src = self.download(io)
         copy = True
@@ -190,6 +193,33 @@ class HttpsSource(BaseSource):
 
         return target_path
 
+    def tarball(
+        self,
+        pkg: typing.Optional[mpkg.BasePackage] = None,
+        name_tpl: typing.Optional[str] = None,
+        *,
+        target_dir: pathlib.Path,
+        io: cleo_io.IO,
+        build: targets.Build,
+    ) -> pathlib.Path:
+        return self._tarball(pkg, name_tpl, target_dir=target_dir, io=io)
+
+    def copy(
+        self,
+        target_dir: pathlib.Path,
+        *,
+        io: cleo_io.IO,
+    ) -> None:
+        self.download(io)
+        with tempfile.TemporaryDirectory() as t:
+            tardir = pathlib.Path(t)
+            tarball = self._tarball(
+                name_tpl="tmp{part}.tar{comp}",
+                target_dir=tardir,
+                io=io,
+            )
+            unpack(tarball, dest=target_dir, io=io)
+
 
 class LocalSource(BaseSource):
     def tarball(
@@ -199,15 +229,37 @@ class LocalSource(BaseSource):
         *,
         target_dir: pathlib.Path,
         io: cleo_io.IO,
+        build: targets.Build,
     ) -> pathlib.Path:
         comp = ".gz"
         if name_tpl is None:
             name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
         target_path = target_dir / name_tpl.format(part="", comp=comp)
-        with tarfile.open(target_path, "w:gz") as tf:
-            tf.add(self.url, arcname=pkg.unique_name)
+
+        tar = shlex.split(build.sh_get_command("tar"))
+        tools.cmd(
+            *tar,
+            *[
+                f"--directory={self.url}",
+                "--exclude-vcs",
+                "--exclude-vcs-ignores",
+                "--create",
+                "--gzip",
+                f"--transform=flags=r;s|^\\./|{pkg.unique_name}/|",
+                f"--file={target_path}",
+                ".",
+            ],
+        )
 
         return target_path
+
+    def copy(
+        self,
+        target_dir: pathlib.Path,
+        *,
+        io: cleo_io.IO,
+    ) -> None:
+        shutil.copytree(self.url, target_dir)
 
 
 class GitSource(BaseSource):
@@ -236,6 +288,21 @@ class GitSource(BaseSource):
             io=io,
         )
 
+    def copy(
+        self,
+        target_dir: pathlib.Path,
+        *,
+        io: cleo_io.IO,
+    ) -> None:
+        self.download(io)
+        repo = tools.git.repo(self.url)
+        repo.run(
+            "checkout-index",
+            "-a",
+            "-f",
+            f"--prefix={target_dir}",
+        )
+
     def tarball(
         self,
         pkg: mpkg.BasePackage,
@@ -243,6 +310,7 @@ class GitSource(BaseSource):
         *,
         target_dir: pathlib.Path,
         io: cleo_io.IO,
+        build: targets.Build,
     ) -> pathlib.Path:
         self.download(io)
         repo = tools.git.repo(self.url)
@@ -396,7 +464,7 @@ def unpack_tar(
         for member in tf.getmembers():
             if strip_top:
                 member_parts = pathlib.Path(member.name).parts
-                if len(member_parts) == 1:
+                if len(member_parts) < 2:
                     continue
 
                 path = pathlib.Path(member_parts[1]).joinpath(

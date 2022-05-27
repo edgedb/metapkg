@@ -79,12 +79,7 @@ class Build(base.Command):
         sources = root_pkg.get_sources()
 
         if len(sources) != 1:
-            self.error("Only single-source git packages are supported")
-            return 1
-
-        source = sources[0]
-        if not isinstance(source, af_sources.GitSource):
-            self.error("Only single-source git packages are supported")
+            self.error("Only single-source packages are supported")
             return 1
 
         root = project_package.ProjectPackage("__root__", "1")

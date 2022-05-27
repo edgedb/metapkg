@@ -204,15 +204,9 @@ class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
     def _get_build_requires(
         self, package: mpkg.BasePackage
     ) -> list[poetry_dep.Dependency]:
-        with tempfile.TemporaryDirectory() as t, tempfile.TemporaryDirectory() as tardir:
+        with tempfile.TemporaryDirectory() as t:
             tmpdir = pathlib.Path(t)
-
-            tarball = package.source.tarball(
-                package, target_dir=pathlib.Path(tardir), io=self._io
-            )
-
-            tmpdir = pathlib.Path(tmpdir)
-            af_sources.unpack(tarball, dest=tmpdir, io=self._io)
+            package.source.copy(tmpdir, io=self._io)
             return get_build_requires_from_srcdir(package, tmpdir)
 
 

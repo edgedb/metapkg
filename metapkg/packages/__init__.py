@@ -9,7 +9,7 @@ from .base import (
     MetaPackage,
 )
 from .python import PythonPackage, BundledPythonPackage
-from .rust import BundledRustPackage
+from .rust import BundledRustPackage, BundledAdHocRustPackage
 
 
 __all__ = (
@@ -22,4 +22,5 @@ __all__ = (
     "BundledCPackage",
     "BundledPythonPackage",
     "BundledRustPackage",
+    "BundledAdHocRustPackage",
 )
