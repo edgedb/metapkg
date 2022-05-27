@@ -3,8 +3,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
-import hashlib
-import os
+import pathlib
 import textwrap
 
 from poetry.core.semver import version as poetry_version
@@ -14,12 +13,24 @@ from metapkg import targets
 from metapkg import tools
 
 from . import base
+from . import sources as mpkg_sources
 
 if TYPE_CHECKING:
     from cleo.io import io as cleo_io
 
 
 class BundledRustPackage(base.BundledPackage):
+    @classmethod
+    def version_from_cargo(
+        cls,
+        source_dir: pathlib.Path,
+    ) -> str:
+        out = tools.cmd("cargo", "pkgid", cwd=source_dir).strip()
+        _, _, version = out.rpartition("#")
+        if ":" in version:
+            _, _, version = version.rpartition(":")
+        return version
+
     @classmethod
     def version_from_vcs_version(
         cls,
@@ -94,3 +105,42 @@ class BundledRustPackage(base.BundledPackage):
 
     def version_includes_revision(self) -> bool:
         return True
+
+
+class BundledAdHocRustPackage(BundledRustPackage):
+    @classmethod
+    def resolve(
+        cls,
+        io: cleo_io.IO,
+        *,
+        version: str | None = None,
+        revision: str | None = None,
+        is_release: bool = False,
+        target: targets.Target,
+    ) -> BundledAdHocRustPackage:
+        sources = cls._get_sources(version)
+
+        if len(sources) == 1 and isinstance(
+            sources[0], mpkg_sources.LocalSource
+        ):
+            source_dir = sources[0].url
+        else:
+            raise AssertionError(
+                "expected a single local source for ad-hoc package"
+            )
+
+        version = cls.version_from_cargo(pathlib.Path(source_dir))
+        if not revision:
+            revision = "1"
+
+        ver = poetry_version.Version.parse(version)
+        ver = ver.replace(local=(ver.local or ()) + (f"r{revision}",))
+
+        version, pretty_version = cls.format_version(ver)
+
+        return cls(
+            version=version,
+            pretty_version=pretty_version,
+            source_version=version,
+            resolved_sources=sources,
+        )

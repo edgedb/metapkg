@@ -1188,7 +1188,11 @@ class Build:
             tarball_tpl = self.get_tarball_tpl(pkg)
             for source in pkg.get_sources():
                 tarball = source.tarball(
-                    pkg, tarball_tpl, target_dir=tarball_root, io=self._io
+                    pkg,
+                    tarball_tpl,
+                    target_dir=tarball_root,
+                    io=self._io,
+                    build=self,
                 )
 
                 self._tarballs[pkg] = tarball

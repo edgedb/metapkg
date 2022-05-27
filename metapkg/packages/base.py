@@ -441,11 +441,7 @@ class BundledPackage(BasePackage):
             )
         )
 
-        full_ver = ver.to_string()
-        version_base = ver.without_local().to_string()
-        version_hash = hashlib.sha256(full_ver.encode("utf-8")).hexdigest()
-        pretty_version = f"{full_ver}.s{version_hash[:7]}"
-        version = f"{version_base}+{version_hash[:7]}"
+        version, pretty_version = cls.format_version(ver)
 
         return cls(
             version=version,
@@ -453,6 +449,15 @@ class BundledPackage(BasePackage):
             source_version=source_version,
             resolved_sources=sources,
         )
+
+    @classmethod
+    def format_version(cls, ver: poetry_version.Version) -> tuple[str, str]:
+        full_ver = ver.to_string()
+        version_base = ver.without_local().to_string()
+        version_hash = hashlib.sha256(full_ver.encode("utf-8")).hexdigest()
+        version = f"{version_base}+{version_hash[:7]}"
+        pretty_version = f"{full_ver}.s{version_hash[:7]}"
+        return version, pretty_version
 
     def get_sources(self) -> list[af_sources.BaseSource]:
         if self.resolved_sources:
@@ -505,12 +510,14 @@ class BundledPackage(BasePackage):
         reqs.extend(self.get_requirements())
 
         if reqs:
-            if "default" not in self._dependency_groups:
+            if poetry_depgroup.MAIN_GROUP not in self._dependency_groups:
                 self._dependency_groups[
-                    "default"
-                ] = poetry_depgroup.DependencyGroup("default")
-        for req in reqs:
-            self._dependency_groups["default"].add_dependency(req)
+                    poetry_depgroup.MAIN_GROUP
+                ] = poetry_depgroup.DependencyGroup(poetry_depgroup.MAIN_GROUP)
+
+            main_group = self._dependency_groups[poetry_depgroup.MAIN_GROUP]
+            for req in reqs:
+                main_group.add_dependency(req)
 
         if resolved_sources is not None:
             self.resolved_sources = list(resolved_sources)
