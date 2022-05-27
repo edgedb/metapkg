@@ -1,23 +1,23 @@
 from __future__ import annotations
+from typing import cast
 
 import collections
 import graphlib
 import importlib
 import os
 import pathlib
-import platform
 import sys
 import tempfile
 
-from poetry.puzzle import solver as poetry_solver
+from poetry import mixology
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import project_package
 from poetry.utils import env as poetry_env
 
 from metapkg import targets
+from metapkg.packages import base as mpkg_base
 from metapkg.packages import python as af_python
 from metapkg.packages import repository as af_repo
-from metapkg.packages import sources as af_sources
 
 from . import base
 
@@ -68,6 +68,7 @@ class Build(base.Command):
 
         mod = importlib.import_module(modname)
         pkgcls = getattr(mod, clsname)
+        assert issubclass(pkgcls, mpkg_base.BundledPackage)
         root_pkg = pkgcls.resolve(
             self.io,
             version=version,
@@ -97,25 +98,23 @@ class Build(base.Command):
         repo_pool.add_repository(af_repo.bundle_repo, secondary=True)
 
         item_repo = root_pkg.get_package_repository(target, io=self.io)
-        if item_repo is not None:
+        if item_repo is not None and item_repo is not af_repo.bundle_repo:
             repo_pool.add_repository(item_repo, secondary=True)
 
         provider = af_repo.Provider(root, repo_pool, self.io, extras=extras)
-        resolution = poetry_solver.resolve_version(root, provider)
+        resolution = mixology.resolve_version(root, provider)
 
         env = poetry_env.SystemEnv(pathlib.Path(sys.executable))
         pkg_map = {}
         graph = {}
         for dep_package in resolution.packages:
-            pkg_map[dep_package.name] = dep_package.package
-            package = dep_package.package
-            if env.is_valid_for_marker(dep_package.dependency.marker):
-                deps = {
-                    req.name
-                    for req in package.requires
-                    if env.is_valid_for_marker(req.marker)
-                }
-                graph[package.name] = deps
+            pkg_map[dep_package.name] = dep_package
+            deps = {
+                req.name
+                for req in dep_package.requires
+                if env.is_valid_for_marker(req.marker)
+            }
+            graph[dep_package.name] = deps
         sorter = graphlib.TopologicalSorter(graph)
         packages = [pkg_map[pn] for pn in sorter.static_order()]
 
@@ -127,28 +126,24 @@ class Build(base.Command):
         build_root.add_dependency(
             poetry_dep.Dependency(root_pkg.name, root_pkg.version)
         )
-        build_root.build_requires = []
         provider = af_repo.Provider(
             build_root, repo_pool, self.io, include_build_reqs=True
         )
-        resolution = poetry_solver.resolve_version(build_root, provider)
+        resolution = mixology.resolve_version(build_root, provider)
 
         pkg_map = {}
         graph = {}
         for dep_package in resolution.packages:
-            pkg_map[dep_package.name] = dep_package.package
-            package = dep_package.package
-            if env.is_valid_for_marker(dep_package.dependency.marker):
-                reqs = set(package.requires) | set(
-                    getattr(package, "build_requires", [])
-                )
-                deps = {
-                    req.name
-                    for req in reqs
-                    if req.is_activated()
-                    and env.is_valid_for_marker(req.marker)
-                }
-                graph[package.name] = deps
+            pkg_map[dep_package.name] = dep_package
+            reqs = set(dep_package.requires) | set(
+                getattr(dep_package, "build_requires", [])
+            )
+            deps = {
+                req.name
+                for req in reqs
+                if req.is_activated() and env.is_valid_for_marker(req.marker)
+            }
+            graph[dep_package.name] = deps
 
         # Workaround cycles in build/runtime dependencies between
         # packages.  This requires the depending package to explicitly
@@ -172,6 +167,7 @@ class Build(base.Command):
 
                 dep = pkg_map[cycle[-1]]
                 pkg_with_dep = pkg_map[cycle[-2]]
+                assert isinstance(pkg_with_dep, af_python.PythonPackage)
                 if dep.name not in pkg_with_dep.get_cyclic_runtime_deps():
                     dep, pkg_with_dep = pkg_with_dep, dep
                     if dep.name not in pkg_with_dep.get_cyclic_runtime_deps():
@@ -204,8 +200,8 @@ class Build(base.Command):
                     io=self.io,
                     env=env,
                     root_pkg=root_pkg,
-                    deps=packages,
-                    build_deps=build_pkgs,
+                    deps=cast(list[mpkg_base.BasePackage], packages),
+                    build_deps=cast(list[mpkg_base.BasePackage], build_pkgs),
                     workdir=workdir,
                     outputdir=destination,
                     build_source=build_source,

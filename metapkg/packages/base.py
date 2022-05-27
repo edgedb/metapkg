@@ -5,6 +5,7 @@ from typing import (
     ClassVar,
     Literal,
     Mapping,
+    Type,
     TypeVar,
     overload,
 )
@@ -26,6 +27,7 @@ from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
 from poetry.core.semver import version as poetry_version
 from poetry.core.version import pep440 as poetry_pep440
+from poetry.core.spdx import helpers as poetry_spdx_helpers
 
 from metapkg import tools
 from . import repository
@@ -34,13 +36,10 @@ from . import sources as af_sources
 if TYPE_CHECKING:
     from cleo.io import io as cleo_io
     from metapkg import targets
+    from poetry.repositories import repository as poetry_repo
 
 
-class Dependency(poetry_dep.Dependency):  # type: ignore
-    pass
-
-
-class DummyPackage(poetry_pkg.Package):  # type: ignore
+class DummyPackage(poetry_pkg.Package):
     def __repr__(self) -> str:
         return "<DummyPackage {}>".format(self.unique_name)
 
@@ -59,11 +58,18 @@ class MetaPackage:
     dependencies: dict[str, str]
 
 
-class BasePackage(poetry_pkg.Package):  # type: ignore
-    def get_requirements(self) -> list[Dependency]:
+class BasePackage(poetry_pkg.Package):
+    @property
+    def slot_suffix(self) -> str:
+        return ""
+
+    def get_sources(self) -> list[af_sources.BaseSource]:
+        raise NotImplementedError
+
+    def get_requirements(self) -> list[poetry_dep.Dependency]:
         return []
 
-    def get_build_requirements(self) -> list[Dependency]:
+    def get_build_requirements(self) -> list[poetry_dep.Dependency]:
         return []
 
     def get_license_files_pattern(self) -> str:
@@ -236,13 +242,13 @@ class BundledPackage(BasePackage):
     name: ClassVar[str]
     title: ClassVar[str | None] = None
     aliases: ClassVar[list[str] | None] = None
-    description: ClassVar[str | None] = None
-    license: ClassVar[str | None] = None
+    description: str = ""
+    license_id: ClassVar[str | None] = None
     group: ClassVar[str]
     url: ClassVar[str | None] = None
     identifier: ClassVar[str]
 
-    build_required: list[poetry_dep.Dependency]
+    build_requires: list[poetry_dep.Dependency]
     source_version: str
 
     artifact_requirements: list[str | poetry_dep.Dependency] = []
@@ -250,6 +256,7 @@ class BundledPackage(BasePackage):
 
     options: dict[str, Any]
 
+    sources: list[af_sources.SourceDecl]
     resolved_sources: list[af_sources.BaseSource] = []
 
     @property
@@ -292,10 +299,6 @@ class BundledPackage(BasePackage):
                 )
                 extras = source.get("extras")
                 if extras:
-                    extras = {
-                        k.replace("-", "_"): v for k, v in extras.items()
-                    }
-
                     if "version" not in extras:
                         extras["version"] = version
                 else:
@@ -338,7 +341,7 @@ class BundledPackage(BasePackage):
     @classmethod
     def get_package_repository(
         cls, target: targets.Target, io: cleo_io.IO
-    ) -> repository.BundleRepository:
+    ) -> poetry_repo.Repository:
         return repository.bundle_repo
 
     @classmethod
@@ -395,7 +398,7 @@ class BundledPackage(BasePackage):
                 .replace(
                     local=None,
                     pre=None,
-                    dev=poetry_pep440.ReleaseTag("dev", commits),
+                    dev=poetry_pep440.ReleaseTag("dev", int(commits)),
                 )
                 .to_string(short=False)
             )
@@ -404,14 +407,14 @@ class BundledPackage(BasePackage):
 
     @classmethod
     def resolve(
-        cls,
+        cls: Type[BundledPackage_T],
         io: cleo_io.IO,
         *,
         version: str | None = None,
         revision: str | None = None,
         is_release: bool = False,
         target: targets.Target,
-    ) -> BundledPackage:
+    ) -> BundledPackage_T:
         repo = cls.resolve_vcs_repo(io, version)
         sources = cls._get_sources(version)
         source_version = cls.resolve_vcs_version(io, repo, version)
@@ -432,8 +435,15 @@ class BundledPackage(BasePackage):
             revision = "1"
 
         ver = poetry_version.Version.parse(version)
+        local = ver.local
+        if isinstance(ver.local, tuple):
+            local = ver.local
+        elif ver.local is None:
+            local = ()
+        else:
+            local = (ver.local,)
         ver = ver.replace(
-            local=(ver.local or ())
+            local=local
             + (
                 f"r{revision}",
                 f"d{git_date}",
@@ -485,11 +495,11 @@ class BundledPackage(BasePackage):
 
     def __init__(
         self,
-        version: str,
+        version: str | poetry_version.Version,
         pretty_version: str | None = None,
         *,
         source_version: str | None = None,
-        requires: list[poetry_pkg.Package] | None = None,
+        requires: list[poetry_dep.Dependency] | None = None,
         options: Mapping[str, Any] | None = None,
         resolved_sources: list[af_sources.BaseSource] | None = None,
     ) -> None:
@@ -525,7 +535,10 @@ class BundledPackage(BasePackage):
             self.resolved_sources = []
 
         self.build_requires = self.get_build_requirements()
-        self.description = type(self).description  # type: ignore
+        self.description = type(self).description
+        license_id = type(self).license_id
+        if license_id is not None:
+            self.license = poetry_spdx_helpers.license_by_id(license_id)
         self.options = dict(options) if options is not None else {}
         if source_version is None:
             self.source_version = self.pretty_version
@@ -542,7 +555,7 @@ class BundledPackage(BasePackage):
                 )
                 repository.bundle_repo.add_package(pkg)
 
-    def get_requirements(self) -> list[Dependency]:
+    def get_requirements(self) -> list[poetry_dep.Dependency]:
         reqs = []
         for item in self.artifact_requirements:
             if isinstance(item, str):
@@ -551,7 +564,7 @@ class BundledPackage(BasePackage):
                 reqs.append(item)
         return reqs
 
-    def get_build_requirements(self) -> list[Dependency]:
+    def get_build_requirements(self) -> list[poetry_dep.Dependency]:
         reqs = []
         for item in self.artifact_build_requirements:
             if isinstance(item, str):
@@ -732,11 +745,13 @@ class BundledPackage(BasePackage):
             )
 
         if pv.local:
-            local: tuple[str, ...]
-            if not isinstance(pv.local, tuple):
-                local = (pv.local,)
-            else:
+            local: tuple[str | int, ...]
+            if isinstance(pv.local, tuple):
                 local = pv.local
+            elif pv.local is None:
+                local = ()
+            else:
+                local = (pv.local,)
 
             ver_metadata = self.parse_version_metadata(local)
         else:
@@ -769,15 +784,16 @@ class BundledPackage(BasePackage):
 
     def parse_version_metadata(
         self,
-        segments: tuple[str, ...],
+        segments: tuple[str | int, ...],
     ) -> dict[str, str]:
         result = {}
         pfx_map = self.get_version_metadata_fields()
         for segment in segments:
+            segment_str = str(segment)
             for pfx_len in (1, 2):
-                key = pfx_map.get(segment[:pfx_len])
+                key = pfx_map.get(segment_str[:pfx_len])
                 if key is not None:
-                    result[key] = segment[pfx_len:]
+                    result[key] = segment_str[pfx_len:]
                     break
             else:
                 raise RuntimeError(

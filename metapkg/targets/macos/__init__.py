@@ -8,31 +8,10 @@ import textwrap
 
 from metapkg import packages as mpkg
 from metapkg import tools
-from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets import generic
-from metapkg.targets.package import SystemPackage
 
 from . import build as macbuild
-
-if TYPE_CHECKING:
-    from poetry.core.packages import package as poetry_pkg
-    from poetry.core.packages import dependency as poetry_dep
-
-
-PACKAGE_WHITELIST = [
-    "bison",
-    "flex",
-    "libffi",
-    "libffi-dev",
-    "perl",
-    "pam",
-    "pam-dev",
-    "uuid",
-    "uuid-dev",
-    "zlib",
-    "zlib-dev",
-]
 
 
 class MacOSAddUserAction(targets.AddUserAction):
@@ -208,24 +187,24 @@ class MacOSAddUserAction(targets.AddUserAction):
         )
 
 
-class MacOSRepository(repository.Repository):
-    def find_packages(
-        self,
-        dependency: poetry_dep.Dependency,
-    ) -> list[poetry_pkg.Package]:
-
-        if dependency.name in PACKAGE_WHITELIST:
-            pkg = SystemPackage(
-                dependency.name,
-                version="999.0",
-                pretty_version="999.0",
-                system_name=dependency.name,
+class MacOSRepository(generic.GenericOSRepository):
+    def list_provided_packages(self) -> frozenset[str]:
+        # A list of packages assumed to be present on the system.
+        return frozenset(
+            (
+                "bison",
+                "flex",
+                "libffi",
+                "libffi-dev",
+                "perl",
+                "pam",
+                "pam-dev",
+                "uuid",
+                "uuid-dev",
+                "zlib",
+                "zlib-dev",
             )
-            self.add_package(pkg)
-
-            return [pkg]
-        else:
-            return []
+        )
 
 
 _frameworks_base = "/System/Library/Frameworks"
@@ -500,10 +479,11 @@ class MacOSNativePackageTarget(MacOSTarget):
             return super().get_resource_path(build, resource)
 
     def service_scripts_for_package(
-        self, build: targets.Build, package: mpkg.BasePackage
+        self, build: targets.Build, package: mpkg.BundledPackage
     ) -> dict[pathlib.Path, str]:
         units = package.read_support_files(build, "*.plist.in")
         launchd_path = self.get_resource_path(build, "system-daemons")
+        assert launchd_path is not None
         return {launchd_path / name: data for name, data in units.items()}
 
     def get_capabilities(self) -> list[str]:

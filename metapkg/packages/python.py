@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
     Any,
+    Type,
+    TypeVar,
 )
 
 import copy
@@ -14,6 +16,7 @@ from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import package as poetry_pkg
 from poetry.core.semver import version as poetry_version
 from poetry.repositories import pypi_repository
+from poetry.repositories import exceptions as poetry_repo_exc
 
 from metapkg import packages as mpkg
 from metapkg import tools
@@ -36,7 +39,7 @@ def set_python_runtime_dependency(dep: poetry_dep.Dependency) -> None:
     python_dependency = dep
 
 
-class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
+class PyPiRepository(pypi_repository.PyPiRepository):
     def __init__(self, io: cleo_io.IO) -> None:
         super().__init__()
         self._io = io
@@ -69,7 +72,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
             package._name = f"pypkg-{package._name}"
             package._pretty_name = f"pypkg-{package._pretty_name}"
 
-        return packages  # type: ignore
+        return packages
 
     def package(
         self, name: str, version: str, extras: list[str] | None = None
@@ -83,8 +86,8 @@ class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
                 name=name, version=version, extras=extras
             )
         except ValueError as e:
-            raise af_repository.PackageNotFoundError(
-                f"package not found: {name}-{version}"
+            raise poetry_repo_exc.PackageNotFound(
+                f"Package {name} ({version}) not found."
             ) from e
 
         pypi_info = self.get_pypi_info(name, version)
@@ -135,7 +138,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
         if name.startswith("pypkg-"):
             name = name[len("pypkg-") :]
 
-        return super().get_package_info(name)  # type: ignore
+        return super().get_package_info(name)
 
     def get_sdist_source(
         self, pypi_info: dict[str, Any]
@@ -175,11 +178,11 @@ class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
     def _get_pypi_info(self, name: str, version: str) -> dict[str, Any]:
         json_data = self._get(f"pypi/{name}/{version}/json")
         if json_data is None:
-            raise af_repository.PackageNotFoundError(
-                f"Package [{name}] not found."
+            raise poetry_repo_exc.PackageNotFound(
+                f"Package {name} ({version}) not found."
             )
-
-        return json_data  # type: ignore
+        else:
+            return json_data
 
     def _get_sdist_info(self, pypi_info: dict[str, Any]) -> dict[str, Any]:
         name = pypi_info["info"]["name"]
@@ -202,7 +205,8 @@ class PyPiRepository(pypi_repository.PyPiRepository):  # type: ignore
         return sdist_info  # type: ignore
 
     def _get_build_requires(
-        self, package: mpkg.BasePackage
+        self,
+        package: BasePythonPackage,
     ) -> list[poetry_dep.Dependency]:
         with tempfile.TemporaryDirectory() as t:
             tmpdir = pathlib.Path(t)
@@ -250,6 +254,9 @@ def get_build_requires_from_srcdir(
 
 
 class BasePythonPackage(base.BasePackage):
+    build_requires: list[poetry_dep.Dependency]
+    source: af_sources.BaseSource
+
     def get_configure_script(self, build: targets.Build) -> str:
         return ""
 
@@ -502,7 +509,14 @@ class PythonPackage(BasePythonPackage):
         return "<PythonPackage {}>".format(self.unique_name)
 
 
+BundledPythonPackage_T = TypeVar(
+    "BundledPythonPackage_T", bound="BundledPythonPackage"
+)
+
+
 class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
+    dist_name: str
+
     @classmethod
     def get_package_repository(
         cls, target: targets.Target, io: cleo_io.IO
@@ -511,14 +525,14 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
 
     @classmethod
     def resolve(
-        cls,
+        cls: Type[BundledPythonPackage_T],
         io: cleo_io.IO,
         *,
         version: str | None = None,
         revision: str | None = None,
         is_release: bool = False,
         target: targets.Target,
-    ) -> BundledPythonPackage:
+    ) -> BundledPythonPackage_T:
         repo = cls.resolve_vcs_repo(io, version)
         repo_dir = repo.work_tree
         setup_py = repo_dir / "setup.py"
