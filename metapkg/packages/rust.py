@@ -85,10 +85,11 @@ class BundledRustPackage(base.BundledPackage):
         env = build.sh_append_global_flags({})
         env["RUST_BACKTRACE"] = "1"
         env_str = build.sh_format_command("env", env, force_args_eq=True)
+        semver = base.pep440_to_semver(self.version)
         script += textwrap.dedent(
             f"""\
             {sed} -i -e '/\\[package\\]/,/\\[.*\\]/{{
-                    s/^version\\s*=.*/version = "{self.version.text}"/;
+                    s/^version\\s*=.*/version = "{semver}"/;
                 }}' \\
                 "{src}/Cargo.toml"
             {env_str} \\
