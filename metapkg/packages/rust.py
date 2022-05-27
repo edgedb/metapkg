@@ -54,7 +54,7 @@ class BundledRustPackage(base.BundledPackage):
                 .replace(
                     local=None,
                     pre=None,
-                    dev=poetry_pep440.ReleaseTag("dev", commits),
+                    dev=poetry_pep440.ReleaseTag("dev", int(commits)),
                 )
                 .to_string(short=False)
             )
@@ -134,7 +134,13 @@ class BundledAdHocRustPackage(BundledRustPackage):
             revision = "1"
 
         ver = poetry_version.Version.parse(version)
-        ver = ver.replace(local=(ver.local or ()) + (f"r{revision}",))
+        if isinstance(ver.local, tuple):
+            local = ver.local
+        elif ver.local is None:
+            local = ()
+        else:
+            local = (ver.local,)
+        ver = ver.replace(local=local + (f"r{revision}",))
 
         version, pretty_version = cls.format_version(ver)
 

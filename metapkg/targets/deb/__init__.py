@@ -11,17 +11,17 @@ import textwrap
 
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import package as poetry_pkg
+from poetry.repositories import repository as poetry_repo
 
 from metapkg import tools
 from metapkg import packages as mpkg
-from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets.package import SystemPackage
 
 from . import build as debuild
 
 if TYPE_CHECKING:
-    from cleo.io import io as cleo_io
+    from distro import distro
 
 
 PACKAGE_MAP = {
@@ -104,9 +104,13 @@ def _debian_version_to_pep440(debver: str) -> str:
     return version
 
 
-class DebRepository(repository.Repository):
-    def __init__(self, packages: list[poetry_pkg.Package] | None = None):
-        super().__init__(packages)
+class DebRepository(poetry_repo.Repository):
+    def __init__(
+        self,
+        name: str | None = None,
+        packages: list[poetry_pkg.Package] | None = None,
+    ) -> None:
+        super().__init__(name, packages)
         self._parsed: set[str] = set()
 
     def find_packages(
@@ -120,9 +124,9 @@ class DebRepository(repository.Repository):
                 self.add_package(package)
             self._parsed.add(dependency.name)
 
-        return super().find_packages(dependency)  # type: ignore
+        return super().find_packages(dependency)
 
-    def apt_get_packages(self, name: str) -> list[poetry_pkg.Package]:
+    def apt_get_packages(self, name: str) -> tuple[poetry_pkg.Package, ...]:
         system_name = PACKAGE_MAP.get(name, name)
 
         try:
@@ -130,11 +134,11 @@ class DebRepository(repository.Repository):
                 "apt-cache", "policy", system_name, errors_are_fatal=False
             )
         except subprocess.CalledProcessError:
-            return []
+            return ()
         else:
             policy = self._parse_apt_policy_output(output.strip())
             if not policy:
-                return []
+                return ()
             else:
                 packages = []
                 for pkgmeta in policy:
@@ -148,7 +152,7 @@ class DebRepository(repository.Repository):
                         )
                         packages.append(pkg)
 
-                return packages
+                return tuple(packages)
 
     def _parse_apt_policy_output(self, output: str) -> list[dict[str, Any]]:
         if not output:
@@ -221,7 +225,7 @@ class DebRepository(repository.Repository):
 
 class BaseDebTarget(targets.FHSTarget, targets.LinuxDistroTarget):
     def __init__(
-        self, distro_info: dict[str, Any], arch: str, libc: str
+        self, distro_info: distro.InfoDict, arch: str, libc: str
     ) -> None:
         targets.FHSTarget.__init__(self, arch)
         targets.LinuxDistroTarget.__init__(
@@ -231,7 +235,7 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxDistroTarget):
     def prepare(self) -> None:
         tools.cmd("apt-get", "update")
 
-    def get_package_repository(self) -> repository.Repository:
+    def get_package_repository(self) -> poetry_repo.Repository:
         return DebRepository()
 
     def get_package_group(self, pkg: mpkg.BundledPackage) -> str:
@@ -292,7 +296,7 @@ class UbuntuXenialOrNewerTarget(BaseDebTarget):
 
 class UbuntuBionicOrNewerTarget(ModernDebianTarget):
     def __init__(
-        self, distro_info: dict[str, Any], arch: str, libc: str
+        self, distro_info: distro.InfoDict, arch: str, libc: str
     ) -> None:
         super().__init__(distro_info, arch, libc)
         if " " in self.distro["codename"]:
@@ -304,7 +308,7 @@ class UbuntuBionicOrNewerTarget(ModernDebianTarget):
 
 
 def get_specific_target(
-    distro_info: dict[str, Any], arch: str, libc: str
+    distro_info: distro.InfoDict, arch: str, libc: str
 ) -> BaseDebTarget:
     if distro_info["id"] == "debian":
         ver = int(distro_info["version_parts"]["major"])

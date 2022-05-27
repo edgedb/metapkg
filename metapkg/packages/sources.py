@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
     Any,
+    Iterable,
+    TypedDict,
 )
 
 import hashlib
@@ -28,6 +30,30 @@ from cleo.ui import progress_bar
 
 if TYPE_CHECKING:
     from cleo.io import io as cleo_io
+
+
+class SourceDeclBase(TypedDict):
+    url: str
+
+
+class SourceDecl(SourceDeclBase, total=False):
+    csum: str | None
+    csum_url: str | None
+    csum_algo: str | None
+    extras: SourceExtraDecl
+
+
+SourceExtraDecl = TypedDict(
+    "SourceExtraDecl",
+    {
+        "exclude_submodules": list[str],
+        "clone_depth": int,
+        "version": str,
+        "vcs_version": str,
+        "include_gitdir": bool,
+    },
+    total=False,
+)
 
 
 class BaseVerification:
@@ -94,6 +120,25 @@ class BaseSource:
     def verify(self, path: pathlib.Path) -> None:
         for verification in self.verifications:
             verification.verify(path)
+
+    def copy(
+        self,
+        target_dir: pathlib.Path,
+        *,
+        io: cleo_io.IO,
+    ) -> None:
+        raise NotImplementedError
+
+    def tarball(
+        self,
+        pkg: mpkg.BasePackage,
+        name_tpl: typing.Optional[str] = None,
+        *,
+        target_dir: pathlib.Path,
+        io: cleo_io.IO,
+        build: targets.Build,
+    ) -> pathlib.Path:
+        raise NotImplementedError
 
 
 class HttpsSource(BaseSource):
@@ -269,13 +314,16 @@ class GitSource(BaseSource):
         name: str,
         *,
         vcs_version: str | None = None,
-        exclude_submodules: frozenset[str] | None = None,
+        exclude_submodules: Iterable[str] | None = None,
         clone_depth: int = 0,
         include_gitdir: bool = False,
     ) -> None:
         super().__init__(url, name)
         self.ref = vcs_version
-        self.exclude_submodules = exclude_submodules
+        if exclude_submodules is not None:
+            self.exclude_submodules = frozenset(exclude_submodules)
+        else:
+            self.exclude_submodules = frozenset()
         self.clone_depth = clone_depth
         self.include_gitdir = include_gitdir
 
@@ -400,7 +448,8 @@ class GitSource(BaseSource):
 
 
 def source_for_url(
-    url: str, extras: dict[str, Any] | None = None
+    url: str,
+    extras: SourceExtraDecl | None = None,
 ) -> BaseSource:
     parts = urllib.parse.urlparse(url)
     path_parts = parts.path.split("/")
@@ -410,11 +459,11 @@ def source_for_url(
     if parts.scheme == "https" or parts.scheme == "http":
         return HttpsSource(url, name=name, **extras)
     elif parts.scheme.startswith("git+"):
-        extras = dict(extras)
-        version = extras.pop("version", None)
-        if "vcs_version" not in extras:
-            extras["vcs_version"] = version
-        return GitSource(url[4:], name=name, **extras)
+        extras_dict = dict(extras)
+        version = extras_dict.pop("version", None)
+        if "vcs_version" not in extras and version is not None:
+            extras_dict["vcs_version"] = version
+        return GitSource(url[4:], name=name, **extras_dict)  # type: ignore
     elif parts.scheme == "file":
         return LocalSource(parts.path, name, **extras)
     else:

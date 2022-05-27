@@ -1,28 +1,12 @@
 from __future__ import annotations
-from typing import (
-    TYPE_CHECKING,
-)
 
 import pathlib
 
 from metapkg import packages as mpkg
-from metapkg.packages import repository
 from metapkg import targets
 from metapkg.targets import generic
 
 from . import build as winbuild
-
-if TYPE_CHECKING:
-    from poetry.core.packages import package as poetry_pkg
-    from poetry.core.packages import dependency as poetry_dep
-
-
-class WindowsRepository(repository.Repository):
-    def find_packages(
-        self,
-        dependency: poetry_dep.Dependency,
-    ) -> list[poetry_pkg.Package]:
-        return []
 
 
 class WindowsTarget(generic.GenericTarget):
@@ -48,9 +32,6 @@ class WindowsTarget(generic.GenericTarget):
             return f"{package.identifier}{package.slot_suffix}"
         else:
             return package.identifier
-
-    def get_package_repository(self) -> WindowsRepository:
-        return WindowsRepository()
 
     def get_exe_suffix(self) -> str:
         return ".exe"

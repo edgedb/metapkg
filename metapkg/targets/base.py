@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
-    Any,
     Iterable,
     Literal,
     Mapping,
@@ -22,7 +21,6 @@ import textwrap
 
 from metapkg import tools
 from metapkg.packages import base as mpkg_base
-from metapkg.packages import repository as mpkg_repo
 from metapkg.packages import sources as mpkg_sources
 
 from . import _helpers as helpers_pkg
@@ -30,8 +28,9 @@ from . import package as tgt_pkg
 
 if TYPE_CHECKING:
     from cleo.io.io import IO
-    from poetry import packages as poetry_pkg
+    from distro import distro
     from poetry.utils import env as poetry_env
+    from poetry.repositories import repository as poetry_repo
 
 
 class TargetAction:
@@ -78,7 +77,7 @@ class Target:
     def is_portable(self) -> bool:
         return False
 
-    def get_package_repository(self) -> mpkg_repo.Repository:
+    def get_package_repository(self) -> poetry_repo.Repository:
         raise NotImplementedError
 
     def prepare(self) -> None:
@@ -120,7 +119,7 @@ class Target:
         return package.name_slot if include_slot else package.name
 
     def service_scripts_for_package(
-        self, build: Build, package: mpkg_base.BasePackage
+        self, build: Build, package: mpkg_base.BundledPackage
     ) -> dict[pathlib.Path, str]:
         return {}
 
@@ -394,7 +393,9 @@ class LinuxTarget(PosixTarget):
         return f"su '{user}' -c {shlex.quote(script)}\n"
 
     def service_scripts_for_package(
-        self, build: Build, package: mpkg_base.BasePackage
+        self,
+        build: Build,
+        package: mpkg_base.BundledPackage,
     ) -> dict[pathlib.Path, str]:
         if self.has_capability("systemd"):
             units = package.read_support_files(build, "*.service.in")
@@ -563,7 +564,7 @@ class LinuxTarget(PosixTarget):
 
 class LinuxDistroTarget(LinuxTarget):
     def __init__(
-        self, distro_info: dict[str, Any], arch: str, libc: str
+        self, distro_info: distro.InfoDict, arch: str, libc: str
     ) -> None:
         super().__init__(arch, libc)
         self.distro = distro_info
@@ -1041,9 +1042,11 @@ class Build:
         return result
 
     def format_package_template(
-        self, tpl: str, package: mpkg_base.BasePackage
+        self,
+        tpl: str,
+        package: mpkg_base.BundledPackage,
     ) -> str:
-        variables: dict[str, str] = {}
+        variables: dict[str, str | None] = {}
         for aspect in (
             "bin",
             "data",
@@ -1288,10 +1291,11 @@ class Build:
 
         scripts = []
 
+        packages: tuple[mpkg_base.BasePackage, ...]
         if installable_only:
-            packages = self._installable
+            packages = tuple(self._installable)
         else:
-            packages = self._bundled
+            packages = tuple(self._bundled)
 
         if stage == "complete":
             stages = ["configure", "build", "build_install"]
@@ -1432,7 +1436,7 @@ class Build:
 
     def sh_get_bundled_shlib_ldflags(
         self,
-        pkg: poetry_pkg.Package,
+        pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
     ) -> str:
         flags = []
@@ -1466,7 +1470,7 @@ class Build:
 
     def sh_get_bundled_shlibs_ldflags(
         self,
-        deps: Iterable[poetry_pkg.Package],
+        deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
     ) -> str:
         flags = []
@@ -1483,7 +1487,7 @@ class Build:
 
     def sh_get_bundled_shlib_cflags(
         self,
-        pkg: poetry_pkg.Package,
+        pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
     ) -> str:
         flags = []
@@ -1499,7 +1503,7 @@ class Build:
 
     def sh_get_bundled_shlibs_cflags(
         self,
-        deps: Iterable[poetry_pkg.Package],
+        deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
     ) -> str:
         flags = []
@@ -1555,7 +1559,7 @@ class Build:
     def sh_append_run_time_ldflags(
         self,
         args: dict[str, str | pathlib.Path | None],
-        pkg: poetry_pkg.Package,
+        pkg: mpkg_base.BasePackage,
     ) -> None:
         shlib_paths = pkg.get_shlib_paths(self)
         ldflags = []

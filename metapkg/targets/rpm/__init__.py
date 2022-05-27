@@ -5,14 +5,16 @@ import pathlib
 import re
 import subprocess
 
+from poetry.repositories import repository as poetry_repo
+
 from metapkg import tools
-from metapkg.packages import repository
 from metapkg.targets import base as targets
 from metapkg.targets.package import SystemPackage
 
 from . import build as rpmbuild
 
 if TYPE_CHECKING:
+    from distro import distro
     from poetry.core.packages import package as poetry_pkg
     from poetry.core.packages import dependency as poetry_dep
 
@@ -93,11 +95,13 @@ def _rpm_version_to_pep440(rpmver: str) -> str:
     return version
 
 
-class RPMRepository(repository.Repository):
+class RPMRepository(poetry_repo.Repository):
     def __init__(
-        self, packages: list[poetry_pkg.Package] | None = None
+        self,
+        name: str | None = None,
+        packages: list[poetry_pkg.Package] | None = None,
     ) -> None:
-        super().__init__(packages)
+        super().__init__(name, packages)
         self._parsed: set[str] = set()
 
     def find_packages(
@@ -111,9 +115,9 @@ class RPMRepository(repository.Repository):
                 self.add_package(package)
             self._parsed.add(dependency.name)
 
-        return super().find_packages(dependency)  # type: ignore
+        return super().find_packages(dependency)
 
-    def apt_get_packages(self, name: str) -> list[poetry_pkg.Package]:
+    def apt_get_packages(self, name: str) -> tuple[poetry_pkg.Package, ...]:
         system_name = PACKAGE_MAP.get(name, name)
 
         try:
@@ -126,11 +130,11 @@ class RPMRepository(repository.Repository):
                 hide_stderr=True,
             )
         except subprocess.CalledProcessError:
-            return []
+            return ()
         else:
             policy = self._parse_yum_list_output(output.strip())
             if not policy:
-                return []
+                return ()
             else:
                 packages = []
                 for version in policy["versions"]:
@@ -143,7 +147,7 @@ class RPMRepository(repository.Repository):
                     )
                     packages.append(pkg)
 
-                return packages
+                return tuple(packages)
 
     def _parse_yum_list_output(self, output: str) -> dict[str, Any]:
         if not output:
@@ -174,7 +178,7 @@ class RPMRepository(repository.Repository):
 
 class BaseRPMTarget(targets.FHSTarget, targets.LinuxDistroTarget):
     def __init__(
-        self, distro_info: dict[str, Any], arch: str, libc: str
+        self, distro_info: distro.InfoDict, arch: str, libc: str
     ) -> None:
         targets.FHSTarget.__init__(self, arch)
         targets.LinuxDistroTarget.__init__(
@@ -212,7 +216,7 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxDistroTarget):
 
 class RHEL7OrNewerTarget(BaseRPMTarget):
     def __init__(
-        self, distro_info: dict[str, Any], arch: str, libc: str
+        self, distro_info: distro.InfoDict, arch: str, libc: str
     ) -> None:
         super().__init__(distro_info, arch, libc)
         self.distro["codename"] = f'el{self.distro["version_parts"]["major"]}'
@@ -234,7 +238,7 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
 
 class FedoraTarget(RHEL7OrNewerTarget):
     def __init__(
-        self, distro_info: dict[str, Any], arch: str, libc: str
+        self, distro_info: distro.InfoDict, arch: str, libc: str
     ) -> None:
         super().__init__(distro_info, arch, libc)
         self.distro["codename"] = f'fc{self.distro["version_parts"]["major"]}'
@@ -252,7 +256,7 @@ class FedoraTarget(RHEL7OrNewerTarget):
 
 
 def get_specific_target(
-    distro_info: dict[str, Any], arch: str, libc: str
+    distro_info: distro.InfoDict, arch: str, libc: str
 ) -> BaseRPMTarget:
     if distro_info["id"] in {"centos", "rhel"}:
         ver = int(distro_info["version_parts"]["major"])
