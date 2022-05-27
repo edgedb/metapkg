@@ -860,3 +860,24 @@ class BundledCPackage(BundledPackage):
         )
 
         return script
+
+
+def pep440_to_semver(ver: poetry_version.Version) -> str:
+    version_string = ver.release.to_string()
+
+    pre = []
+
+    if ver.pre:
+        pre.append(ver.pre.to_string())
+
+    if ver.dev:
+        pre.append(ver.dev.to_string())
+
+    if pre:
+        version_string = f"{version_string}-{'.'.join(pre)}"
+
+    if ver.local:
+        assert isinstance(ver.local, tuple)
+        version_string += "+" + ".".join(map(str, ver.local))
+
+    return version_string.lower()
