@@ -23,7 +23,13 @@ Build = genbuild.Build
 class GenericOSRepository(poetry_repo.Repository):
     def list_provided_packages(self) -> frozenset[str]:
         # A list of packages assumed to be present on the system.
-        return frozenset()
+        return frozenset(
+            (
+                "bison",
+                "flex",
+                "perl",
+            )
+        )
 
     def find_packages(
         self,

@@ -157,6 +157,9 @@ class Build(targets.Build):
         rp = self._root_pkg
         return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
 
+    def _format_version(self) -> str:
+        return packages.pep440_to_semver(self._root_pkg.version)
+
     def build(self) -> None:
         self.prepare_tools()
         self.prepare_tarballs()
@@ -210,9 +213,7 @@ class Build(targets.Build):
             common_package = ""
 
         distro = self._target.distro["codename"]
-        root_version = (
-            f"{self._root_pkg.version.text}-{self._revision}~{distro}"
-        )
+        root_version = f"{self._format_version()}-{self._revision}~{distro}"
 
         meta_pkgs = self._root_pkg.get_meta_packages(self, root_version)
         meta_pkg_specs = []
@@ -346,7 +347,7 @@ class Build(targets.Build):
         """
         ).format(
             name=f"{self._root_pkg.name_slot}",
-            version=f"{self._root_pkg.version.text}-{self._revision}~{distro}",
+            version=f"{self._format_version()}-{self._revision}~{distro}",
             distro=distro,
             maintainer="MagicStack Inc. <hello@magic.io>",
             date=datetime.datetime.now(datetime.timezone.utc).strftime(
@@ -664,9 +665,7 @@ class Build(targets.Build):
                 shutil.copy2(entry, archives / output_name)
 
         distro = self._target.distro["codename"]
-        root_version = (
-            f"{self._root_pkg.version.text}-{self._revision}~{distro}"
-        )
+        root_version = f"{self._format_version()}-{self._revision}~{distro}"
         with open(archives / "build-metadata.json", "w") as f:
             installref = f"{self._root_pkg.name_slot}={root_version}"
             json.dump(

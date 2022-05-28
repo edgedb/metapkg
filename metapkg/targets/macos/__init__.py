@@ -197,8 +197,6 @@ class MacOSRepository(generic.GenericOSRepository):
                 "libffi",
                 "libffi-dev",
                 "perl",
-                "pam",
-                "pam-dev",
                 "uuid",
                 "uuid-dev",
                 "zlib",
