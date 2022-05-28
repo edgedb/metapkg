@@ -167,8 +167,8 @@ class Build(targets.Build):
         self._write_spec()
         self._rpmbuild()
 
-    def _format_version(self, ver: str) -> str:
-        return ver.replace("-", "_")
+    def _format_version(self) -> str:
+        return mpkg.pep440_to_semver(self._root_pkg.version).replace("-", "_")
 
     def _write_spec(self) -> None:
         sysreqs = self.get_extra_system_requirements()
@@ -202,7 +202,7 @@ class Build(targets.Build):
             common_package = ""
 
         rev = f'{self._revision}{self._subdist if self._subdist else ""}'
-        root_v = self._format_version(self._root_pkg.version.to_string())
+        root_v = self._format_version()
         root_version = f"{root_v}-{rev}%{{?dist}}"
         meta_pkgs = self._root_pkg.get_meta_packages(self, root_version)
         meta_pkg_specs = []
@@ -304,7 +304,7 @@ class Build(targets.Build):
             license=self._root_pkg.license,
             url=self._root_pkg.url,
             group=self._root_pkg.group,
-            version=self._format_version(self._root_pkg.version.to_string()),
+            version=self._format_version(),
             build_reqs=self._get_build_reqs_spec(),
             runtime_reqs=self._get_runtime_reqs_spec(sysreqs),
             conflicts=self._get_conflict_spec(conflicts),
@@ -344,7 +344,7 @@ class Build(targets.Build):
             f.write(rules)
 
     def _get_changelog(self) -> str:
-        root_v = self._format_version(self._root_pkg.version.text)
+        root_v = self._format_version()
         changelog = textwrap.dedent(
             """\
             * {date} {maintainer} {version}
@@ -392,7 +392,7 @@ class Build(targets.Build):
             lines.append(f"Requires: {pkg.system_name}")
 
         if self._bin_shims:
-            root_v = self._format_version(self._root_pkg.version.to_string())
+            root_v = self._format_version()
             lines.append(f"Requires: {self._root_pkg.name}-common >= {root_v}")
 
         categorymap = {
@@ -686,7 +686,7 @@ class Build(targets.Build):
 
         distro = self._target.distro["codename"]
         rev = f'{self._revision}{self._subdist if self._subdist else ""}'
-        root_v = self._format_version(self._root_pkg.version.to_string())
+        root_v = self._format_version()
         root_version = f"{root_v}-{rev}.{distro}"
         with open(archives / "build-metadata.json", "w") as f:
             installref = f"{self._root_pkg.name_slot}-{root_version}"

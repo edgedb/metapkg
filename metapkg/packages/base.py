@@ -462,8 +462,8 @@ class BundledPackage(BasePackage):
 
     @classmethod
     def format_version(cls, ver: poetry_version.Version) -> tuple[str, str]:
-        full_ver = ver.to_string()
-        version_base = ver.without_local().to_string()
+        full_ver = pep440_to_semver(ver)
+        version_base = pep440_to_semver(ver.without_local())
         version_hash = hashlib.sha256(full_ver.encode("utf-8")).hexdigest()
         version = f"{version_base}+{version_hash[:7]}"
         pretty_version = f"{full_ver}.s{version_hash[:7]}"
@@ -768,7 +768,7 @@ class BundledPackage(BasePackage):
     def get_artifact_metadata(self, build: targets.Build) -> dict[str, Any]:
         metadata = {
             "name": self.name,
-            "version": self.version.to_string(short=False),
+            "version": pep440_to_semver(self.version),
             "version_details": self.get_version_details(),
             "revision": build.revision,
             "target": build.target.triple,
@@ -868,10 +868,13 @@ def pep440_to_semver(ver: poetry_version.Version) -> str:
     pre = []
 
     if ver.pre:
-        pre.append(ver.pre.to_string())
+        pre.append(f"{ver.pre.phase}.{ver.pre.number}")
+
+    if ver.post:
+        pre.append(f"{ver.post.phase}.{ver.post.number}")
 
     if ver.dev:
-        pre.append(ver.dev.to_string())
+        pre.append(f"{ver.dev.phase}.{ver.dev.number}")
 
     if pre:
         version_string = f"{version_string}-{'.'.join(pre)}"

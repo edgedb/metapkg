@@ -475,7 +475,7 @@ class Build(targets.Build):
         src_root = self.get_source_abspath()
         image_root = self.get_image_root(relative_to="fsroot")
 
-        version = pkg.version.to_string(short=False)
+        version = packages.pep440_to_semver(pkg.version)
         an = f"{title}-{version}"
         if not pkg.version_includes_revision():
             an = f"{an}_{self._revision}"

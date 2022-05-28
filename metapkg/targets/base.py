@@ -842,7 +842,7 @@ class Build:
 
         pkg = self._root_pkg
         pkg_name = pkg.name
-        pkg_ver = pkg.version.to_string(short=False)
+        pkg_ver = mpkg_base.pep440_to_semver(pkg.version)
         tgt_ident = self.target.ident
         tarball = f"{pkg_name}__{pkg_ver}__{tgt_ident}.tar"
         tar = self.sh_get_command("tar")

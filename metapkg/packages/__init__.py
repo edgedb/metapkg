@@ -6,6 +6,7 @@ from .base import (
     BundledCPackage,
     PackageFileLayout,
     MetaPackage,
+    pep440_to_semver,
 )
 from .python import PythonPackage, BundledPythonPackage
 from .rust import BundledRustPackage, BundledAdHocRustPackage
@@ -21,4 +22,5 @@ __all__ = (
     "BundledPythonPackage",
     "BundledRustPackage",
     "BundledAdHocRustPackage",
+    "pep440_to_semver",
 )
