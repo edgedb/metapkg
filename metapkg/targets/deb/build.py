@@ -416,6 +416,9 @@ class Build(targets.Build):
 
             override_dh_shlibdeps:
             \tdh_shlibdeps {shlib_paths}
+
+            override_dh_builddeb:
+            \tdh_builddeb -- -Zxz
         """
         ).format(
             name=self._root_pkg.name_slot,
