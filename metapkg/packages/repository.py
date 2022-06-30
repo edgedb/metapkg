@@ -3,7 +3,9 @@ from typing import (
     TYPE_CHECKING,
 )
 
+import copy
 import itertools
+import pathlib
 
 from poetry.repositories import exceptions as poetry_repo_exc
 from poetry.repositories import pool as poetry_pool
@@ -15,10 +17,9 @@ from poetry.packages import dependency_package as poetry_deppkg
 from poetry.core.packages import package as poetry_pkg
 from poetry.mixology import incompatibility as poetry_incompat
 from poetry.puzzle import provider as poetry_provider
+from poetry.vcs import git
 
-from metapkg import tools
-
-from . import utils
+from . import sources as mpkg_sources
 
 if TYPE_CHECKING:
     from cleo.io import io as cleo_io
@@ -81,42 +82,63 @@ class Provider(poetry_provider.Provider):
         self.include_build_reqs = include_build_reqs
         self._active_extras = set(extras) if extras else set()
 
-    def search_for_vcs(
+    def _search_for_vcs(
         self,
         dependency: poetry_vcsdep.VCSDependency,
-    ) -> list[poetry_pkg.Package]:
-        path = tools.git.repodir(dependency.source)
-        setup_py = path / "setup.py"
+    ) -> poetry_pkg.Package:
+        from . import python
 
-        result: list[poetry_pkg.Package]
-        if setup_py.exists():
-            from . import python
+        pkg = self.get_package_from_vcs(
+            dependency.vcs,
+            dependency.source,
+            branch=dependency.branch,
+            tag=dependency.tag,
+            rev=dependency.rev,
+            subdirectory=dependency.source_subdirectory,
+            source_root=(
+                self._source_root
+                or (self._env.path.joinpath("src") if self._env else None)
+            ),
+        )
 
-            dist = tools.python.get_dist(path)
-            package = python.PythonPackage(dependency.name, dist.version)
-            package.build_requires = []
+        pkg.develop = dependency.develop
 
-            build_requires = tools.python.get_build_requires_from_setup_py(
-                setup_py
-            )
-            for breq in build_requires:
-                dep = utils.python_dependency_from_pep_508(breq)
-                package.build_requires.append(dep)
+        package = python.PythonPackage(
+            f"pypkg-{pkg.name}",
+            version=pkg.version,
+            pretty_version=pkg.pretty_version,
+        )
+        package.__dict__.update(
+            {
+                k: copy.deepcopy(v)
+                for k, v in pkg.__dict__.items()
+                if k not in {"_name", "_pretty_name"}
+            }
+        )
 
-            for req in dist.metadata.run_requires:
-                dep = utils.python_dependency_from_pep_508(req)
-                package.add_dependency(dep)
+        for dep in package.all_requires:
+            dep._name = f"pypkg-{dep.name}"
+            dep._pretty_name = f"pypkg-{dep.pretty_name}"
 
-            result = [package]
-        else:
-            if dependency.name.startswith("pypkg-"):
-                dependency._name = dependency.name.replace("pypkg-", "")
-                dependency._pretty_name = dependency.pretty_name.replace(
-                    "pypkg-", ""
-                )
-            result = super().search_for_vcs(dependency)
+        source = git.Git.clone(
+            url=dependency.source,
+            source_root=(
+                self._source_root
+                or (self._env.path.joinpath("src") if self._env else None)
+            ),
+            branch=dependency.branch,
+            tag=dependency.tag,
+            revision=dependency.rev,
+        )
+        path = pathlib.Path(source.path)
+        if dependency.source_subdirectory:
+            path = path.joinpath(dependency.source_subdirectory)
+        package.build_requires = python.get_build_requires_from_srcdir(
+            package, path
+        )
+        package.source = mpkg_sources.source_for_url(f"file://{path}")
 
-        return result
+        return package
 
     def incompatibilities_for(
         self,
@@ -154,7 +176,7 @@ class Provider(poetry_provider.Provider):
         self,
         package: poetry_deppkg.DependencyPackage,
     ) -> poetry_deppkg.DependencyPackage:
-        chain = [package.requires]
+        chain = [package.all_requires]
         build_requires = getattr(package, "build_requires", None)
         if build_requires:
             chain.append(build_requires)

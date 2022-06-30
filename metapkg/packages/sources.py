@@ -333,7 +333,6 @@ class GitSource(BaseSource):
             exclude_submodules=self.exclude_submodules,
             clone_depth=self.clone_depth,
             ref=self.ref,
-            io=io,
         )
 
     def copy(

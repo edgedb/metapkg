@@ -60,7 +60,6 @@ def update_repo(
     exclude_submodules: frozenset[str] | None = None,
     clone_depth: int = 0,
     ref: str | None = None,
-    io: cleo_io.IO,
 ) -> pathlib.Path:
     repo_dir = repodir(repo_url)
     repo_gitdir = repo_dir / ".git"
