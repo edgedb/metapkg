@@ -23,7 +23,6 @@ jobs:
         with:
           python-version: "3.9"
       - uses: psf/black@stable
-      - uses: edgedb/action-mypy@main
+      - uses: python/mypy@master
         with:
-          paths: |
-            metapkg
+          install_types: no
