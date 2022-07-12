@@ -186,15 +186,9 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
     def _get_sdist_info(self, pypi_info: dict[str, Any]) -> dict[str, Any]:
         name = pypi_info["info"]["name"]
-        version = pypi_info["info"]["version"]
         sdist_info = None
 
-        try:
-            version_info = pypi_info["releases"][version]
-        except KeyError:
-            version_info = []
-
-        for file_info in version_info:
+        for file_info in pypi_info["urls"]:
             if file_info["packagetype"] == "sdist":
                 sdist_info = file_info
                 break
