@@ -217,8 +217,9 @@ class BasePackage(poetry_pkg.Package):
             patterns = {patterns}
 
             for pattern in patterns:
-                for path in glob.glob(str(tmp / pattern), recursive=True):
-                    p = pathlib.Path(path)
+                if pattern.endswith('/**'):
+                    pattern += "/*"
+                for p in tmp.glob(pattern):
                     if p.exists():
                         print(p.relative_to(tmp))
         """
