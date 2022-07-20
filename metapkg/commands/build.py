@@ -31,6 +31,7 @@ class Build(base.Command):
         { --dest= : Destination path. }
         { --keepwork : Do not remove the work directory. }
         { --generic : Build a generic target. }
+        { --arch= : Target architecture, if different from host. }
         { --libc= : Libc to target. }
         { --build-source : Build source packages. }
         { --build-debug : Build debug symbol packages. }
@@ -51,6 +52,7 @@ class Build(base.Command):
         keepwork = self.option("keepwork")
         destination = self.option("dest")
         generic = self.option("generic")
+        arch = self.option("arch")
         libc = self.option("libc")
         build_source = self.option("build-source")
         build_debug = self.option("build-debug")
@@ -61,7 +63,9 @@ class Build(base.Command):
         extra_opt = self.option("extra-optimizations")
         jobs = self.option("jobs")
 
-        target = targets.detect_target(self.io, portable=generic, libc=libc)
+        target = targets.detect_target(
+            self.io, portable=generic, libc=libc, arch=arch
+        )
         target.prepare()
 
         modname, _, clsname = pkgname.rpartition(":")

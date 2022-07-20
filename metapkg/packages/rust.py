@@ -80,7 +80,8 @@ class BundledRustPackage(base.BundledPackage):
         if isinstance(build.target, targets.linux.LinuxMuslTarget):
             target = "--target x86_64-unknown-linux-musl"
         else:
-            target = ""
+            triple = build.target.triple
+            target = f"--target {triple}"
 
         env = build.sh_append_global_flags({})
         env["RUST_BACKTRACE"] = "1"

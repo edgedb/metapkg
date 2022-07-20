@@ -241,7 +241,11 @@ class MacOSTarget(generic.GenericTarget):
 
     @property
     def triple(self) -> str:
-        return f"{self.arch}-apple-darwin"
+        arch = self.machine_architecture
+        if arch == "arm64":
+            # Linux-style triples use aarch64 instead of arm64
+            arch = "aarch64"
+        return f"{arch}-apple-darwin"
 
     def get_package_repository(self) -> MacOSRepository:
         return MacOSRepository()
@@ -404,12 +408,16 @@ class MacOSTarget(generic.GenericTarget):
             "-Wformat",
             "-Werror=format-security",
             "-mmacosx-version-min=10.10",
+            "-arch",
+            self.machine_architecture,
         ]
 
     def get_global_ldflags(self, build: targets.Build) -> list[str]:
         flags = super().get_global_ldflags(build)
         return flags + [
             "-mmacosx-version-min=10.10",
+            "-arch",
+            self.machine_architecture,
         ]
 
 
