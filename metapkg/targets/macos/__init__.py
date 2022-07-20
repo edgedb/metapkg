@@ -4,6 +4,8 @@ from typing import *
 import pathlib
 import re
 import shlex
+import shutil
+import sys
 import textwrap
 
 from metapkg import packages as mpkg
@@ -254,6 +256,14 @@ class MacOSTarget(generic.GenericTarget):
         return ["bash", "make", "gnu-sed", "gnu-tar"]
 
     def prepare(self) -> None:
+        if not shutil.which("brew"):
+            print(
+                "no Homebrew detected on system, skipping "
+                "auto-installation of build tools",
+                file=sys.stderr,
+            )
+            return
+
         tools.cmd("brew", "update")
         brew_inst = (
             'if brew ls --versions "$1"; then brew upgrade "$1"; '

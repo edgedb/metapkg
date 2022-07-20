@@ -5,6 +5,7 @@ import mimetypes
 import os
 import pathlib
 import stat
+import shutil
 
 from xml.dom import minidom
 
@@ -15,17 +16,24 @@ from metapkg import tools
 class MacOSBuild(generic.Build):
     def define_tools(self) -> None:
         super().define_tools()
-        self._system_tools["bash"] = "/usr/local/bin/bash"
+        bash = self._find_tool("bash")
+        self._system_tools["bash"] = bash
         if self._jobs == 0:
             dash_j = f"-j{os.cpu_count()}"
         else:
             dash_j = f"-j{self._jobs}"
-        self._system_tools["make"] = (
-            "env -u MAKELEVEL /usr/local/bin/gmake "
-            f"{dash_j} SHELL=/usr/local/bin/bash"
-        )
-        self._system_tools["sed"] = "/usr/local/bin/gsed"
-        self._system_tools["tar"] = "/usr/local/bin/gtar"
+        gmake = self._find_tool("gmake")
+        self._system_tools[
+            "make"
+        ] = f"env -u MAKELEVEL {gmake} {dash_j} SHELL={bash}"
+        self._system_tools["sed"] = self._find_tool("gsed")
+        self._system_tools["tar"] = self._find_tool("gtar")
+
+    def _find_tool(self, tool: str) -> str:
+        tool_path = shutil.which(tool)
+        if tool_path is None:
+            raise RuntimeError(f"required program not found: {tool}")
+        return tool_path
 
     def _fixup_rpath(
         self, image_root: pathlib.Path, binary_relpath: pathlib.Path
