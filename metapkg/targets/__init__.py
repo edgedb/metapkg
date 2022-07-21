@@ -44,8 +44,11 @@ def detect_target(
     system = platform.system()
     if arch is None:
         arch = platform.machine().lower()
-        if arch == "amd64":
-            arch = "x86_64"
+
+    if arch == "amd64":
+        arch = "x86_64"
+    elif arch == "arm64":
+        arch = "aarch64"
 
     if system == "Linux":
         if libc is None:
