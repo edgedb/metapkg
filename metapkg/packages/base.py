@@ -849,14 +849,18 @@ class BundledCPackage(BundledPackage):
         """
         )
 
+    def get_install_make_target(self, build: targets.Build) -> str:
+        return "install"
+
     def get_build_install_script(self, build: targets.Build) -> str:
         script = super().get_build_install_script(build)
         installdest = build.get_install_dir(self, relative_to="pkgbuild")
         make = build.sh_get_command("make")
+        install_target = self.get_install_make_target(build)
 
         script += textwrap.dedent(
             f"""\
-            {make} DESTDIR=$(pwd)/"{installdest}" install
+            {make} DESTDIR=$(pwd)/"{installdest}" "{install_target}"
             """
         )
 
