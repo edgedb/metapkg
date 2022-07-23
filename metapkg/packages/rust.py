@@ -77,12 +77,6 @@ class BundledRustPackage(base.BundledPackage):
         install_bindir = (
             build.get_install_dir(self, relative_to="pkgbuild") / bindir
         )
-        if isinstance(build.target, targets.linux.LinuxMuslTarget):
-            target = "--target x86_64-unknown-linux-musl"
-        else:
-            triple = build.target.triple
-            target = f"--target {triple}"
-
         env = build.sh_append_global_flags({})
         env["RUST_BACKTRACE"] = "1"
         env_str = build.sh_format_command("env", env, force_args_eq=True)
@@ -94,7 +88,7 @@ class BundledRustPackage(base.BundledPackage):
                 }}' \\
                 "{src}/Cargo.toml"
             {env_str} \\
-                {cargo} install {target} \\
+                {cargo} install --target {build.target.triple} \\
                     --verbose --verbose \\
                     --root "{installdest}" \\
                     --path "{src}" \\
