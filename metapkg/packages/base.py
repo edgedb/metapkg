@@ -373,7 +373,22 @@ class BundledPackage(BasePackage):
         repo: tools.git.Git,
         version: str | None = None,
     ) -> str:
-        return repo.rev_parse(version or "HEAD").strip()  # type: ignore
+        rev: str
+
+        if version is None:
+            rev = repo.rev_parse("HEAD").strip()
+        else:
+            output = repo.run("ls-remote", repo.remote_url(), version)
+
+            if output:
+                rev, _ = output.split()
+            else:
+                # The name can be a branch or tag, so we attempt to look it up
+                # with ls-remote. If we don't find anything, we assume it's a
+                # commit hash.
+                rev = version
+
+        return rev
 
     @classmethod
     def version_from_vcs_version(

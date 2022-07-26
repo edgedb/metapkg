@@ -4,19 +4,16 @@ from typing import (
     Any,
 )
 
-import os.path
 import pathlib
 import subprocess
-import urllib.parse
 
 from poetry.core import vcs
-
-from metapkg import cache
+from poetry.vcs import git as poetry_git  # type: ignore
 
 from . import cmd
 
 if TYPE_CHECKING:
-    from cleo.io import io as cleo_io
+    from dulwich import repo as dulwich_repo
 
 
 class Git(vcs.Git):  # type: ignore
@@ -39,15 +36,16 @@ class Git(vcs.Git):  # type: ignore
         return work_tree  # type: ignore
 
 
-def _repodir(repo_url: str) -> pathlib.Path:
-    u = urllib.parse.urlparse(repo_url)
-    base = os.path.basename(u.path)
-    name, _ = os.path.splitext(base)
-    return pathlib.Path(name)
+class GitBackend(poetry_git.Git):  # type: ignore
+    @classmethod
+    def _clone_submodules(cls, repo: dulwich_repo.Repo) -> None:
+        return
 
 
 def repodir(repo_url: str) -> pathlib.Path:
-    return cache.cachedir() / _repodir(repo_url)
+    source_root = GitBackend.get_default_source_root()
+    name = GitBackend.get_name_from_source_url(url=repo_url)
+    return source_root / name  # type: ignore
 
 
 def repo(repo_url: str) -> Git:
@@ -61,54 +59,19 @@ def update_repo(
     clone_depth: int = 0,
     ref: str | None = None,
 ) -> pathlib.Path:
-    repo_dir = repodir(repo_url)
-    repo_gitdir = repo_dir / ".git"
-
-    git = Git(repo_dir)
     if ref == "HEAD":
         ref = None
 
+    GitBackend.clone(repo_url, revision=ref)
+    repo_dir = repodir(repo_url)
+    repo = Git(repo_dir)
     args: tuple[str | pathlib.Path, ...]
-
-    if repo_gitdir.exists():
-        args = ("fetch", "--force", "-u")
-        if ref is not None:
-            args += (
-                "origin",
-                f"{ref}",
-            )
-        if clone_depth:
-            args += (f"--depth={clone_depth}",)
-        git.run(*args)
-        status = git.run("status", "-b", "--porcelain").split("\n")[0].split()
-        tracking = status[1]
-
-        if ref:
-            remote = "FETCH_HEAD"
-        else:
-            local, _, remote = tracking.partition("...")
-            if not remote:
-                remote_name = git.run("config", f"branch.{local}.remote")
-                remote_ref = git.run("config", f"branch.{local}.merge")
-                remote_ref = remote_ref[len("refs/heads/") :]
-                remote = f"{remote_name}/{remote_ref}"
-
-        git.run("reset", "--hard", remote)
-    else:
-        args = (repo_url, repo_dir)
-        if ref:
-            args = ("-b", ref) + args
-
-        if clone_depth:
-            args += (f"--depth={clone_depth}",)
-
-        git.run("clone", *args)
 
     submodules: set[str] | None = None
     deinit_submodules = set()
     if exclude_submodules:
         try:
-            output = git.run(
+            output = repo.run(
                 "config",
                 "--file",
                 ".gitmodules",
@@ -127,7 +90,7 @@ def update_repo(
             submodules = set()
             submodule_configs = output.strip().split("\n")
             for smc in submodule_configs:
-                submodule_path = git.run(
+                submodule_path = repo.run(
                     "config", "--file", ".gitmodules", smc
                 ).strip()
                 if submodule_path not in exclude_submodules:
@@ -141,9 +104,9 @@ def update_repo(
             args += (f"--depth={clone_depth}",)
         if submodules:
             args += tuple(submodules)
-        git.run(*args)
+        repo.run(*args)
 
         if deinit_submodules:
-            git.run(*(("submodule", "deinit") + tuple(deinit_submodules)))
+            repo.run(*(("submodule", "deinit") + tuple(deinit_submodules)))
 
     return repo_dir
