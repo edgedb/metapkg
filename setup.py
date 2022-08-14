@@ -17,6 +17,7 @@ setup(
     },
     python_requires=">=3.9",
     install_requires=[
+        "build~=0.8.0",
         "distro~=1.7.0",
         "requests~=2.27.0",
         "poetry @ git+https://github.com/python-poetry/poetry.git@ceb358685dec445ff995c4e1e6eec8ba4b1346ab",
