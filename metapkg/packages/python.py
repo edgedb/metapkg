@@ -18,12 +18,16 @@ from poetry.core.semver import version as poetry_version
 from poetry.repositories import pypi_repository
 from poetry.repositories import exceptions as poetry_repo_exc
 
+import build as pypa_build
+import build.env as pypa_build_env
+import pep517
+
+import distlib.database
+
 from metapkg import packages as mpkg
-from metapkg import tools
 from metapkg import targets
 
 from . import base
-from . import repository as af_repository
 from . import sources as af_sources
 from .utils import python_dependency_from_pep_508
 
@@ -208,43 +212,57 @@ class PyPiRepository(pypi_repository.PyPiRepository):
             return get_build_requires_from_srcdir(package, tmpdir)
 
 
+def get_dist(
+    srcdir: pathlib.Path,
+) -> distlib.database.InstalledDistribution:
+    builder = pypa_build.ProjectBuilder(
+        srcdir,
+        runner=pep517.quiet_subprocess_runner,
+    )
+
+    with pypa_build_env.IsolatedEnvBuilder() as env:
+        builder.python_executable = env.executable
+        builder.scripts_dir = env.scripts_dir
+        env.install(builder.build_system_requires)
+        env.install(builder.get_requires_for_build("wheel"))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            distinfo = pathlib.Path(builder.metadata_path(tmpdir))
+            return distlib.database.InstalledDistribution(distinfo)
+
+
 def get_build_requires_from_srcdir(
-    package: mpkg.BasePackage, path: pathlib.Path
+    package: mpkg.BasePackage,
+    path: pathlib.Path,
 ) -> list[poetry_dep.Dependency]:
-    build_requires = []
+    builder = pypa_build.ProjectBuilder(
+        path,
+        runner=pep517.quiet_subprocess_runner,
+    )
 
-    setup_py = path / "setup.py"
-    pyproject_toml = path / "pyproject.toml"
+    with pypa_build_env.IsolatedEnvBuilder() as env:
+        builder.python_executable = env.executable
+        builder.scripts_dir = env.scripts_dir
+        sys_reqs = builder.build_system_requires
+        env.install(sys_reqs)
+        pkg_reqs = builder.get_requires_for_build("wheel")
 
-    if pyproject_toml.exists():
-        breqs = tools.python.get_build_requires_from_pyproject_toml(
-            pyproject_toml
-        )
+    deps = []
+    for req in sys_reqs | pkg_reqs:
+        dep = python_dependency_from_pep_508(req)
+        # Make sure "wheel" is not a dependency of itself and
+        # also elide setuptools, because it is always installed.
+        if dep.name == "pypkg-setuptools" or (
+            package.name in {"pypkg-wheel", "pypkg-setuptools"}
+            and dep.name == "pypkg-wheel"
+        ):
+            dep.deactivate()
 
-        if not breqs and setup_py.exists():
-            breqs = tools.python.get_build_requires_from_setup_py(setup_py)
-    elif setup_py.exists():
-        breqs = tools.python.get_build_requires_from_setup_py(setup_py)
-    else:
-        raise LookupError(
-            f"No setup.py or pyproject.toml in {package.name} tarball"
-        )
+        if dep.is_activated():
+            deps.append(dep)
 
-    if not breqs and package.name not in {
-        "pypkg-wheel",
-        "pypkg-setuptools",
-        "pypkg-flit-core",
-        "pypkg-poetry-core",
-    }:
-        breqs = ["setuptools >= 40.8.0", "wheel"]
+    deps.extend(package.get_build_requirements())
 
-    for breq in breqs:
-        dep = python_dependency_from_pep_508(breq)
-        build_requires.append(dep)
-
-    build_requires.extend(package.get_build_requirements())
-
-    return build_requires
+    return deps
 
 
 class BasePythonPackage(base.BasePackage):
@@ -269,16 +287,14 @@ class BasePythonPackage(base.BasePackage):
             relative_to="pkgbuild"
         ) / build.get_full_install_prefix().relative_to("/")
 
-        sitescript = (
-            f"import site; " f'print(site.getsitepackages(["{dest}"])[0])'
-        )
+        sitescript = f'import site; print(site.getsitepackages(["{dest}"])[0])'
 
         src_dest = build.get_temp_root(
             relative_to="pkgsource"
         ) / build.get_full_install_prefix().relative_to("/")
 
         src_sitescript = (
-            f"import site; " f'print(site.getsitepackages(["{src_dest}"])[0])'
+            f'import site; print(site.getsitepackages(["{src_dest}"])[0])'
         )
 
         wheeldir_script = 'import pathlib; print(pathlib.Path(".").resolve())'
@@ -317,7 +333,6 @@ class BasePythonPackage(base.BasePackage):
                 "${_wheeldir}",
                 "--no-binary=:all:",
                 "--no-build-isolation",
-                "--use-feature=in-tree-build",
                 "--no-deps",
                 ".",
             ]
@@ -529,12 +544,7 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
     ) -> BundledPythonPackage_T:
         repo = cls.resolve_vcs_repo(io, version)
         repo_dir = repo.work_tree
-        setup_py = repo_dir / "setup.py"
-
-        if not setup_py.exists():
-            raise RuntimeError(f"{repo_dir}/setup.py does not exist")
-
-        dist = tools.python.get_dist(repo_dir)
+        dist = get_dist(repo_dir)
 
         requires = []
         for req in dist.metadata.run_requires:
