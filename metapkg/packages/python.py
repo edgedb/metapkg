@@ -134,7 +134,19 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         for req in package.get_requirements():
             package.add_dependency(req)
         package.source = self.get_sdist_source(pypi_info)
-        package.build_requires = self._get_build_requires(package)
+
+        if self._disable_cache:
+            build_reqs = self._get_build_requires(package)
+        else:
+            build_reqs = self._cache.remember_forever(
+                f"{package.unique_name}:build-requirements",
+                lambda: self._get_build_requires(package),
+            )
+
+        package.build_requires = [
+            poetry_dep.Dependency.create_from_pep_508(req)
+            for req in build_reqs
+        ]
 
         return package
 
@@ -205,11 +217,13 @@ class PyPiRepository(pypi_repository.PyPiRepository):
     def _get_build_requires(
         self,
         package: BasePythonPackage,
-    ) -> list[poetry_dep.Dependency]:
+    ) -> list[str]:
         with tempfile.TemporaryDirectory() as t:
             tmpdir = pathlib.Path(t)
             package.source.copy(tmpdir, io=self._io)
-            return get_build_requires_from_srcdir(package, tmpdir)
+            reqs = get_build_requires_from_srcdir(package, tmpdir)
+
+        return [req.to_pep_508() for req in reqs]
 
 
 def get_dist(
@@ -226,7 +240,7 @@ def get_dist(
         env.install(builder.build_system_requires)
         env.install(builder.get_requires_for_build("wheel"))
         with tempfile.TemporaryDirectory() as tmpdir:
-            distinfo = pathlib.Path(builder.metadata_path(tmpdir))
+            distinfo = builder.metadata_path(tmpdir)
             return distlib.database.InstalledDistribution(distinfo)
 
 
