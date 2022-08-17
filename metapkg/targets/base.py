@@ -361,23 +361,30 @@ class LinuxAddUserAction(AddUserAction):
 
 
 class LinuxTarget(PosixTarget):
-    _sys_shlibs = {
-        "libpthread",
-        "libutil",
-        "librt",
-        "libdl",
-        "libm",
-        "libc",
-        r"ld-linux-[\w-]+",
-    }
-    _sys_shlibs_re = re.compile(
-        "|".join(rf"({lib}\.so(\.\d+)*)" for lib in _sys_shlibs),
-        re.A,
-    )
 
     def __init__(self, arch: str, libc: str) -> None:
         super().__init__(arch)
         self.libc = libc
+        if libc == "musl":
+            self._sys_shlibs = {
+                r"libc(\.musl-[\w-]+)?",
+                r"ld-musl-[\w-]+",
+            }
+        else:
+            self._sys_shlibs = {
+                "libpthread",
+                "libutil",
+                "librt",
+                "libdl",
+                "libm",
+                "libc",
+                r"ld-linux-[\w-]+",
+            }
+
+        self._sys_shlibs_re = re.compile(
+            "|".join(rf"({lib}\.so(\.\d+)*)" for lib in self._sys_shlibs),
+            re.A,
+        )
 
     @property
     def triple(self) -> str:

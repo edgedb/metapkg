@@ -23,10 +23,8 @@ class GenericLinuxBuild(generic.Build):
             relative_to="sourceroot",
         )
 
-        machine = platform.machine().upper()
-        env[
-            f"CARGO_TARGET_{machine}_UNKNOWN_LINUX_GNU_LINKER"
-        ] = f"$(ROOT)/{wrapper}"
+        target = self.target.triple.upper().replace("-", "_")
+        env[f"CARGO_TARGET_{target}_LINKER"] = f"$(ROOT)/{wrapper}"
 
         return env
 
