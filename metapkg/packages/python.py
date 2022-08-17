@@ -231,7 +231,7 @@ def get_dist(
 ) -> distlib.database.InstalledDistribution:
     builder = pypa_build.ProjectBuilder(
         srcdir,
-        runner=pep517.quiet_subprocess_runner,
+        runner=pep517.default_subprocess_runner,
     )
 
     with pypa_build_env.IsolatedEnvBuilder() as env:
