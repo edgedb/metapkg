@@ -7,8 +7,8 @@ from typing import (
 import pathlib
 import subprocess
 
-from poetry.core import vcs
-from poetry.vcs import git as poetry_git  # type: ignore
+from poetry.core.vcs import git as core_git
+from poetry.vcs import git as poetry_git
 
 from . import cmd
 
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from dulwich import repo as dulwich_repo
 
 
-class Git(vcs.Git):  # type: ignore
+class Git(core_git.Git):
     def run(
         self,
         *args: Any,
@@ -24,7 +24,7 @@ class Git(vcs.Git):  # type: ignore
         **kwargs: Any,
     ) -> str:
         if not folder and self._work_dir and self._work_dir.exists():
-            folder = self._work_dir.as_posix()
+            folder = self._work_dir
         result = cmd.cmd("git", *args, cwd=folder, **kwargs)
         result = result.strip(" \n\t")
         return result
@@ -33,10 +33,10 @@ class Git(vcs.Git):  # type: ignore
     def work_tree(self) -> pathlib.Path:
         work_tree = self._work_dir
         assert work_tree is not None
-        return work_tree  # type: ignore
+        return work_tree
 
 
-class GitBackend(poetry_git.Git):  # type: ignore
+class GitBackend(poetry_git.Git):
     @classmethod
     def _clone_submodules(cls, repo: dulwich_repo.Repo) -> None:
         return
@@ -45,7 +45,7 @@ class GitBackend(poetry_git.Git):  # type: ignore
 def repodir(repo_url: str) -> pathlib.Path:
     source_root = GitBackend.get_default_source_root()
     name = GitBackend.get_name_from_source_url(url=repo_url)
-    return source_root / name  # type: ignore
+    return source_root / name
 
 
 def repo(repo_url: str) -> Git:

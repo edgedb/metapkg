@@ -29,7 +29,11 @@ from metapkg import targets
 
 from . import base
 from . import sources as af_sources
+from . import repository
 from .utils import python_dependency_from_pep_508
+
+import packaging.utils
+
 
 if TYPE_CHECKING:
     from cleo.io import io as cleo_io
@@ -73,13 +77,18 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         packages = super().find_packages(dependency)
 
         for package in packages:
-            package._name = f"pypkg-{package._name}"
+            package._name = packaging.utils.canonicalize_name(
+                f"pypkg-{package._name}"
+            )
             package._pretty_name = f"pypkg-{package._pretty_name}"
 
         return packages
 
     def package(
-        self, name: str, version: str, extras: list[str] | None = None
+        self,
+        name: str,
+        version: poetry_version.Version,
+        extras: list[str] | None = None,
     ) -> poetry_pkg.Package:
 
         if name.startswith("pypkg-"):
@@ -126,7 +135,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
                 python_dependency.constraint
             ):
                 continue
-            dep._name = f"pypkg-{dep.name}"
+            dep._name = packaging.utils.canonicalize_name(f"pypkg-{dep.name}")
             dep._pretty_name = f"pypkg-{dep.pretty_name}"
             package.add_dependency(dep)
 
@@ -143,16 +152,21 @@ class PyPiRepository(pypi_repository.PyPiRepository):
                 lambda: self._get_build_requires(package),
             )
 
-        package.build_requires = [
-            poetry_dep.Dependency.create_from_pep_508(req)
-            for req in build_reqs
-        ]
+        repository.set_build_requirements(
+            package,
+            [
+                poetry_dep.Dependency.create_from_pep_508(req)
+                for req in build_reqs
+            ],
+        )
 
         return package
 
-    def get_package_info(self, name: str) -> dict[str, Any]:
+    def get_package_info(
+        self, name: packaging.utils.NormalizedName
+    ) -> dict[str, Any]:
         if name.startswith("pypkg-"):
-            name = name[len("pypkg-") :]
+            name = packaging.utils.canonicalize_name(name[len("pypkg-") :])
 
         return super().get_package_info(name)
 
@@ -178,7 +192,9 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         return source
 
-    def get_pypi_info(self, name: str, version: str) -> dict[str, Any]:
+    def get_pypi_info(
+        self, name: str, version: poetry_version.Version
+    ) -> dict[str, Any]:
         if name.startswith("pypkg-"):
             name = name[len("pypkg-") :]
         if self._disable_cache:
@@ -191,7 +207,9 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         return pypi_info
 
-    def _get_pypi_info(self, name: str, version: str) -> dict[str, Any]:
+    def _get_pypi_info(
+        self, name: str, version: poetry_version.Version
+    ) -> dict[str, Any]:
         json_data = self._get(f"pypi/{name}/{version}/json")
         if json_data is None:
             raise poetry_repo_exc.PackageNotFound(
@@ -280,7 +298,6 @@ def get_build_requires_from_srcdir(
 
 
 class BasePythonPackage(base.BasePackage):
-    build_requires: list[poetry_dep.Dependency]
     source: af_sources.BaseSource
 
     def get_configure_script(self, build: targets.Build) -> str:
@@ -330,7 +347,7 @@ class BasePythonPackage(base.BasePackage):
             }
         )
 
-        dep_names = [dep.name for dep in self.build_requires]
+        dep_names = [dep.name for dep in base.get_build_requirements(self)]
         build_deps = build.get_packages(dep_names)
 
         if pkgname == "wheel":
@@ -581,8 +598,9 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
             source_version=cls.resolve_vcs_version(io, repo),
         )
         package.dist_name = dist.name
-        package.build_requires = get_build_requires_from_srcdir(
-            package, repo_dir
+        repository.set_build_requirements(
+            package,
+            get_build_requires_from_srcdir(package, repo_dir),
         )
 
         return package

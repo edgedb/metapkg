@@ -139,12 +139,10 @@ class Build(base.Command):
         graph = {}
         for dep_package in resolution.packages:
             pkg_map[dep_package.name] = dep_package
-            reqs = set(dep_package.requires) | set(
-                getattr(dep_package, "build_requires", [])
-            )
+            breqs = mpkg_base.get_build_requirements(dep_package)
             deps = {
                 req.name
-                for req in reqs
+                for req in set(dep_package.requires) | set(breqs)
                 if req.is_activated() and env.is_valid_for_marker(req.marker)
             }
             graph[dep_package.name] = deps

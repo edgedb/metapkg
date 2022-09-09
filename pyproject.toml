@@ -9,3 +9,4 @@ follow_imports = "normal"
 ignore_missing_imports = true
 show_error_codes = true
 strict = true
+namespace_packages = true

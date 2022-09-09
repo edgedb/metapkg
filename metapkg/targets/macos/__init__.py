@@ -254,7 +254,7 @@ class MacOSTarget(generic.GenericTarget):
         return arch
 
     def get_package_repository(self) -> MacOSRepository:
-        return MacOSRepository()
+        return MacOSRepository("macos")
 
     def _get_necessary_host_tools(self) -> list[str]:
         return ["bash", "make", "gnu-sed", "gnu-tar"]

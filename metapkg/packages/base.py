@@ -22,6 +22,8 @@ import pprint
 import sys
 import textwrap
 
+import packaging.utils
+
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
@@ -37,6 +39,10 @@ if TYPE_CHECKING:
     from cleo.io import io as cleo_io
     from metapkg import targets
     from poetry.repositories import repository as poetry_repo
+
+
+get_build_requirements = repository.get_build_requirements
+set_build_requirements = repository.set_build_requirements
 
 
 class DummyPackage(poetry_pkg.Package):
@@ -240,7 +246,7 @@ BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
 class BundledPackage(BasePackage):
 
-    name: ClassVar[str]
+    name: ClassVar[packaging.utils.NormalizedName]
     title: ClassVar[str | None] = None
     aliases: ClassVar[list[str] | None] = None
     description: str = ""
@@ -249,7 +255,6 @@ class BundledPackage(BasePackage):
     url: ClassVar[str | None] = None
     identifier: ClassVar[str]
 
-    build_requires: list[poetry_dep.Dependency]
     source_version: str
 
     artifact_requirements: list[str | poetry_dep.Dependency] = []
@@ -550,7 +555,7 @@ class BundledPackage(BasePackage):
         else:
             self.resolved_sources = []
 
-        self.build_requires = self.get_build_requirements()
+        repository.set_build_requirements(self, self.get_build_requirements())
         self.description = type(self).description
         license_id = type(self).license_id
         if license_id is not None:

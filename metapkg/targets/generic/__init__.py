@@ -56,7 +56,7 @@ class GenericTarget(targets.FHSTarget):
         return f"Generic POSIX"
 
     def get_package_repository(self) -> GenericOSRepository:
-        return GenericOSRepository()
+        return GenericOSRepository("generic")
 
     def get_install_root(self, build: targets.Build) -> pathlib.Path:
         return pathlib.Path("/opt")

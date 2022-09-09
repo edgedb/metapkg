@@ -98,7 +98,7 @@ def _rpm_version_to_pep440(rpmver: str) -> str:
 class RPMRepository(poetry_repo.Repository):
     def __init__(
         self,
-        name: str | None = None,
+        name: str = "rpm",
         packages: list[poetry_pkg.Package] | None = None,
     ) -> None:
         super().__init__(name, packages)

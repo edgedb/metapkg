@@ -384,7 +384,7 @@ class GitSource(BaseSource):
                         "cannot parse git submodule foreach output"
                     )
                 path = path_m.group(1)
-                module_repo = tools.git.Git(repo._work_dir / path)
+                module_repo = tools.git.Git(repo.work_tree / path)
 
                 with tempfile.NamedTemporaryFile() as f:
                     module_repo.run(

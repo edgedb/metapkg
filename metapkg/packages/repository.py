@@ -1,11 +1,14 @@
 from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
+    Iterator,
 )
 
+import contextlib
 import copy
-import itertools
 import pathlib
+
+import packaging.utils
 
 from poetry.repositories import exceptions as poetry_repo_exc
 from poetry.repositories import pool as poetry_pool
@@ -13,11 +16,12 @@ from poetry.repositories import repository as poetry_repo
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import vcs_dependency as poetry_vcsdep
+from poetry.core.semver import version as poetry_version
 from poetry.packages import dependency_package as poetry_deppkg
 from poetry.core.packages import package as poetry_pkg
 from poetry.mixology import incompatibility as poetry_incompat
 from poetry.puzzle import provider as poetry_provider
-from poetry.vcs import git
+from poetry.vcs import git as poetry_git
 
 from . import sources as mpkg_sources
 
@@ -29,7 +33,7 @@ class Pool(poetry_pool.Pool):
     def package(
         self,
         name: str,
-        version: str,
+        version: poetry_version.Version,
         extras: list[str] | None = None,
         repository: str | None = None,
     ) -> poetry_pkg.Package:
@@ -65,7 +69,7 @@ class BundleRepository(poetry_repo.Repository):
             super().add_package(package)
 
 
-bundle_repo = BundleRepository()
+bundle_repo = BundleRepository("bundled")
 
 
 class Provider(poetry_provider.Provider):
@@ -117,10 +121,10 @@ class Provider(poetry_provider.Provider):
         )
 
         for dep in package.all_requires:
-            dep._name = f"pypkg-{dep.name}"
+            dep._name = packaging.utils.canonicalize_name(f"pypkg-{dep.name}")
             dep._pretty_name = f"pypkg-{dep.pretty_name}"
 
-        source = git.Git.clone(
+        source = poetry_git.Git.clone(
             url=dependency.source,
             source_root=(
                 self._source_root
@@ -133,9 +137,10 @@ class Provider(poetry_provider.Provider):
         path = pathlib.Path(source.path)
         if dependency.source_subdirectory:
             path = path.joinpath(dependency.source_subdirectory)
-        package.build_requires = python.get_build_requires_from_srcdir(
-            package, path
-        )
+
+        breqs = python.get_build_requires_from_srcdir(package, path)
+        set_build_requirements(package, breqs)
+
         package.source = mpkg_sources.source_for_url(f"file://{path}")
 
         return package
@@ -145,48 +150,61 @@ class Provider(poetry_provider.Provider):
         package: poetry_deppkg.DependencyPackage,
     ) -> list[poetry_incompat.Incompatibility]:
         if self.include_build_reqs:
-            old_requires = package._dependency_groups.get(
-                poetry_depgroup.MAIN_GROUP
-            )
-
-            try:
-                breqs = list(getattr(package, "build_requires", []))
-                breqs = [req for req in breqs if req.is_activated()]
-                dep_group = poetry_depgroup.DependencyGroup(
-                    poetry_depgroup.MAIN_GROUP
-                )
-                reqs = old_requires.dependencies if old_requires else []
-                for req in reqs + breqs:
-                    dep_group.add_dependency(req)
-                package._dependency_groups[
-                    poetry_depgroup.MAIN_GROUP
-                ] = dep_group
-                result = super().incompatibilities_for(package)
-            finally:
-                if old_requires is not None:
-                    package._dependency_groups[
-                        poetry_depgroup.MAIN_GROUP
-                    ] = old_requires
+            breqs = get_build_requirements(package.package)
+            with extra_requirements(package.package, breqs):
+                return super().incompatibilities_for(package)
         else:
-            result = super().incompatibilities_for(package)
-
-        return result
+            return super().incompatibilities_for(package)
 
     def complete_package(
         self,
         package: poetry_deppkg.DependencyPackage,
     ) -> poetry_deppkg.DependencyPackage:
-        chain = [package.all_requires]
-        build_requires = getattr(package, "build_requires", None)
-        if build_requires:
-            chain.append(build_requires)
-
         pkg = super().complete_package(package)
 
-        for dep in itertools.chain.from_iterable(chain):
+        for dep in pkg.package.all_requires:
             if not dep.is_activated() and dep.in_extras:
                 if not (set(dep.in_extras) - self._active_extras):
                     dep.activate()
-                    pkg.add_dependency(dep)
+                    pkg.package.add_dependency(dep)
 
         return pkg
+
+
+@contextlib.contextmanager
+def extra_requirements(
+    pkg: poetry_pkg.Package, reqs: list[poetry_dep.Dependency]
+) -> Iterator[None]:
+
+    if not pkg.has_dependency_group(poetry_depgroup.MAIN_GROUP):
+        dep_group = poetry_depgroup.DependencyGroup(poetry_depgroup.MAIN_GROUP)
+        pkg.add_dependency_group(dep_group)
+        orig_reqs = []
+    else:
+        dep_group = pkg.dependency_group(poetry_depgroup.MAIN_GROUP)
+        orig_reqs = list(dep_group.dependencies)
+
+    orig_req_names = {d.name for d in orig_reqs}
+
+    all_reqs = orig_reqs + [d for d in reqs if d.name not in orig_req_names]
+
+    try:
+        for dep in all_reqs:
+            if dep.is_activated():
+                dep_group.add_dependency(dep)
+
+        yield
+    finally:
+        dep_group._dependencies = orig_reqs
+
+
+def set_build_requirements(
+    pkg: poetry_pkg.Package, reqs: list[poetry_dep.Dependency]
+) -> None:
+    setattr(pkg, "build_requires", list(reqs))
+
+
+def get_build_requirements(
+    pkg: poetry_pkg.Package,
+) -> list[poetry_dep.Dependency]:
+    return getattr(pkg, "build_requires", [])

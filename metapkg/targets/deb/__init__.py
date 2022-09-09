@@ -107,7 +107,7 @@ def _debian_version_to_pep440(debver: str) -> str:
 class DebRepository(poetry_repo.Repository):
     def __init__(
         self,
-        name: str | None = None,
+        name: str = "deb",
         packages: list[poetry_pkg.Package] | None = None,
     ) -> None:
         super().__init__(name, packages)

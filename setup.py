@@ -20,7 +20,7 @@ setup(
         "build~=0.8.0",
         "distro~=1.7.0",
         "requests~=2.27.0",
-        "poetry @ git+https://github.com/python-poetry/poetry.git@ceb358685dec445ff995c4e1e6eec8ba4b1346ab",
+        "poetry~=1.2.0",
         "distlib~=0.3.4",
         'python-magic~=0.4.26; platform_system=="Linux" or (platform_machine!="x86_64" and platform_machine!="AMD64")',
         'python-magic-bin~=0.4.14; platform_system!="Linux" and platform_machine!="arm64"',
