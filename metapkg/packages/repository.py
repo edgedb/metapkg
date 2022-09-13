@@ -6,6 +6,7 @@ from typing import (
 
 import contextlib
 import copy
+import itertools
 import pathlib
 
 import packaging.utils
@@ -160,9 +161,14 @@ class Provider(poetry_provider.Provider):
         self,
         package: poetry_deppkg.DependencyPackage,
     ) -> poetry_deppkg.DependencyPackage:
+        chain = [package.package.all_requires]
+        build_requires = get_build_requirements(package.package)
+        if build_requires:
+            chain.append(build_requires)
+
         pkg = super().complete_package(package)
 
-        for dep in pkg.package.all_requires:
+        for dep in itertools.chain.from_iterable(chain):
             if not dep.is_activated() and dep.in_extras:
                 if not (set(dep.in_extras) - self._active_extras):
                     dep.activate()
