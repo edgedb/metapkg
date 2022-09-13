@@ -29,6 +29,8 @@ class BundledRustPackage(base.BundledPackage):
         _, _, version = out.rpartition("#")
         if ":" in version:
             _, _, version = version.rpartition(":")
+        if "@" in version:
+            _, _, version = version.rpartition("@")
         return version
 
     @classmethod
