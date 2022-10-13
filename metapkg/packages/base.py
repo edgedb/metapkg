@@ -351,16 +351,23 @@ class BundledPackage(BasePackage):
         return repository.bundle_repo
 
     @classmethod
+    def get_vcs_source(
+        cls, ref: str | None = None
+    ) -> af_sources.GitSource | None:
+        sources = cls._get_sources(version=ref)
+        if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
+            return sources[0]
+        else:
+            return None
+
+    @classmethod
     def resolve_vcs_source(
         cls, io: cleo_io.IO, *, ref: str | None = None
     ) -> pathlib.Path:
-        sources = cls._get_sources(version=ref)
-        if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
-            repo_dir = sources[0].download(io)
-        else:
+        source = cls.get_vcs_source(ref)
+        if source is None:
             raise ValueError("Unable to resolve non-git bundled package")
-
-        return repo_dir
+        return source.download(io)
 
     @classmethod
     def resolve_vcs_repo(
@@ -436,21 +443,31 @@ class BundledPackage(BasePackage):
         is_release: bool = False,
         target: targets.Target,
     ) -> BundledPackage_T:
-        repo = cls.resolve_vcs_repo(io, version)
         sources = cls._get_sources(version)
-        source_version = cls.resolve_vcs_version(io, repo, version)
-        version = cls.version_from_vcs_version(
-            io, repo, source_version, is_release
-        )
+        is_git = cls.get_vcs_source(version) is not None
 
-        git_date = repo.run(
-            "show",
-            "-s",
-            "--format=%cd",
-            "--date=format-local:%Y%m%d%H",
-            source_version,
-            env={**os.environ, **{"TZ": "UTC", "LANG": "C"}},
-        )
+        if is_git:
+            repo = cls.resolve_vcs_repo(io, version)
+            source_version = cls.resolve_vcs_version(io, repo, version)
+            version = cls.version_from_vcs_version(
+                io, repo, source_version, is_release
+            )
+
+            git_date = repo.run(
+                "show",
+                "-s",
+                "--format=%cd",
+                "--date=format-local:%Y%m%d%H",
+                source_version,
+                env={**os.environ, **{"TZ": "UTC", "LANG": "C"}},
+            )
+        else:
+            if version is None:
+                raise ValueError(
+                    "version must be specified for non-git packages"
+                )
+            source_version = version
+            git_date = ""
 
         if not revision:
             revision = "1"
@@ -463,14 +480,18 @@ class BundledPackage(BasePackage):
             local = ()
         else:
             local = (ver.local,)
-        ver = ver.replace(
-            local=local
-            + (
-                f"r{revision}",
-                f"d{git_date}",
-                f"g{source_version[:9]}",
+
+        if is_git:
+            ver = ver.replace(
+                local=local
+                + (
+                    f"r{revision}",
+                    f"d{git_date}",
+                    f"g{source_version[:9]}",
+                )
             )
-        )
+        else:
+            ver = ver.replace(local=local + (f"r{revision}",))
 
         version, pretty_version = cls.format_version(ver)
 
