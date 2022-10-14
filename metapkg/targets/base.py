@@ -689,7 +689,7 @@ class Build:
         self._common_tools: dict[str, pathlib.Path] = {}
         self._system_tools: dict[str, str] = {}
         self._tarballs: dict[mpkg_base.BasePackage, pathlib.Path] = {}
-        self._patches: list[str] = []
+        self._patches: list[tuple[str, str]] = []
 
     @property
     def io(self) -> IO:
@@ -1239,11 +1239,11 @@ class Build:
                     with open(patches_dir / filename, "w") as f:
                         f.write(fixed_patch)
 
-                    series.append(filename)
+                    series.append((pkgname, filename))
                     i += 1
 
         with open(patches_dir / "series", "w") as f:
-            print("\n".join(series), file=f)
+            print("\n".join(p[1] for p in series), file=f)
 
         self._patches = series
 

@@ -203,8 +203,10 @@ class Build(targets.Build):
     def _apply_patches(self) -> None:
         proot = self.get_patches_root(relative_to="fsroot")
         patch_cmd = shlex.split(self.sh_get_command("patch"))
-        sroot = self.get_dir("thirdparty", relative_to="fsroot")
-        for patchname in self._patches:
+        dep_root = self.get_dir("thirdparty", relative_to="fsroot")
+        my_root = self.get_dir("..", relative_to="fsroot")
+        for pkgname, patchname in self._patches:
+            sroot = my_root if pkgname == self.root_package.name else dep_root
             patch = proot / patchname
             tools.cmd(
                 *(patch_cmd + ["-p1", "-i", str(patch)]),

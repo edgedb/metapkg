@@ -436,7 +436,7 @@ class Build(targets.Build):
     def _get_patch_spec(self) -> str:
         lines = []
 
-        for i, patch in enumerate(self._patches):
+        for i, (_, patch) in enumerate(self._patches):
             lines.append(f"Patch{i}: {patch}")
 
         return "\n".join(lines)
@@ -444,7 +444,7 @@ class Build(targets.Build):
     def _get_patch_script(self) -> str:
         lines = []
 
-        for i, patch in enumerate(self._patches):
+        for i, _patch in enumerate(self._patches):
             lines.append(f"%patch -P {i} -p1")
 
         return "\n".join(lines)
