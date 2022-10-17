@@ -345,6 +345,10 @@ class BundledPackage(BasePackage):
         return version
 
     @classmethod
+    def parse_vcs_version(cls, version: str) -> poetry_version.Version:
+        return poetry_version.Version.parse(version)
+
+    @classmethod
     def get_package_repository(
         cls, target: targets.Target, io: cleo_io.IO
     ) -> poetry_repo.Repository:
@@ -422,7 +426,7 @@ class BundledPackage(BasePackage):
             )
 
             ver = (
-                poetry_version.Version.parse(ver)
+                cls.parse_vcs_version(ver)
                 .replace(
                     local=None,
                     pre=None,
@@ -448,7 +452,11 @@ class BundledPackage(BasePackage):
 
         if is_git:
             repo = cls.resolve_vcs_repo(io, version)
-            source_version = cls.resolve_vcs_version(io, repo, version)
+            if version:
+                vcs_version = cls.to_vcs_version(version)
+            else:
+                vcs_version = None
+            source_version = cls.resolve_vcs_version(io, repo, vcs_version)
             version = cls.version_from_vcs_version(
                 io, repo, source_version, is_release
             )
@@ -472,7 +480,11 @@ class BundledPackage(BasePackage):
         if not revision:
             revision = "1"
 
-        ver = poetry_version.Version.parse(version)
+        if is_git:
+            ver = cls.parse_vcs_version(version)
+        else:
+            ver = poetry_version.Version.parse(version)
+
         local = ver.local
         if isinstance(ver.local, tuple):
             local = ver.local
