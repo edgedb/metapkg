@@ -418,22 +418,33 @@ class BundledPackage(BasePackage):
         if ver.startswith("v"):
             ver = ver[1:]
 
-        if not is_release:
-            commits = repo.run(
-                "rev-list",
-                "--count",
-                vcs_version,
-            )
+        parts = ver.rsplit("-", maxsplit=2)
+        if (
+            len(parts) == 3
+            and parts[2].startswith("g")
+            and parts[1].isdigit()
+            and parts[1].isascii()
+        ):
+            # Have commits after the tag
+            parsed_ver = cls.parse_vcs_version(parts[0]).next_major()
 
-            ver = (
-                cls.parse_vcs_version(ver)
-                .replace(
-                    local=None,
-                    pre=None,
-                    dev=poetry_pep440.ReleaseTag("dev", int(commits)),
+            if not is_release:
+                commits = repo.run(
+                    "rev-list",
+                    "--count",
+                    vcs_version,
                 )
-                .to_string(short=False)
-            )
+
+                ver = (
+                    parsed_ver.replace(
+                        local=None,
+                        pre=None,
+                        dev=poetry_pep440.ReleaseTag("dev", int(commits)),
+                    )
+                    .to_string(short=False)
+                )
+            else:
+                ver = parsed_ver.to_string(short=False)
 
         return ver
 
