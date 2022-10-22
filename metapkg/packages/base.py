@@ -398,6 +398,9 @@ class BundledPackage(BasePackage):
 
             if output:
                 rev, _ = output.split()
+                # If it's a tag, resolve the underlying commit.
+                if repo.run("cat-file", "-t", rev) == "tag":
+                    rev = repo.run("rev-list", "-n", "1", rev)
             else:
                 # The name can be a branch or tag, so we attempt to look it up
                 # with ls-remote. If we don't find anything, we assume it's a
@@ -435,14 +438,11 @@ class BundledPackage(BasePackage):
                     vcs_version,
                 )
 
-                ver = (
-                    parsed_ver.replace(
-                        local=None,
-                        pre=None,
-                        dev=poetry_pep440.ReleaseTag("dev", int(commits)),
-                    )
-                    .to_string(short=False)
-                )
+                ver = parsed_ver.replace(
+                    local=None,
+                    pre=None,
+                    dev=poetry_pep440.ReleaseTag("dev", int(commits)),
+                ).to_string(short=False)
             else:
                 ver = parsed_ver.to_string(short=False)
 
