@@ -5,11 +5,10 @@ import json
 import os
 import os.path
 import pathlib
-import platform
 import shlex
+import shutil
 import subprocess
 import textwrap
-import zipfile
 
 import magic
 
@@ -444,6 +443,9 @@ class Build(targets.Build):
             if target_inst_path in binaries:
                 bin_paths[inst_path.name].add(inst_path)
 
+        to_remove: set[pathlib.Path] = set()
+        used_shlibs: set[pathlib.Path] = set()
+
         # Finally, do the sanity check.
         for binary, (shlibs, rpaths) in refs.items():
             for shlib_path in shlibs:
@@ -451,24 +453,63 @@ class Build(targets.Build):
                     continue
                 shlib = str(shlib_path)
                 bundled = bin_paths.get(shlib, set())
-                if any(
-                    (rpath / shlib).resolve() in bundled for rpath in rpaths
-                ):
-                    continue
-
-                rpath_list = ":".join(str(rpath) for rpath in rpaths)
-                if rpath_list:
-                    raise AssertionError(
-                        f"{binary} links to {shlib} which is neither an"
-                        f" allowed system library, nor a bundled library"
-                        f" in rpath: {rpath_list}"
-                    )
+                for rpath in rpaths:
+                    shlib_path = (rpath / shlib).resolve()
+                    if shlib_path in bundled:
+                        # Shared libraries are customarily installed as
+                        # library.so.<major>.<minor> and then a
+                        # library.so and a library.so.<major> symlink is
+                        # created.  The latter is normally the exported SONAME,
+                        # so technically there is no reason to keep either
+                        # the fully-versioned files or the unversioned symlink,
+                        # so we remove them both here, and make the SONAME
+                        # file a regular file.  This makes packages tidier,
+                        # but, more importantly, acts as a workaround for
+                        # systems that are unable to cope with symlinks
+                        # in archives (looking at you, Nomad).
+                        full_shlib_path = image_root / shlib_path.relative_to(
+                            root
+                        )
+                        used_shlibs.add(full_shlib_path)
+                        if full_shlib_path.is_symlink():
+                            real_shlib_path = full_shlib_path.readlink()
+                            if not real_shlib_path.is_absolute():
+                                real_shlib_path = (
+                                    full_shlib_path.parent / real_shlib_path
+                                ).resolve()
+                            os.unlink(full_shlib_path)
+                            shutil.copy2(real_shlib_path, full_shlib_path)
+                            # Schedule fully-versioned variant for removal.
+                            to_remove.add(real_shlib_path)
+                        break
                 else:
-                    raise AssertionError(
-                        f"{binary} links to {shlib} which is not an"
-                        f" allowed system library, and {binary} does"
-                        f" not define a library rpath"
-                    )
+                    rpath_list = ":".join(str(rpath) for rpath in rpaths)
+                    if rpath_list:
+                        raise AssertionError(
+                            f"{binary} links to {shlib} which is neither an"
+                            f" allowed system library, nor a bundled library"
+                            f" in rpath: {rpath_list}"
+                        )
+                    else:
+                        raise AssertionError(
+                            f"{binary} links to {shlib} which is not an"
+                            f" allowed system library, and {binary} does"
+                            f" not define a library rpath"
+                        )
+
+        # Remove the fully-versioned .so variants and any symlinks still
+        # pointing to it (usually the unversioned .so).
+        for path in to_remove - used_shlibs:
+            for sibling in path.parent.iterdir():
+                if sibling.is_symlink():
+                    sibling_target = sibling.readlink()
+                    if not sibling_target.is_absolute():
+                        sibling_target = (
+                            sibling.parent / sibling_target
+                        ).resolve()
+                    if sibling_target == path:
+                        sibling.unlink()
+            path.unlink()
 
     def _package(self, files: list[pathlib.Path]) -> None:
         pkg = self._root_pkg

@@ -361,7 +361,6 @@ class LinuxAddUserAction(AddUserAction):
 
 
 class LinuxTarget(PosixTarget):
-
     def __init__(self, arch: str, libc: str) -> None:
         super().__init__(arch)
         self.libc = libc
