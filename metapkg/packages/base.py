@@ -18,6 +18,7 @@ import glob
 import hashlib
 import os
 import pathlib
+import platform
 import pprint
 import sys
 import textwrap
@@ -899,6 +900,52 @@ class BundledCPackage(BundledPackage):
     def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return [build.get_full_install_prefix() / "include"]
 
+    def configure_dependency(
+        self,
+        build: targets.Build,
+        configure_flags: dict[str, str | pathlib.Path | None],
+        depname: str,
+        var_prefix: str,
+        *,
+        include_dir_suffix: str = "",
+        lib_dir_suffix: str = "",
+    ) -> None:
+        pkg = build.get_package(depname)
+        if build.is_bundled(pkg):
+            root = build.get_install_dir(pkg, relative_to="pkgbuild")
+            path = root / build.get_full_install_prefix().relative_to("/")
+            rel_path = f'$(pwd)/"{path}"'
+            configure_flags[
+                f"{var_prefix}_CFLAGS"
+            ] = f"!-I{rel_path}/include/{include_dir_suffix}"
+            dep_ldflags = build.sh_get_bundled_shlib_ldflags(
+                pkg, relative_to="pkgbuild"
+            )
+            configure_flags[f"{var_prefix}_LIBS"] = f"!{dep_ldflags}"
+
+            ldflags = f"!-L{rel_path}/lib/{lib_dir_suffix}"
+
+            if platform.system() == "Darwin":
+                # In case ./configure tries to compile and test a program
+                # and it fails because dependency is not yet installed
+                # at its install_name location.
+                configure_flags["DYLD_FALLBACK_LIBRARY_PATH"] = root
+            else:
+                ldflags += f'" "-Wl,-rpath-link,{rel_path}/lib'
+
+            configure_flags["LDFLAGS"] = ldflags
+
+        elif build.is_stdlib(pkg):
+            configure_flags[
+                f"{var_prefix}_CFLAGS"
+            ] = f"-D_{var_prefix}_IS_SYSLIB"
+            std_ldflags = []
+            for shlib in pkg.get_shlibs(build):
+                std_ldflags.append(f"-l{shlib}")
+            configure_flags[f"{var_prefix}_LIBS"] = build.sh_join_flags(
+                std_ldflags
+            )
+
     def get_configure_script(self, build: targets.Build) -> str:
         sdir = build.get_source_dir(self, relative_to="pkgbuild")
         configure = sdir / "configure"
@@ -906,25 +953,33 @@ class BundledCPackage(BundledPackage):
 
     def get_build_script(self, build: targets.Build) -> str:
         make = build.sh_get_command("make")
+        env = self.get_make_env(build, "$(pwd)")
 
         return textwrap.dedent(
             f"""\
-            {make}
-        """
+            {make} {env}
+            """
         )
 
-    def get_install_make_target(self, build: targets.Build) -> str:
+    def get_make_env(self, build: targets.Build, wd: str) -> str:
+        return ""
+
+    def get_make_install_env(self, build: targets.Build, wd: str) -> str:
+        return self.get_make_env(build, wd)
+
+    def get_make_install_target(self, build: targets.Build) -> str:
         return "install"
 
     def get_build_install_script(self, build: targets.Build) -> str:
         script = super().get_build_install_script(build)
         installdest = build.get_install_dir(self, relative_to="pkgbuild")
         make = build.sh_get_command("make")
-        install_target = self.get_install_make_target(build)
+        install_target = self.get_make_install_target(build)
+        env = self.get_make_install_env(build, "$(pwd)")
 
         script += textwrap.dedent(
             f"""\
-            {make} DESTDIR=$(pwd)/"{installdest}" "{install_target}"
+            {make} {env} DESTDIR=$(pwd)/"{installdest}" "{install_target}"
             """
         )
 

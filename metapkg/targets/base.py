@@ -783,6 +783,9 @@ class Build:
     def is_bundled(self, pkg: mpkg_base.BasePackage) -> bool:
         return pkg in self._bundled
 
+    def is_stdlib(self, pkg: mpkg_base.BasePackage) -> bool:
+        return isinstance(pkg, tgt_pkg.SystemPackage)
+
     def extra_optimizations_enabled(self) -> bool:
         return self._extra_opt
 
