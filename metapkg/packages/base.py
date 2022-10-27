@@ -906,9 +906,6 @@ class BundledCPackage(BundledPackage):
         configure_flags: dict[str, str | pathlib.Path | None],
         depname: str,
         var_prefix: str,
-        *,
-        include_dir_suffix: str = "",
-        lib_dir_suffix: str = "",
     ) -> None:
         pkg = build.get_package(depname)
         if build.is_bundled(pkg):
@@ -917,13 +914,13 @@ class BundledCPackage(BundledPackage):
             rel_path = f'$(pwd)/"{path}"'
             configure_flags[
                 f"{var_prefix}_CFLAGS"
-            ] = f"!-I{rel_path}/include/{include_dir_suffix}"
+            ] = f"!-I{rel_path}/include/"
             dep_ldflags = build.sh_get_bundled_shlib_ldflags(
                 pkg, relative_to="pkgbuild"
             )
             configure_flags[f"{var_prefix}_LIBS"] = f"!{dep_ldflags}"
 
-            ldflags = f"!-L{rel_path}/lib/{lib_dir_suffix}"
+            ldflags = f"!-L{rel_path}/lib/"
 
             if platform.system() == "Darwin":
                 # In case ./configure tries to compile and test a program

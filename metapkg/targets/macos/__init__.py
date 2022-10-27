@@ -12,6 +12,7 @@ from metapkg import packages as mpkg
 from metapkg import tools
 from metapkg.targets import base as targets
 from metapkg.targets import generic
+from metapkg.targets import package as tgt_pkg
 
 from . import build as macbuild
 
@@ -192,19 +193,33 @@ class MacOSAddUserAction(targets.AddUserAction):
 class MacOSRepository(generic.GenericOSRepository):
     def list_provided_packages(self) -> frozenset[str]:
         # A list of packages assumed to be present on the system.
-        return frozenset(
+        pkgs = super().list_provided_packages()
+        return pkgs | frozenset(
             (
-                "bison",
-                "flex",
                 "libffi",
                 "libffi-dev",
-                "perl",
                 "uuid",
                 "uuid-dev",
                 "zlib",
                 "zlib-dev",
             )
         )
+
+
+class LibFFISystemPackage(tgt_pkg.SystemPackage):
+    def get_shlibs(self, build: targets.Build) -> list[str]:
+        return ["ffi"]
+
+
+class UuidSystemPackage(tgt_pkg.SystemPackage):
+    def get_shlibs(self, build: targets.Build) -> list[str]:
+        # uuid is part of libc on MacOS
+        return []
+
+
+class ZlibSystemPackage(tgt_pkg.SystemPackage):
+    def get_shlibs(self, build: targets.Build) -> list[str]:
+        return ["z"]
 
 
 _frameworks_base = "/System/Library/Frameworks"
@@ -254,7 +269,11 @@ class MacOSTarget(generic.GenericTarget):
         return arch
 
     def get_package_repository(self) -> MacOSRepository:
-        return MacOSRepository("macos")
+        repo = MacOSRepository("macos")
+        repo.register_package_impl("ffi", LibFFISystemPackage)
+        repo.register_package_impl("uuid", UuidSystemPackage)
+        repo.register_package_impl("zlib", ZlibSystemPackage)
+        return repo
 
     def _get_necessary_host_tools(self) -> list[str]:
         return ["bash", "make", "gnu-sed", "gnu-tar"]

@@ -21,6 +21,12 @@ Build = genbuild.Build
 
 
 class GenericOSRepository(poetry_repo.Repository):
+    def __init__(
+        self, name: str, packages: list[poetry_pkg.Package] | None = None
+    ) -> None:
+        super().__init__(name, packages)
+        self._pkg_impls: dict[str, type[tgt_pkg.SystemPackage]] = {}
+
     def list_provided_packages(self) -> frozenset[str]:
         # A list of packages assumed to be present on the system.
         return frozenset(
@@ -31,13 +37,23 @@ class GenericOSRepository(poetry_repo.Repository):
             )
         )
 
+    def register_package_impl(
+        self,
+        name: str,
+        impl_cls: type[tgt_pkg.SystemPackage],
+    ) -> None:
+        self._pkg_impls[name] = impl_cls
+
     def find_packages(
         self,
         dependency: poetry_dep.Dependency,
     ) -> list[poetry_pkg.Package]:
 
         if dependency.name in self.list_provided_packages():
-            pkg = tgt_pkg.SystemPackage(
+            impl_cls = self._pkg_impls.get(
+                dependency.name, tgt_pkg.SystemPackage
+            )
+            pkg = impl_cls(
                 dependency.name,
                 version="999.0",
                 pretty_version="999.0",

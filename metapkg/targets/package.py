@@ -7,6 +7,8 @@ from typing import Union
 
 from poetry.core.packages import package as poetry_pkg
 
+from . import base
+
 if TYPE_CHECKING:
     from poetry.core.semver.version import Version
 
@@ -25,6 +27,9 @@ class SystemPackage(poetry_pkg.Package):
     @property
     def system_name(self) -> Optional[str]:
         return self._system_name
+
+    def get_shlibs(self, build: base.Build) -> list[str]:
+        return []
 
     def __repr__(self) -> str:
         return "<SystemPackage {}>".format(self.unique_name)
