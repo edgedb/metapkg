@@ -912,9 +912,7 @@ class BundledCPackage(BundledPackage):
             root = build.get_install_dir(pkg, relative_to="pkgbuild")
             path = root / build.get_full_install_prefix().relative_to("/")
             rel_path = f'$(pwd)/"{path}"'
-            configure_flags[
-                f"{var_prefix}_CFLAGS"
-            ] = f"!-I{rel_path}/include/"
+            configure_flags[f"{var_prefix}_CFLAGS"] = f"!-I{rel_path}/include/"
             dep_ldflags = build.sh_get_bundled_shlib_ldflags(
                 pkg, relative_to="pkgbuild"
             )

@@ -270,7 +270,7 @@ class MacOSTarget(generic.GenericTarget):
 
     def get_package_repository(self) -> MacOSRepository:
         repo = MacOSRepository("macos")
-        repo.register_package_impl("ffi", LibFFISystemPackage)
+        repo.register_package_impl("libffi", LibFFISystemPackage)
         repo.register_package_impl("uuid", UuidSystemPackage)
         repo.register_package_impl("zlib", ZlibSystemPackage)
         return repo
