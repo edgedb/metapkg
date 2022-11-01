@@ -268,6 +268,13 @@ class MacOSTarget(generic.GenericTarget):
             arch = "arm64"
         return arch
 
+    @property
+    def min_supported_version(self) -> str:
+        if self.machine_architecture_alias == "arm64":
+            return "10.15"
+        else:
+            return "10.10"
+
     def get_package_repository(self) -> MacOSRepository:
         repo = MacOSRepository("macos")
         repo.register_package_impl("libffi", LibFFISystemPackage)
@@ -440,7 +447,7 @@ class MacOSTarget(generic.GenericTarget):
             "-Wdate-time",
             "-Wformat",
             "-Werror=format-security",
-            "-mmacosx-version-min=10.10",
+            f"-mmacosx-version-min={self.min_supported_version}",
             "-arch",
             self.machine_architecture_alias,
         ]
@@ -448,7 +455,7 @@ class MacOSTarget(generic.GenericTarget):
     def get_global_ldflags(self, build: targets.Build) -> list[str]:
         flags = super().get_global_ldflags(build)
         return flags + [
-            "-mmacosx-version-min=10.10",
+            f"-mmacosx-version-min={self.min_supported_version}",
             "-arch",
             self.machine_architecture_alias,
         ]
