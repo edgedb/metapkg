@@ -16,6 +16,7 @@ import dataclasses
 import enum
 import glob
 import hashlib
+import inspect
 import os
 import pathlib
 import platform
@@ -298,10 +299,16 @@ class BundledPackage(BasePackage):
         dash_v = version.replace(".", "-")
         for source in cls.sources:
             if isinstance(source, dict):
+                clsfile = inspect.getsourcefile(cls)
+                if clsfile is not None:
+                    clsdirname = pathlib.Path(clsfile).parent
+                else:
+                    clsdirname = None
                 url = source["url"].format(
                     version=version,
                     underscore_version=underscore_v,
                     dash_version=dash_v,
+                    dirname=clsdirname,
                     **cls.get_source_url_variables(version),
                 )
                 extras = source.get("extras")
@@ -354,6 +361,13 @@ class BundledPackage(BasePackage):
         cls, target: targets.Target, io: cleo_io.IO
     ) -> poetry_repo.Repository:
         return repository.bundle_repo
+
+    @classmethod
+    def version_from_source(
+        cls,
+        source_dir: pathlib.Path,
+    ) -> str:
+        raise NotImplementedError
 
     @classmethod
     def get_vcs_source(
@@ -481,13 +495,17 @@ class BundledPackage(BasePackage):
                 source_version,
                 env={**os.environ, **{"TZ": "UTC", "LANG": "C"}},
             )
-        else:
-            if version is None:
-                raise ValueError(
-                    "version must be specified for non-git packages"
-                )
+        elif version is not None:
             source_version = version
             git_date = ""
+        elif len(sources) == 1 and isinstance(
+            sources[0], af_sources.LocalSource
+        ):
+            source_dir = sources[0].url
+            version = cls.version_from_source(pathlib.Path(source_dir))
+            source_version = version
+        else:
+            raise ValueError("version must be specified for non-git packages")
 
         if not revision:
             revision = "1"
@@ -879,7 +897,43 @@ class BundledPackage(BasePackage):
         }
 
 
-class BundledCPackage(BundledPackage):
+class BuildSystemMakePackage(BundledPackage):
+    def get_build_script(self, build: targets.Build) -> str:
+        make = build.sh_get_command("make")
+        env = self.get_make_env(build, "$(pwd)")
+
+        return textwrap.dedent(
+            f"""\
+            {make} {env}
+            """
+        )
+
+    def get_make_env(self, build: targets.Build, wd: str) -> str:
+        return ""
+
+    def get_make_install_env(self, build: targets.Build, wd: str) -> str:
+        return self.get_make_env(build, wd)
+
+    def get_make_install_target(self, build: targets.Build) -> str:
+        return "install"
+
+    def get_build_install_script(self, build: targets.Build) -> str:
+        script = super().get_build_install_script(build)
+        installdest = build.get_install_dir(self, relative_to="pkgbuild")
+        make = build.sh_get_command("make")
+        install_target = self.get_make_install_target(build)
+        env = self.get_make_install_env(build, "$(pwd)")
+
+        script += textwrap.dedent(
+            f"""\
+            {make} {env} DESTDIR=$(pwd)/"{installdest}" "{install_target}"
+            """
+        )
+
+        return script
+
+
+class BundledCPackage(BuildSystemMakePackage):
     def sh_configure(
         self,
         build: targets.Build,
@@ -945,40 +999,6 @@ class BundledCPackage(BundledPackage):
         sdir = build.get_source_dir(self, relative_to="pkgbuild")
         configure = sdir / "configure"
         return self.sh_configure(build, configure, {})
-
-    def get_build_script(self, build: targets.Build) -> str:
-        make = build.sh_get_command("make")
-        env = self.get_make_env(build, "$(pwd)")
-
-        return textwrap.dedent(
-            f"""\
-            {make} {env}
-            """
-        )
-
-    def get_make_env(self, build: targets.Build, wd: str) -> str:
-        return ""
-
-    def get_make_install_env(self, build: targets.Build, wd: str) -> str:
-        return self.get_make_env(build, wd)
-
-    def get_make_install_target(self, build: targets.Build) -> str:
-        return "install"
-
-    def get_build_install_script(self, build: targets.Build) -> str:
-        script = super().get_build_install_script(build)
-        installdest = build.get_install_dir(self, relative_to="pkgbuild")
-        make = build.sh_get_command("make")
-        install_target = self.get_make_install_target(build)
-        env = self.get_make_install_env(build, "$(pwd)")
-
-        script += textwrap.dedent(
-            f"""\
-            {make} {env} DESTDIR=$(pwd)/"{installdest}" "{install_target}"
-            """
-        )
-
-        return script
 
 
 def pep440_to_semver(ver: poetry_version.Version) -> str:

@@ -40,7 +40,7 @@ class SourceDecl(SourceDeclBase, total=False):
     csum: str | None
     csum_url: str | None
     csum_algo: str | None
-    extras: SourceExtraDecl
+    extras: SourceExtraDecl | None
 
 
 SourceExtraDecl = TypedDict(

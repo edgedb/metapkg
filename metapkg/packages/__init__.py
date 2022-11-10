@@ -8,6 +8,7 @@ from .base import (
     MetaPackage,
     pep440_to_semver,
 )
+from .go import BundledGoPackage, BundledAdHocGoPackage
 from .python import PythonPackage, BundledPythonPackage
 from .rust import BundledRustPackage, BundledAdHocRustPackage
 
@@ -19,6 +20,8 @@ __all__ = (
     "MetaPackage",
     "PythonPackage",
     "BundledCPackage",
+    "BundledGoPackage",
+    "BundledAdHocGoPackage",
     "BundledPythonPackage",
     "BundledRustPackage",
     "BundledAdHocRustPackage",
