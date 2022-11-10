@@ -26,12 +26,13 @@ class BundledGoPackage(base.BuildSystemMakePackage):
 
     def get_build_install_script(self, build: targets.Build) -> str:
         installdest = build.get_install_dir(self, relative_to="pkgbuild")
+        outdir = self.get_binary_output_dir()
         bindir = build.get_install_path("systembin").relative_to("/")
         dest = installdest / bindir / self.name
         return textwrap.dedent(
             f"""\
             mkdir -p "$(dirname "{dest}")"
-            cp -a "bin/{self.name}" "{dest}"
+            cp -a "{outdir / self.name}" "{dest}"
             """
         )
 

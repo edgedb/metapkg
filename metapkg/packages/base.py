@@ -932,6 +932,10 @@ class BuildSystemMakePackage(BundledPackage):
 
         return script
 
+    def get_binary_output_dir(self) -> pathlib.Path:
+        """Return path relative to the build dir where the result binaries are"""
+        return pathlib.Path("bin")
+
 
 class BundledCPackage(BuildSystemMakePackage):
     def sh_configure(
