@@ -7,6 +7,7 @@ from .base import (
     PackageFileLayout,
     MetaPackage,
     pep440_to_semver,
+    semver_pre_tag,
 )
 from .go import BundledGoPackage, BundledAdHocGoPackage
 from .python import PythonPackage, BundledPythonPackage
@@ -26,4 +27,5 @@ __all__ = (
     "BundledRustPackage",
     "BundledAdHocRustPackage",
     "pep440_to_semver",
+    "semver_pre_tag",
 )

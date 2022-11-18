@@ -31,6 +31,7 @@ from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
 from poetry.core.semver import version as poetry_version
 from poetry.core.version import pep440 as poetry_pep440
+from poetry.core.version.pep440 import segments as poetry_pep440_segments
 from poetry.core.spdx import helpers as poetry_spdx_helpers
 
 from metapkg import tools
@@ -815,7 +816,7 @@ class BundledPackage(BasePackage):
         if pv.pre is not None:
             prerelease.append(
                 {
-                    "phase": pv.pre.phase,
+                    "phase": semver_pre_tag(pv),
                     "number": pv.pre.number,
                 }
             )
@@ -1005,13 +1006,27 @@ class BundledCPackage(BuildSystemMakePackage):
         return self.sh_configure(build, configure, {})
 
 
+_semver_phase_spelling_map = {
+    poetry_pep440_segments.RELEASE_PHASE_ID_ALPHA: "alpha",
+    poetry_pep440_segments.RELEASE_PHASE_ID_BETA: "beta",
+}
+
+
+def semver_pre_tag(version: poetry_pep440.PEP440Version) -> str:
+    pre = version.pre
+    if pre is not None:
+        return _semver_phase_spelling_map.get(pre.phase, pre.phase)
+    else:
+        return ""
+
+
 def pep440_to_semver(ver: poetry_version.Version) -> str:
     version_string = ver.release.to_string()
 
     pre = []
 
     if ver.pre:
-        pre.append(f"{ver.pre.phase}.{ver.pre.number}")
+        pre.append(f"{semver_pre_tag(ver)}.{ver.pre.number}")
 
     if ver.post:
         pre.append(f"{ver.post.phase}.{ver.post.number}")
