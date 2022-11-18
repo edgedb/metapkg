@@ -62,7 +62,7 @@ def update_repo(
     if ref == "HEAD":
         ref = None
 
-    GitBackend.clone(repo_url, revision=ref)
+    GitBackend.clone(repo_url, revision=ref, clean=True)
     repo_dir = repodir(repo_url)
     repo = Git(repo_dir)
     args: tuple[str | pathlib.Path, ...]
