@@ -225,6 +225,7 @@ class ZlibSystemPackage(tgt_pkg.SystemPackage):
 _frameworks_base = "/System/Library/Frameworks"
 _frameworks = [
     "CoreFoundation",
+    "CoreServices",
     "IOKit",
     "Security",
     "SystemConfiguration",
