@@ -234,6 +234,7 @@ _frameworks = [
 _lib_base = "/usr/lib"
 _libs = [
     r"libSystem(\.B)?",
+    r"libobjc(\.A)?",
     r"libc\+\+\.1",
     r"libffi",
     r"libiconv\.2",
