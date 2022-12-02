@@ -332,6 +332,7 @@ class GitSource(BaseSource):
             self.url,
             exclude_submodules=self.exclude_submodules,
             clone_depth=self.clone_depth,
+            clean_checkout=os.environ.get("METAPKG_GIT_CACHE") == "disabled",
             ref=self.ref,
         )
 
