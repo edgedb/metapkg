@@ -902,14 +902,18 @@ class BuildSystemMakePackage(BundledPackage):
     def get_build_script(self, build: targets.Build) -> str:
         make = build.sh_get_command("make")
         env = self.get_make_env(build, "$(pwd)")
+        target = self.get_make_target(build)
 
         return textwrap.dedent(
             f"""\
-            {make} {env}
+            {make} {target} {env}
             """
         )
 
     def get_make_env(self, build: targets.Build, wd: str) -> str:
+        return ""
+
+    def get_make_target(self, build: targets.Build) -> str:
         return ""
 
     def get_make_install_env(self, build: targets.Build, wd: str) -> str:
