@@ -416,7 +416,7 @@ class GitSource(BaseSource):
         source_tarball: pathlib.Path,
         target_tarball: pathlib.Path,
     ) -> None:
-        if platform.system() == "Darwin":
+        if platform.system() != "Linux":
             with tarfile.open(source_tarball) as modf, tarfile.open(
                 target_tarball, "a"
             ) as tf:
