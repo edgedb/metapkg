@@ -387,7 +387,9 @@ class GitSource(BaseSource):
                 path = path_m.group(1)
                 module_repo = tools.git.Git(repo.work_tree / path)
 
-                with tempfile.NamedTemporaryFile() as f:
+                f = tempfile.NamedTemporaryFile(delete=False)
+                f.close()
+                try:
                     module_repo.run(
                         "archive",
                         "--format=tar",
@@ -395,8 +397,9 @@ class GitSource(BaseSource):
                         f"--prefix={pkg.unique_name}/{path}/",
                         "HEAD",
                     )
-
                     self._tar_append(pathlib.Path(f.name), target_path)
+                finally:
+                    os.unlink(f.name)
 
         if self.include_gitdir:
             repo_dir = tools.git.repodir(self.url)
