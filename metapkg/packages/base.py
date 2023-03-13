@@ -898,6 +898,10 @@ class BundledPackage(BasePackage):
         }
 
 
+class PrePackagedPackage(BundledPackage):
+    pass
+
+
 class BuildSystemMakePackage(BundledPackage):
     def get_build_script(self, build: targets.Build) -> str:
         make = build.sh_get_command("make")

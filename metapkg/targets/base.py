@@ -1210,13 +1210,23 @@ class Build:
                 self._tarballs[pkg] = tarball
 
     def unpack_sources(self) -> None:
-        for pkg, tarball in self._tarballs.items():
+        if isinstance(self._root_pkg, mpkg_base.PrePackagedPackage):
+            assert len(self._tarballs) == 1
+            tarball = next(iter(self._tarballs.values()))
             self._io.write_line(f"<info>Extracting {tarball.name}...</>")
             mpkg_sources.unpack(
                 tarball,
-                dest=self.get_source_dir(pkg, relative_to="fsroot"),
+                dest=self.get_source_abspath(),
                 io=self._io,
             )
+        else:
+            for pkg, tarball in self._tarballs.items():
+                self._io.write_line(f"<info>Extracting {tarball.name}...</>")
+                mpkg_sources.unpack(
+                    tarball,
+                    dest=self.get_source_dir(pkg, relative_to="fsroot"),
+                    io=self._io,
+                )
 
     def prepare_patches(self) -> None:
         patches_dir = self.get_patches_root(relative_to="fsroot")

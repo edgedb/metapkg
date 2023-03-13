@@ -317,6 +317,7 @@ class GitSource(BaseSource):
         exclude_submodules: Iterable[str] | None = None,
         clone_depth: int = 0,
         include_gitdir: bool = False,
+        force_archive: Iterable[str] | None = None,
     ) -> None:
         super().__init__(url, name)
         self.ref = vcs_version
@@ -324,6 +325,10 @@ class GitSource(BaseSource):
             self.exclude_submodules = frozenset(exclude_submodules)
         else:
             self.exclude_submodules = frozenset()
+        if force_archive is not None:
+            self.force_archive = frozenset(force_archive)
+        else:
+            self.force_archive = frozenset()
         self.clone_depth = clone_depth
         self.include_gitdir = include_gitdir
 
@@ -401,12 +406,21 @@ class GitSource(BaseSource):
                 finally:
                     os.unlink(f.name)
 
+        repo_dir = tools.git.repodir(self.url)
+
         if self.include_gitdir:
-            repo_dir = tools.git.repodir(self.url)
             repo_gitdir = repo_dir / ".git"
             prefix = f"{pkg.unique_name}/.git/"
             with tarfile.open(target_path, "a") as tf:
                 tf.add(repo_gitdir, prefix)
+
+        if self.force_archive:
+            with tarfile.open(target_path, "a") as tf:
+                for path in self.force_archive:
+                    repo_path = repo_dir / path
+                    prefix = f"{pkg.unique_name}/{path}"
+                    if prefix not in set(tf.getnames()):
+                        tf.add(repo_path, prefix)
 
         tools.cmd("gzip", target_path, cwd=target_dir)
         return pathlib.Path(f"{target_path}.gz")

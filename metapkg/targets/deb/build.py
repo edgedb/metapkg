@@ -164,12 +164,13 @@ class Build(targets.Build):
         self.prepare_tools()
         self.prepare_tarballs()
         self.unpack_sources()
-        self.prepare_patches()
-        self._write_common_bits()
-        self._write_control()
-        self._write_changelog()
-        self._write_rules()
-        self._write_scriptlets()
+        if not isinstance(self._root_pkg, packages.PrePackagedPackage):
+            self.prepare_patches()
+            self._write_common_bits()
+            self._write_control()
+            self._write_changelog()
+            self._write_rules()
+            self._write_scriptlets()
         self._dpkg_buildpackage()
 
     def _write_common_bits(self) -> None:
@@ -589,11 +590,16 @@ class Build(targets.Build):
         env = os.environ.copy()
         env["DEBIAN_FRONTEND"] = "noninteractive"
 
+        if isinstance(self._root_pkg, packages.PrePackagedPackage):
+            workdir = self._srcroot
+        else:
+            workdir = self.get_source_abspath()
+
         tools.cmd(
             "apt-get",
             "update",
             env=env,
-            cwd=str(self._srcroot),
+            cwd=str(workdir),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT,
         )
@@ -606,7 +612,7 @@ class Build(targets.Build):
             "equivs",
             "devscripts",
             env=env,
-            cwd=str(self._srcroot),
+            cwd=str(workdir),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT,
         )
@@ -630,7 +636,7 @@ class Build(targets.Build):
         tools.cmd(
             "dpkg-buildpackage",
             *args,
-            cwd=str(self._srcroot),
+            cwd=str(workdir),
             stdout=self._io.output.stream,
             stderr=subprocess.STDOUT,
         )

@@ -3,6 +3,7 @@
 from .base import (
     BasePackage,
     BundledPackage,
+    PrePackagedPackage,
     BundledCPackage,
     PackageFileLayout,
     MetaPackage,
@@ -17,6 +18,7 @@ from .rust import BundledRustPackage, BundledAdHocRustPackage
 __all__ = (
     "BasePackage",
     "BundledPackage",
+    "PrePackagedPackage",
     "PackageFileLayout",
     "MetaPackage",
     "PythonPackage",
