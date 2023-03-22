@@ -152,6 +152,9 @@ class PyPiRepository(pypi_repository.PyPiRepository):
                 lambda: self._get_build_requires(package),
             )
 
+        if package.name != "pypkg-wheel":
+            build_reqs.append(wheel_dependency.to_pep_508())
+
         repository.set_build_requirements(
             package,
             [
