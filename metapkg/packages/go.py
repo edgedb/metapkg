@@ -24,13 +24,21 @@ class BundledGoPackage(base.BuildSystemMakePackage):
         copy_sources = f"test ./ -ef {sdir} || cp -a {sdir}/* ./"
         return copy_sources
 
+    def get_make_install_target(self, build: targets.Build) -> str:
+        return ""
+
     def get_build_install_script(self, build: targets.Build) -> str:
+        if self.get_package_layout(build) is not base.PackageFileLayout.FLAT:
+            script = super().get_build_install_script(build)
+        else:
+            script = ""
         installdest = build.get_install_dir(self, relative_to="pkgbuild")
         outdir = self.get_binary_output_dir()
         bindir = build.get_install_path("systembin").relative_to("/")
         dest = installdest / bindir / self.name
         return textwrap.dedent(
             f"""\
+            {script}
             mkdir -p "$(dirname "{dest}")"
             cp -a "{outdir / self.name}" "{dest}"
             """

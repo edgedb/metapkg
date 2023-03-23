@@ -931,16 +931,17 @@ class BuildSystemMakePackage(BundledPackage):
 
     def get_build_install_script(self, build: targets.Build) -> str:
         script = super().get_build_install_script(build)
-        installdest = build.get_install_dir(self, relative_to="pkgbuild")
-        make = build.sh_get_command("make")
         install_target = self.get_make_install_target(build)
-        env = self.get_make_install_env(build, "$(pwd)")
 
-        script += textwrap.dedent(
-            f"""\
-            {make} {env} DESTDIR=$(pwd)/"{installdest}" "{install_target}"
-            """
-        )
+        if install_target:
+            make = build.sh_get_command("make")
+            installdest = build.get_install_dir(self, relative_to="pkgbuild")
+            env = self.get_make_install_env(build, "$(pwd)")
+            script += "\n" + textwrap.dedent(
+                f"""\
+                {make} {env} DESTDIR=$(pwd)/"{installdest}" "{install_target}"
+                """
+            )
 
         return script
 
