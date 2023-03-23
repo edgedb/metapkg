@@ -904,9 +904,12 @@ class PrePackagedPackage(BundledPackage):
 
 class BuildSystemMakePackage(BundledPackage):
     def get_build_script(self, build: targets.Build) -> str:
+        target = self.get_make_target(build)
+        return self.get_make_command(build, target)
+
+    def get_make_command(self, build: targets.Build, target: str) -> str:
         make = build.sh_get_command("make")
         env = self.get_make_env(build, "$(pwd)")
-        target = self.get_make_target(build)
 
         return textwrap.dedent(
             f"""\
