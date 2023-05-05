@@ -57,13 +57,12 @@ def update_repo(
     *,
     exclude_submodules: frozenset[str] | None = None,
     clone_depth: int = 0,
-    clean_checkout: bool = False,
     ref: str | None = None,
 ) -> pathlib.Path:
     if ref == "HEAD":
         ref = None
 
-    GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
+    GitBackend.clone(repo_url, revision=ref, clean=True)
     repo_dir = repodir(repo_url)
     repo = Git(repo_dir)
     args: tuple[str | pathlib.Path, ...]
