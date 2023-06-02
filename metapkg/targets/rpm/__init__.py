@@ -205,6 +205,17 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxDistroTarget):
 
     def install_build_deps(self, build: rpmbuild.Build, spec: str) -> None:
         tools.cmd(
+            "yum",
+            "install",
+            "-y",
+            "rpm-build",
+            "rpmlint",
+            "yum-utils",
+            stdout=build._io.output.stream,
+            stderr=subprocess.STDOUT,
+        )
+
+        tools.cmd(
             "yum-builddep",
             "-y",
             spec,
@@ -236,6 +247,19 @@ class RHEL7OrNewerTarget(BaseRPMTarget):
             return super().get_resource_path(build, resource)
 
 
+class RHEL9OrNewerTarget(RHEL7OrNewerTarget):
+    def install_build_deps(self, build: rpmbuild.Build, spec: str) -> None:
+        super().install_build_deps(build, spec)
+        tools.cmd(
+            "yum",
+            "install",
+            "-y",
+            "systemd-rpm-macros",  # for %_unitdir
+            stdout=build._io.output.stream,
+            stderr=subprocess.STDOUT,
+        )
+
+
 class FedoraTarget(RHEL7OrNewerTarget):
     def __init__(
         self, distro_info: distro.InfoDict, arch: str, libc: str
@@ -258,9 +282,11 @@ class FedoraTarget(RHEL7OrNewerTarget):
 def get_specific_target(
     distro_info: distro.InfoDict, arch: str, libc: str
 ) -> BaseRPMTarget:
-    if distro_info["id"] in {"centos", "rhel"}:
+    if distro_info["id"] in {"centos", "rhel", "rocky"}:
         ver = int(distro_info["version_parts"]["major"])
-        if ver >= 7:
+        if ver >= 9:
+            return RHEL9OrNewerTarget(distro_info, arch, libc)
+        elif ver >= 7:
             return RHEL7OrNewerTarget(distro_info, arch, libc)
         else:
             raise NotImplementedError(

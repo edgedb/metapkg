@@ -412,7 +412,6 @@ class Build(targets.Build):
         lines = []
 
         for conflict in conflicts:
-            lines.append(f"Obsoletes: {conflict}")
             lines.append(f"Conflicts: {conflict}")
 
         return "\n".join(lines)
@@ -614,17 +613,6 @@ class Build(targets.Build):
             return ""
 
     def _rpmbuild(self) -> None:
-        tools.cmd(
-            "yum",
-            "install",
-            "-y",
-            "rpm-build",
-            "rpmlint",
-            "yum-utils",
-            stdout=self._io.output.stream,
-            stderr=subprocess.STDOUT,
-        )
-
         self.target.install_build_deps(  # type: ignore
             self, f"{self._root_pkg.name_slot}.spec"
         )
