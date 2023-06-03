@@ -7,6 +7,7 @@ from typing import (
     Mapping,
     Type,
     TypeVar,
+    Union,
     overload,
 )
 
@@ -31,6 +32,7 @@ from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
 from poetry.core.semver import version as poetry_version
 from poetry.core.version import pep440 as poetry_pep440
+from poetry.core.constraints import version as poetry_constr
 from poetry.core.version.pep440 import segments as poetry_pep440_segments
 from poetry.core.spdx import helpers as poetry_spdx_helpers
 
@@ -260,7 +262,13 @@ class BundledPackage(BasePackage):
 
     source_version: str
 
-    artifact_requirements: list[str | poetry_dep.Dependency] = []
+    artifact_requirements: Union[
+        list[str | poetry_dep.Dependency],
+        dict[
+            str | poetry_constr.VersionConstraint,
+            list[str | poetry_dep.Dependency],
+        ],
+    ] = []
     artifact_build_requirements: list[str | poetry_dep.Dependency] = []
 
     options: dict[str, Any]
@@ -642,7 +650,27 @@ class BundledPackage(BasePackage):
 
     def get_requirements(self) -> list[poetry_dep.Dependency]:
         reqs = []
-        for item in self.artifact_requirements:
+
+        req_spec: list[str | poetry_dep.Dependency] = []
+
+        if isinstance(self.artifact_requirements, dict):
+            for ver, ver_reqs in self.artifact_requirements.items():
+                if isinstance(ver, str):
+                    ver = poetry_constr.parse_constraint(ver)
+                if ver.allows(self.version):
+                    req_spec = ver_reqs
+                    break
+            else:
+                if self.artifact_requirements:
+                    raise RuntimeError(
+                        f"artifact_requirements for {self.name!r} are not "
+                        f"empty, but don't match the requested version "
+                        f"{self.version}"
+                    )
+        else:
+            req_spec = self.artifact_requirements
+
+        for item in req_spec:
             if isinstance(item, str):
                 reqs.append(poetry_dep.Dependency.create_from_pep_508(item))
             else:
