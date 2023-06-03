@@ -36,3 +36,13 @@ class SystemPackage(poetry_pkg.Package):
 
 
 SystemPackage_T = TypeVar("SystemPackage_T", bound=SystemPackage)
+
+
+class StandardSystemPackage(SystemPackage):
+    """A package that is part of standard system distribution.
+
+    Standard packages take precendnce over those can be installed by a user
+    or the package manager and that can be located via pkg-config.
+    """
+
+    pass

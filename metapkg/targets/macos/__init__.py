@@ -206,18 +206,18 @@ class MacOSRepository(generic.GenericOSRepository):
         )
 
 
-class LibFFISystemPackage(tgt_pkg.SystemPackage):
+class LibFFISystemPackage(tgt_pkg.StandardSystemPackage):
     def get_shlibs(self, build: targets.Build) -> list[str]:
         return ["ffi"]
 
 
-class UuidSystemPackage(tgt_pkg.SystemPackage):
+class UuidSystemPackage(tgt_pkg.StandardSystemPackage):
     def get_shlibs(self, build: targets.Build) -> list[str]:
         # uuid is part of libc on MacOS
         return []
 
 
-class ZlibSystemPackage(tgt_pkg.SystemPackage):
+class ZlibSystemPackage(tgt_pkg.StandardSystemPackage):
     def get_shlibs(self, build: targets.Build) -> list[str]:
         return ["z"]
 
