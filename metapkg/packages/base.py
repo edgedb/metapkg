@@ -295,6 +295,9 @@ class BundledPackage(BasePackage):
     def version_includes_revision(self) -> bool:
         return True
 
+    def version_includes_slot(self) -> bool:
+        return True
+
     @classmethod
     def get_source_url_variables(cls, version: str) -> dict[str, str]:
         return {}

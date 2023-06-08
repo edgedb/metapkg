@@ -25,7 +25,7 @@ class Build(targets.Build):
         super().prepare()
 
         self._pkgroot = self._droot / self._root_pkg.name_slot
-        self._srcroot = self._pkgroot / self._root_pkg.name_slot
+        self._srcroot = self._pkgroot / self._root_pkg.name
 
         self._artifactroot = pathlib.Path("..") / "_artifacts"
         self._buildroot = self._artifactroot / "build"
@@ -64,23 +64,16 @@ class Build(targets.Build):
         elif relative_to == "buildroot":
             return pathlib.Path("..") / path
         elif relative_to == "pkgsource":
-            if (
-                package is not None
-                and package.name == self.root_package.name_slot
-            ):
+            if package is not None and package.name == self.root_package.name:
                 return pathlib.Path(path)
             else:
                 return pathlib.Path("..") / ".." / path
         elif relative_to == "pkgbuild":
             return (
-                pathlib.Path("..")
-                / ".."
-                / ".."
-                / self._root_pkg.name_slot
-                / path
+                pathlib.Path("..") / ".." / ".." / self._root_pkg.name / path
             )
         elif relative_to == "helpers":
-            return pathlib.Path("..") / ".." / self._root_pkg.name_slot / path
+            return pathlib.Path("..") / ".." / self._root_pkg.name / path
         elif relative_to == "fsroot":
             return (self.get_source_abspath() / path).resolve()
         else:
@@ -126,7 +119,7 @@ class Build(targets.Build):
         *,
         relative_to: targets.Location = "sourceroot",
     ) -> pathlib.Path:
-        if package.name == self.root_package.name_slot:
+        if package.name == self.root_package.name:
             return self.get_dir(".", relative_to=relative_to)
         else:
             return self.get_dir(
@@ -516,13 +509,16 @@ class Build(targets.Build):
 
     def _package(self, files: list[pathlib.Path]) -> None:
         pkg = self._root_pkg
-        title = pkg.name
 
         src_root = self.get_source_abspath()
         image_root = self.get_image_root(relative_to="fsroot")
 
         version = packages.pep440_to_semver(pkg.version)
-        an = f"{title}-{version}"
+        if pkg.version_includes_slot():
+            an = str(pkg.name)
+        else:
+            an = pkg.name_slot
+        an = f"{an}-{version}"
         if not pkg.version_includes_revision():
             an = f"{an}_{self._revision}"
         archives = self.get_intermediate_output_dir()

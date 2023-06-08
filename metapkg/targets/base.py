@@ -850,7 +850,10 @@ class Build:
             self._outputroot.mkdir(parents=True, exist_ok=True)
 
         pkg = self._root_pkg
-        pkg_name = pkg.name
+        if pkg.version_includes_slot():
+            pkg_name = str(pkg.name)
+        else:
+            pkg_name = pkg.name_slot
         pkg_ver = mpkg_base.pep440_to_semver(pkg.version)
         tgt_ident = self.target.ident
         tarball = f"{pkg_name}__{pkg_ver}__{tgt_ident}.tar"

@@ -131,7 +131,11 @@ class Build(base.Command):
             poetry_dep.Dependency(root_pkg.name, root_pkg.version)
         )
         provider = af_repo.Provider(
-            build_root, repo_pool, self.io, include_build_reqs=True
+            build_root,
+            repo_pool,
+            self.io,
+            include_build_reqs=True,
+            extras=extras,
         )
         resolution = mixology.resolve_version(build_root, provider)
 
