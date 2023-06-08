@@ -52,7 +52,8 @@ class Build(targets.Build):
               - ``'sourceroot'``: bundle source root
               - ``'pkgsource'``: package source directory
               - ``'pkgbuild'``: package build directory
-              - ``None``: filesystem root (makes path absolute)
+              - ``'helpers'``: build helpers directory
+              - ``'fsroot'``: filesystem root (makes path absolute)
 
         :return:
             Path relative to the specified location.
@@ -78,6 +79,8 @@ class Build(targets.Build):
                 / self._root_pkg.name_slot
                 / path
             )
+        elif relative_to == "helpers":
+            return pathlib.Path("..") / ".." / self._root_pkg.name_slot / path
         elif relative_to == "fsroot":
             return (self.get_source_abspath() / path).resolve()
         else:
