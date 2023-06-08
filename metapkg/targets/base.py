@@ -1482,8 +1482,8 @@ class Build:
                     ),
                 )
 
-                for shlib in pkg.get_shlibs(self):
-                    flags.append(f"-l{shlib}")
+            for shlib in pkg.get_shlibs(self):
+                flags.append(f"-l{shlib}")
 
         return self.sh_join_flags(flags)
 
