@@ -65,7 +65,7 @@ class Build(targets.Build):
             return pathlib.Path("..") / path
         elif relative_to == "pkgsource":
             if package is not None and package.name == self.root_package.name:
-                return pathlib.Path(path)
+                return pathlib.Path("..") / path
             else:
                 return pathlib.Path("..") / ".." / path
         elif relative_to == "pkgbuild":
@@ -120,7 +120,10 @@ class Build(targets.Build):
         relative_to: targets.Location = "sourceroot",
     ) -> pathlib.Path:
         if package.name == self.root_package.name:
-            return self.get_dir(".", relative_to=relative_to)
+            return self.get_dir(
+                self.root_package.name,
+                relative_to=relative_to,
+            )
         else:
             return self.get_dir(
                 pathlib.Path("thirdparty") / package.name,
