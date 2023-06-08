@@ -648,7 +648,7 @@ class FHSTarget(PosixTarget):
 
 
 Location = Literal[
-    "fsroot", "buildroot", "pkgsource", "sourceroot", "pkgbuild"
+    "fsroot", "buildroot", "pkgsource", "sourceroot", "pkgbuild", "helpers"
 ]
 
 
