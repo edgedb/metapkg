@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import platform
+import re
 import shlex
 import shutil
 import stat
@@ -240,6 +241,14 @@ class Build(targets.Build):
         conflicts = self._root_pkg.get_conflict_packages(self, root_version)
         provides = self._root_pkg.get_provided_packages(self, root_version)
 
+        requires_exclude = [
+            f"{re.escape(str(self.get_install_path('lib')))}/.*",
+            f"{re.escape(str(self.get_install_path('bin')))}/.*",
+        ]
+        privatelibs = self._get_private_libs_pattern()
+        if privatelibs:
+            requires_exclude.append(privatelibs)
+
         rules = textwrap.dedent(
             """\
             Name: {name}
@@ -266,9 +275,8 @@ class Build(targets.Build):
 
             {meta_pkgs}
 
-            %global _privatelibs {privatelibs}
             %global __provides_exclude ^.*\\.so(\\..*)?$
-            %global __requires_exclude ^(%{{_privatelibs}}|(/usr)?/bin/.*)$
+            %global __requires_exclude {requires_exclude}
 
             %define __python python3
             %define __brp_mangle_shebangs %{{nil}}
@@ -335,7 +343,7 @@ class Build(targets.Build):
                 "after_install", installable_only=True, relative_to="buildroot"
             ),
             temp_root=self.get_temp_root(relative_to="buildroot"),
-            privatelibs=self._get_private_libs_pattern() or "%{nil}",
+            requires_exclude="^(" + ")|(".join(requires_exclude) + ")$",
             changelog=self._get_changelog(),
             common_pkg=common_package,
             meta_pkgs="\n\n".join(meta_pkg_specs),
