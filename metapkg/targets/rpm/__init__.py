@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import *
 
+import functools
 import pathlib
 import re
 import subprocess
@@ -188,9 +189,11 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxDistroTarget):
     def get_package_repository(self) -> RPMRepository:
         return RPMRepository()
 
+    @functools.cache
     def get_arch_libdir(self) -> pathlib.Path:
         return pathlib.Path(tools.cmd("rpm", "--eval", "%_libdir").strip())
 
+    @functools.cache
     def get_sys_bindir(self) -> pathlib.Path:
         return pathlib.Path(tools.cmd("rpm", "--eval", "%_bindir").strip())
 

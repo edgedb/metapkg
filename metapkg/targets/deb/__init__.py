@@ -4,6 +4,7 @@ from typing import (
     Any,
 )
 
+import functools
 import pathlib
 import re
 import subprocess
@@ -241,6 +242,7 @@ class BaseDebTarget(targets.FHSTarget, targets.LinuxDistroTarget):
     def get_package_group(self, pkg: mpkg.BundledPackage) -> str:
         return GROUP_MAP.get(pkg.group, pkg.group)
 
+    @functools.cache
     def get_arch_libdir(self) -> pathlib.Path:
         arch = tools.cmd("dpkg-architecture", "-qDEB_HOST_MULTIARCH").strip()
         return pathlib.Path("/usr/lib") / arch
