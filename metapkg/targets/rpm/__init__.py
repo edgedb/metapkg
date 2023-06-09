@@ -33,6 +33,7 @@ PACKAGE_MAP = {
     "systemd-dev": "systemd-devel",
     "openssl-dev": "openssl-devel",
     "libffi-dev": "libffi-devel",
+    "libb2-dev": "libb2-devel",
 }
 
 
