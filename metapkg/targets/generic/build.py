@@ -202,7 +202,7 @@ class Build(targets.Build):
         proot = self.get_patches_root(relative_to="fsroot")
         patch_cmd = shlex.split(self.sh_get_command("patch"))
         dep_root = self.get_dir("thirdparty", relative_to="fsroot")
-        my_root = self.get_dir("..", relative_to="fsroot")
+        my_root = self.get_source_abspath()
         for pkgname, patchname in self._patches:
             sroot = my_root if pkgname == self.root_package.name else dep_root
             patch = proot / patchname
