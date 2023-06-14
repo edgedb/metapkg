@@ -207,7 +207,7 @@ class Build(targets.Build):
             sroot = my_root if pkgname == self.root_package.name else dep_root
             patch = proot / patchname
             tools.cmd(
-                *(patch_cmd + ["-p1", "-i", str(patch)]),
+                *(patch_cmd + ["--verbose", "-p1", "-i", str(patch)]),
                 cwd=sroot,
             )
 

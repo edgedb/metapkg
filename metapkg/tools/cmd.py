@@ -31,6 +31,10 @@ def cmd(
         p = subprocess.run(str_cmd, text=True, check=True, **default_kwargs)
     except subprocess.CalledProcessError as e:
         if errors_are_fatal:
+            if e.stdout:
+                logger.error(e.stdout)
+            if e.stderr:
+                logger.error(e.stderr)
             msg = "{} failed with exit code {}".format(cmd_line, e.returncode)
             logger.error(msg)
             sys.exit(1)
