@@ -1078,6 +1078,25 @@ class BundledCPackage(BuildSystemMakePackage):
         configure = sdir / "configure"
         return self.sh_configure(build, configure, {})
 
+    def get_build_install_script(self, build: targets.Build) -> str:
+        script = super().get_build_install_script(build)
+        install_target = self.get_make_install_target(build)
+
+        if install_target:
+            make = build.sh_get_command("make")
+            env = self.get_make_install_env(build, "$(pwd)")
+            destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
+            libdir = build.get_install_path("lib")
+            script += "\n" + textwrap.dedent(
+                f"""\
+                _d={destdir}
+                find "$_d" -name '*.la' -exec sed -i -r -e \
+                    "s|{libdir}|${{_d}}{libdir}|g" {{}} \;
+                """
+            )
+
+        return script
+
 
 class BundledCMesonPackage(BundledCPackage):
     def sh_configure(
