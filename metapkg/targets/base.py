@@ -830,6 +830,7 @@ class Build:
         self._system_tools["tar"] = "tar"
         self._system_tools["bash"] = "/bin/bash"
         self._system_tools["find"] = "find"
+        self._system_tools["meson"] = "meson"
 
     def prepare(self) -> None:
         self.define_tools()

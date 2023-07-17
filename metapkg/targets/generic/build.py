@@ -208,6 +208,7 @@ class Build(targets.Build):
             patch = proot / patchname
             tools.cmd(
                 *(patch_cmd + ["--verbose", "-p1", "-i", str(patch)]),
+                hide_stderr=False,
                 cwd=sroot,
             )
 

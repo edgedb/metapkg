@@ -1058,6 +1058,74 @@ class BundledCPackage(BuildSystemMakePackage):
         return self.sh_configure(build, configure, {})
 
 
+class BundledCMesonPackage(BundledCPackage):
+    def sh_configure(
+        self,
+        build: targets.Build,
+        path: str | pathlib.Path,
+        args: Mapping[str, str | pathlib.Path | None],
+    ) -> str:
+        conf_args = dict(args)
+        if "--prefix" not in args:
+            conf_args["--prefix"] = str(build.get_full_install_prefix())
+        if "--sysconfdir" not in args:
+            conf_args["--sysconfdir"] = build.get_install_path("sysconf")
+        # if "--datarootdir" not in args:
+        #     conf_args["--datarootdir"] = build.get_install_path("data")
+        if "--bindir" not in args:
+            conf_args["--bindir"] = build.get_install_path("bin")
+        if "--sbindir" not in args:
+            conf_args["--sbindir"] = build.get_install_path("bin")
+        if "--libdir" not in args:
+            conf_args["--libdir"] = build.get_install_path("lib")
+        if "--includedir" not in args:
+            conf_args["--includedir"] = build.get_install_path("include")
+        env_args = {}
+        build.sh_append_run_time_ldflags(env_args, self)
+        env_args = build.sh_append_global_flags(env_args)
+        conf = build.sh_format_command(path, conf_args, force_args_eq=True)
+        env = build.sh_format_command("env", env_args, force_args_eq=True)
+        return f"{env} {conf}"
+
+    def get_configure_script(self, build: targets.Build) -> str:
+        sdir = build.get_source_dir(self, relative_to="pkgbuild")
+        meson = build.sh_get_command("meson")
+        configure_flags = {
+            "setup": None,
+            str(sdir): None,
+            "build": None,
+            "-Ddefault_library": "shared",
+            "-Ddistro_install": "true",
+            "-Dwith_INIReader": "true",
+        }
+        return self.sh_configure(build, meson, configure_flags)
+
+    def get_configure_target(self, build: targets.Build) -> str:
+        return self.name
+
+    def get_build_script(self, build: targets.Build) -> str:
+        meson = build.sh_get_command("meson")
+        env = self.get_make_env(build, "$(pwd)")
+
+        return textwrap.dedent(
+            f"""\
+            {meson} compile -C build
+            """
+        )
+
+    def get_build_install_script(self, build: targets.Build) -> str:
+        script = BundledPackage.get_build_install_script(self, build)
+        meson = build.sh_get_command("meson")
+        env = self.get_make_install_env(build, "$(pwd)")
+        destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
+        script += "\n" + textwrap.dedent(
+            f"""\
+            {meson} install -C build --destdir={destdir} --no-rebuild
+            """
+        )
+
+        return script
+
 _semver_phase_spelling_map = {
     poetry_pep440_segments.RELEASE_PHASE_ID_ALPHA: "alpha",
     poetry_pep440_segments.RELEASE_PHASE_ID_BETA: "beta",
