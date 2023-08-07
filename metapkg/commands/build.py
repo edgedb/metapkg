@@ -147,7 +147,13 @@ class Build(base.Command):
             deps = {
                 req.name
                 for req in set(dep_package.requires) | set(breqs)
-                if req.is_activated() and env.is_valid_for_marker(req.marker)
+                if (
+                    req.is_activated()
+                    and env.is_valid_for_marker(req.marker)
+                    # Poetry inserts package dependency on itself
+                    # for dependencies with extras.
+                    and req.name != dep_package.name
+                )
             }
             graph[dep_package.name] = deps
 
