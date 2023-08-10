@@ -312,7 +312,8 @@ class Build(targets.Build):
         copy_tree = self.sh_get_command("copy-tree", relative_to="sourceroot")
         layout = pkg.get_package_layout(self)
         flatten = (
-            "--flatten" if layout is packages.PackageFileLayout.FLAT else ""
+            layout is packages.PackageFileLayout.FLAT
+            or layout is packages.PackageFileLayout.SINGLE_BINARY
         )
 
         return textwrap.dedent(
@@ -333,7 +334,7 @@ class Build(targets.Build):
             {copy_tree} \\
                 --verbose \\
                 --files-from="{temp_dir}/install.list" \\
-                {flatten} \\
+                {"--flatten" if flatten else ""} \\
                 "{install_dir}/" "{image_root}/"
 
             popd >/dev/null
