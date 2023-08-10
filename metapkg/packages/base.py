@@ -60,6 +60,7 @@ class PackageFileLayout(enum.IntEnum):
 
     REGULAR = enum.auto()
     FLAT = enum.auto()
+    SINGLE_BINARY = enum.auto()
 
 
 @dataclasses.dataclass

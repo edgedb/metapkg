@@ -9,6 +9,7 @@ import pathlib
 import platform
 import shutil
 import stat
+import sys
 
 
 logger = logging.getLogger("copy-tree")
@@ -34,6 +35,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional list of files to copy from the source directory.",
     )
     parser.add_argument(
+        "--flatten",
+        help="Copy all files to the top directory.",
+        action="store_true",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         help="Show information on each file copied, directory made, etc.",
@@ -42,7 +48,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main(src: str, dest: str, *, files_from: Optional[str]) -> None:
+def die(msg: str) -> NoReturn:
+    logger.error(msg)
+    sys.exit(1)
+
+
+def main(
+    src: str,
+    dest: str,
+    *,
+    files_from: Optional[str],
+    flatten: bool,
+) -> None:
     dest = ensure_destination(src, dest)
     all_files = list(ensure_relative(get_paths_in(src), src))
 
@@ -54,12 +71,12 @@ def main(src: str, dest: str, *, files_from: Optional[str]) -> None:
             f"Using file list in {p} with {len(relative_files)} entries"
         )
         warn_about_excluded_files(included=relative_files, all_files=all_files)
-        copy_files(src, dest, relative_files)
+        copy_files(src, dest, relative_files, flatten=flatten)
     else:
         logger.info(
             f"No file list given, copying all {len(all_files)} entries"
         )
-        copy_files(src, dest, all_files)
+        copy_files(src, dest, all_files, flatten=flatten)
 
 
 def ensure_destination(src: str, dest: str) -> str:
@@ -115,16 +132,42 @@ def ensure_relative(files: Iterable[str], root: str) -> Iterator[str]:
         logger.error(f"File in file list doesn't exist: {path}")
 
 
-def copy_files(src: str, dest: str, files: Iterable[str]) -> None:
+def copy_files(
+    src: str,
+    dest: str,
+    files: Iterable[str],
+    *,
+    flatten: bool,
+) -> None:
     """Copy files listed in `files` from `src` to `dest`.
 
     Paths in `files` must be relative.
     """
     src_dir = pathlib.Path(src)
     dest_dir = pathlib.Path(dest)
-    for file in files:
-        path_from = src_dir / file
-        path_to = dest_dir / file
+    basenames = {}
+    for src_file in files:
+        path_from = src_dir / src_file
+
+        if flatten:
+            if path_from.is_dir():
+                logger.info(f"Skipping directory {src_file} due to --flatten")
+                continue
+            if path_from.is_symlink():
+                logger.info(f"Skipping symlink {src_file} due to --flatten")
+                continue
+
+            basename = path_from.name
+            if basename in basenames:
+                die(
+                    f"`copy-tree --flatten` encountered a duplicate file name:"
+                    f" {src_file} and {basenames[basename]}")
+            basenames[basename] = src_file
+            dest_file = basename
+        else:
+            dest_file = src_file
+
+        path_to = dest_dir / dest_file
         if path_from.is_dir():
             if path_to.is_dir():
                 logger.warning(f"Directory {path_to} already exists")
@@ -214,4 +257,4 @@ if __name__ == "__main__":
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(asctime)s - %(levelname)s: %(message)s",
     )
-    main(args.src, args.dest, files_from=args.files_from)
+    main(args.src, args.dest, files_from=args.files_from, flatten=args.flatten)

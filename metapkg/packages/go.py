@@ -15,7 +15,7 @@ class BundledGoPackage(base.BuildSystemMakePackage):
         self,
         build: targets.Build,
     ) -> base.PackageFileLayout:
-        return base.PackageFileLayout.FLAT
+        return base.PackageFileLayout.SINGLE_BINARY
 
     def get_configure_script(self, build: targets.Build) -> str:
         sdir = shlex.quote(
@@ -28,13 +28,16 @@ class BundledGoPackage(base.BuildSystemMakePackage):
         return ""
 
     def get_build_install_script(self, build: targets.Build) -> str:
-        if self.get_package_layout(build) is not base.PackageFileLayout.FLAT:
+        if (
+            self.get_package_layout(build)
+            is not base.PackageFileLayout.SINGLE_BINARY
+        ):
             script = super().get_build_install_script(build)
         else:
             script = ""
         installdest = build.get_install_dir(self, relative_to="pkgbuild")
         outdir = self.get_binary_output_dir()
-        bindir = build.get_install_path("systembin").relative_to("/")
+        bindir = build.get_install_path("bin").relative_to("/")
         dest = installdest / bindir / self.name
         return textwrap.dedent(
             f"""\
@@ -46,7 +49,7 @@ class BundledGoPackage(base.BuildSystemMakePackage):
 
     def get_file_install_entries(self, build: targets.Build) -> list[str]:
         entries = list(super().get_file_install_entries(build))
-        entries.append(f"{{systembindir}}/{self.name}{{exesuffix}}")
+        entries.append(f"{{bindir}}/{self.name}{{exesuffix}}")
         return entries
 
 

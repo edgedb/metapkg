@@ -310,6 +310,10 @@ class Build(targets.Build):
             "trim-install", relative_to="sourceroot"
         )
         copy_tree = self.sh_get_command("copy-tree", relative_to="sourceroot")
+        layout = pkg.get_package_layout(self)
+        flatten = (
+            "--flatten" if layout is packages.PackageFileLayout.FLAT else ""
+        )
 
         return textwrap.dedent(
             f"""
@@ -326,7 +330,10 @@ class Build(targets.Build):
 
             {extras_script} >> "{temp_dir}/install.list"
 
-            {copy_tree} -v --files-from="{temp_dir}/install.list" \\
+            {copy_tree} \\
+                --verbose \\
+                --files-from="{temp_dir}/install.list" \\
+                {flatten} \\
                 "{install_dir}/" "{image_root}/"
 
             popd >/dev/null
@@ -527,50 +534,57 @@ class Build(targets.Build):
             an = f"{an}_{self._revision}"
         archives = self.get_intermediate_output_dir()
         archives_abs = self.get_intermediate_output_dir(relative_to="fsroot")
+        layout = pkg.get_package_layout(self)
 
-        if pkg.get_package_layout(self) is packages.PackageFileLayout.FLAT:
-            if len(files) == 1:
-                fn = files[0]
-                dest = f"{archives / an}{fn.suffix}"
-                tools.cmd(
-                    "cp",
-                    image_root / fn,
-                    dest,
-                    cwd=src_root,
-                )
-
-                mime = magic.from_file(str(src_root / dest), mime=True)
-
-                tools.cmd(
-                    "zstd",
-                    "-19",
-                    f"{an}{fn.suffix}",
-                    cwd=archives_abs,
-                )
-
-                installrefs = [
-                    f"{an}{fn.suffix}",
-                    f"{an}{fn.suffix}.zst",
-                ]
-
-                installrefs_ct = {
-                    f"{an}{fn.suffix}": {
-                        "type": mime,
-                        "encoding": "identity",
-                        "suffix": fn.suffix,
-                    },
-                    f"{an}{fn.suffix}.zst": {
-                        "type": mime,
-                        "encoding": "zstd",
-                        "suffix": ".zst",
-                    },
-                }
-            else:
+        if layout is packages.PackageFileLayout.SINGLE_BINARY:
+            if len(files) != 1:
                 raise AssertionError(
                     "Single-file package build produced multiple files!"
                 )
+
+            fn = files[0]
+            dest = f"{archives / an}{fn.suffix}"
+            tools.cmd(
+                "cp",
+                image_root / fn,
+                dest,
+                cwd=src_root,
+            )
+
+            mime = magic.from_file(str(src_root / dest), mime=True)
+
+            tools.cmd(
+                "zstd",
+                "-19",
+                f"{an}{fn.suffix}",
+                cwd=archives_abs,
+            )
+
+            installrefs = [
+                f"{an}{fn.suffix}",
+                f"{an}{fn.suffix}.zst",
+            ]
+
+            installrefs_ct = {
+                f"{an}{fn.suffix}": {
+                    "type": mime,
+                    "encoding": "identity",
+                    "suffix": fn.suffix,
+                },
+                f"{an}{fn.suffix}.zst": {
+                    "type": mime,
+                    "encoding": "zstd",
+                    "suffix": ".zst",
+                },
+            }
+
         else:
-            src = image_root / self.get_full_install_prefix().relative_to("/")
+            if layout is packages.PackageFileLayout.FLAT:
+                src = image_root
+            else:
+                prefix = self.get_full_install_prefix().relative_to("/")
+                src = image_root / prefix
+
             tarball = f"{an}.tar"
             tools.cmd(
                 self.sh_get_command("tar"),
