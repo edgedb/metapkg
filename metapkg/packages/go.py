@@ -52,6 +52,13 @@ class BundledGoPackage(base.BuildSystemMakePackage):
         entries.append(f"{{bindir}}/{self.name}{{exesuffix}}")
         return entries
 
+    def get_exposed_commands(self, build: targets.Build) -> list[pathlib.Path]:
+        bindir = build.get_install_path("bin")
+
+        return [
+            bindir / self.name,
+        ]
+
 
 class BundledAdHocGoPackage(BundledGoPackage):
     sources = [
