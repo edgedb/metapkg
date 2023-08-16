@@ -161,7 +161,8 @@ def copy_files(
             if basename in basenames:
                 die(
                     f"`copy-tree --flatten` encountered a duplicate file name:"
-                    f" {src_file} and {basenames[basename]}")
+                    f" {src_file} and {basenames[basename]}"
+                )
             basenames[basename] = src_file
             dest_file = basename
         else:

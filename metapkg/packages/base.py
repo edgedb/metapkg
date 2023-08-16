@@ -247,6 +247,9 @@ class BasePackage(poetry_pkg.Package):
             scriptfile_name, pyscript, relative_to="pkgbuild"
         )
 
+    def get_package_layout(self, build: targets.Build) -> PackageFileLayout:
+        return PackageFileLayout.REGULAR
+
 
 BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
@@ -815,9 +818,6 @@ class BundledPackage(BasePackage):
     def get_bin_shims(self, build: targets.Build) -> dict[str, str]:
         return self.read_support_files(build, "shims/*")
 
-    def get_package_layout(self, build: targets.Build) -> PackageFileLayout:
-        return PackageFileLayout.REGULAR
-
     def __repr__(self) -> str:
         return "<BundledPackage {}>".format(self.unique_name)
 
@@ -1026,7 +1026,8 @@ class BundledCPackage(BuildSystemMakePackage):
             rel_path = f'$(pwd)/"{path}"'
 
             dep_ldflags = build.sh_get_bundled_shlib_ldflags(
-                pkg, relative_to="pkgbuild")
+                pkg, relative_to="pkgbuild"
+            )
 
             if var_prefix:
                 build.sh_append_flags(
@@ -1121,7 +1122,7 @@ class BundledCMesonPackage(BundledCPackage):
             conf_args["--libdir"] = build.get_install_path("lib")
         if "--includedir" not in args:
             conf_args["--includedir"] = build.get_install_path("include")
-        env_args = {}
+        env_args: dict[str, str | pathlib.Path | None] = {}
         build.sh_append_run_time_ldflags(env_args, self)
         env_args = build.sh_append_global_flags(env_args)
         conf = build.sh_format_command(path, conf_args, force_args_eq=True)
@@ -1166,6 +1167,7 @@ class BundledCMesonPackage(BundledCPackage):
         )
 
         return script
+
 
 _semver_phase_spelling_map = {
     poetry_pep440_segments.RELEASE_PHASE_ID_ALPHA: "alpha",
