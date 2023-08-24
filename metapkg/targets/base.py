@@ -373,6 +373,7 @@ class LinuxTarget(PosixTarget):
             self._sys_shlibs = {
                 "libpthread",
                 "libutil",
+                "libresolv",
                 "librt",
                 "libdl",
                 "libm",
