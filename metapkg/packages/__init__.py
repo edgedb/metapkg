@@ -8,6 +8,7 @@ from .base import (
     BundledCMesonPackage,
     PackageFileLayout,
     MetaPackage,
+    canonicalize_name,
     pep440_to_semver,
     semver_pre_tag,
 )
@@ -30,6 +31,7 @@ __all__ = (
     "BundledPythonPackage",
     "BundledRustPackage",
     "BundledAdHocRustPackage",
+    "canonicalize_name",
     "pep440_to_semver",
     "semver_pre_tag",
 )
