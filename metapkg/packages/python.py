@@ -248,14 +248,12 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 def get_dist(
     srcdir: pathlib.Path,
 ) -> distlib.database.InstalledDistribution:
-    builder = pypa_build.ProjectBuilder(
-        srcdir,
-        runner=pep517.default_subprocess_runner,
-    )
-
-    with pypa_build_env.IsolatedEnvBuilder() as env:
-        builder.python_executable = env.executable
-        builder.scripts_dir = env.scripts_dir
+    with pypa_build_env.DefaultIsolatedEnv() as env:
+        builder = pypa_build.ProjectBuilder.from_isolated_env(
+            env,
+            srcdir,
+            runner=pep517.default_subprocess_runner,
+        )
         env.install(builder.build_system_requires)
         env.install(builder.get_requires_for_build("wheel"))
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -267,14 +265,12 @@ def get_build_requires_from_srcdir(
     package: mpkg.BasePackage,
     path: pathlib.Path,
 ) -> list[poetry_dep.Dependency]:
-    builder = pypa_build.ProjectBuilder(
-        path,
-        runner=pep517.quiet_subprocess_runner,
-    )
-
-    with pypa_build_env.IsolatedEnvBuilder() as env:
-        builder.python_executable = env.executable
-        builder.scripts_dir = env.scripts_dir
+    with pypa_build_env.DefaultIsolatedEnv() as env:
+        builder = pypa_build.ProjectBuilder.from_isolated_env(
+            env,
+            path,
+            runner=pep517.default_subprocess_runner,
+        )
         sys_reqs = builder.build_system_requires
         env.install(sys_reqs)
         pkg_reqs = builder.get_requires_for_build("wheel")
