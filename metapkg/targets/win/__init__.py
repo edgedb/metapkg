@@ -78,7 +78,6 @@ class ModernWindowsPortableTarget(ModernWindowsTarget):
 def get_specific_target(
     version: tuple[int, ...], arch: str, portable: bool
 ) -> WindowsTarget:
-
     if version >= (10, 0):
         return ModernWindowsPortableTarget(version, arch)
     else:

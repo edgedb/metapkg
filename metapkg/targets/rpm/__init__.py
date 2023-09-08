@@ -110,7 +110,6 @@ class RPMRepository(poetry_repo.Repository):
         self,
         dependency: poetry_dep.Dependency,
     ) -> list[poetry_pkg.Package]:
-
         if dependency.name not in self._parsed:
             packages = self.apt_get_packages(dependency.name)
             for package in packages:

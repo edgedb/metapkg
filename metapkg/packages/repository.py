@@ -181,7 +181,6 @@ class Provider(poetry_provider.Provider):
 def extra_requirements(
     pkg: poetry_pkg.Package, reqs: list[poetry_dep.Dependency]
 ) -> Iterator[None]:
-
     if not pkg.has_dependency_group(poetry_depgroup.MAIN_GROUP):
         dep_group = poetry_depgroup.DependencyGroup(poetry_depgroup.MAIN_GROUP)
         pkg.add_dependency_group(dep_group)
