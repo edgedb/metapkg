@@ -17,11 +17,11 @@ setup(
     },
     python_requires=">=3.9",
     install_requires=[
-        "build~=0.8.0",
-        "distro~=1.7.0",
-        "requests~=2.27.0",
+        "build~=1.0.3",
+        "distro~=1.8.0",
+        "requests~=2.31.0",
         "poetry~=1.2.0",
-        "distlib~=0.3.4",
+        "distlib~=0.3.7",
         'python-magic~=0.4.26; platform_system=="Linux" or (platform_machine!="x86_64" and platform_machine!="AMD64")',
         'python-magic-bin~=0.4.14; platform_system!="Linux" and platform_machine!="arm64"',
         "wheel>=0.32.3",
@@ -30,7 +30,7 @@ setup(
     ],
     extras_require={
         "test": [
-            "types-requests~=2.25.9",
+            "types-requests~=2.31.0.2",
         ]
     },
 )
