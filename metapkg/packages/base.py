@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 
 get_build_requirements = repository.get_build_requirements
 set_build_requirements = repository.set_build_requirements
+canonicalize_name = packaging.utils.canonicalize_name
 
 
 class DummyPackage(poetry_pkg.Package):
