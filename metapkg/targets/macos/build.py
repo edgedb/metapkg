@@ -254,7 +254,7 @@ class NativePackageBuild(MacOSBuild):
                 gui_xml.appendChild(element)
 
         title_el = dist_xml.createElement("title")
-        title_text = dist_xml.createTextNode(pkg.title)
+        title_text = dist_xml.createTextNode(pkg.title or "<no title>")
         title_el.appendChild(title_text)
         gui_xml.appendChild(title_el)
 
