@@ -20,7 +20,7 @@ from poetry.repositories import exceptions as poetry_repo_exc
 
 import build as pypa_build
 import build.env as pypa_build_env
-import pep517
+import pyproject_hooks
 
 import distlib.database
 
@@ -252,7 +252,7 @@ def get_dist(
         builder = pypa_build.ProjectBuilder.from_isolated_env(
             env,
             srcdir,
-            runner=pep517.default_subprocess_runner,
+            runner=pyproject_hooks.default_subprocess_runner,
         )
         env.install(builder.build_system_requires)
         env.install(builder.get_requires_for_build("wheel"))
@@ -269,7 +269,7 @@ def get_build_requires_from_srcdir(
         builder = pypa_build.ProjectBuilder.from_isolated_env(
             env,
             path,
-            runner=pep517.default_subprocess_runner,
+            runner=pyproject_hooks.default_subprocess_runner,
         )
         sys_reqs = builder.build_system_requires
         env.install(sys_reqs)
