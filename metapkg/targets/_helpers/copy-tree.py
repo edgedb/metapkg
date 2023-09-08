@@ -145,7 +145,7 @@ def copy_files(
     """
     src_dir = pathlib.Path(src)
     dest_dir = pathlib.Path(dest)
-    basenames = {}
+    basenames: dict[str, str] = {}
     for src_file in files:
         path_from = src_dir / src_file
 
