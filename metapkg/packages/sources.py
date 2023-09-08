@@ -545,7 +545,6 @@ def unpack_tar(
 def unpack_zip(
     archive: pathlib.Path, dest: pathlib.Path, *, strip_top: bool
 ) -> None:
-
     zf = zipfile.ZipFile(archive)
 
     try:

@@ -288,7 +288,6 @@ class LinuxAddUserAction(AddUserAction):
         system: bool = False,
         description: str | None = None,
     ) -> str:
-
         args: dict[str, str | None] = {}
         if group:
             args["-g"] = group
@@ -1108,7 +1107,6 @@ class Build:
     def sh_write_python_helper(
         self, name: str, text: str, *, relative_to: Location
     ) -> str:
-
         python = self.sh_get_command("python", relative_to=relative_to)
         path = self.sh_write_helper(name, text, relative_to=relative_to)
 
@@ -1294,7 +1292,6 @@ class Build:
         installable_only: bool = False,
         relative_to: Location = "sourceroot",
     ) -> str:
-
         script = self.get_script(
             stage, installable_only=installable_only, relative_to=relative_to
         )
@@ -1312,7 +1309,6 @@ class Build:
         installable_only: bool = False,
         relative_to: Location = "sourceroot",
     ) -> str:
-
         scripts = []
 
         packages: tuple[mpkg_base.BasePackage, ...]

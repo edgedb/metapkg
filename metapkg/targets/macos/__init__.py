@@ -28,7 +28,6 @@ class MacOSAddUserAction(targets.AddUserAction):
         system: bool = False,
         description: str | None = None,
     ) -> str:
-
         if group:
             groupname = f"/Groups/{group}"
             groupadd_cmds = [

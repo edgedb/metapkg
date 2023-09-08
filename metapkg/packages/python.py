@@ -67,7 +67,6 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         self,
         dependency: poetry_dep.Dependency,
     ) -> list[poetry_pkg.Package]:
-
         if dependency.name.startswith("pypkg-"):
             pep508 = dependency.to_pep_508().replace("pypkg-", "")
             dependency = type(dependency).create_from_pep_508(pep508)
@@ -90,7 +89,6 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         version: poetry_version.Version,
         extras: list[str] | None = None,
     ) -> poetry_pkg.Package:
-
         if name.startswith("pypkg-"):
             name = name[len("pypkg-") :]
 

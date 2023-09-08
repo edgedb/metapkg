@@ -57,7 +57,6 @@ class DummyPackage(poetry_pkg.Package):
 
 
 class PackageFileLayout(enum.IntEnum):
-
     REGULAR = enum.auto()
     FLAT = enum.auto()
     SINGLE_BINARY = enum.auto()
@@ -65,7 +64,6 @@ class PackageFileLayout(enum.IntEnum):
 
 @dataclasses.dataclass
 class MetaPackage:
-
     name: str
     description: str
     dependencies: dict[str, str]
@@ -255,7 +253,6 @@ BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
 
 class BundledPackage(BasePackage):
-
     name: ClassVar[packaging.utils.NormalizedName]
     title: ClassVar[str | None] = None
     aliases: ClassVar[list[str] | None] = None
@@ -604,7 +601,6 @@ class BundledPackage(BasePackage):
         options: Mapping[str, Any] | None = None,
         resolved_sources: list[af_sources.BaseSource] | None = None,
     ) -> None:
-
         if self.title is None:
             raise RuntimeError(
                 f"{type(self)!r} does not define the required "
@@ -723,7 +719,6 @@ class BundledPackage(BasePackage):
     def read_support_files(
         self, build: targets.Build, file_glob: str, binary: bool = False
     ) -> dict[str, str] | dict[str, bytes]:
-
         mod = sys.modules[type(self).__module__]
         mod_file = mod.__file__
         assert mod_file is not None

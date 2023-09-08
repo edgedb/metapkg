@@ -48,7 +48,6 @@ class GenericOSRepository(poetry_repo.Repository):
         self,
         dependency: poetry_dep.Dependency,
     ) -> list[poetry_pkg.Package]:
-
         if dependency.name in self.list_provided_packages():
             impl_cls = self._pkg_impls.get(
                 dependency.name, tgt_pkg.SystemPackage
