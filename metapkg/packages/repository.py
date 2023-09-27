@@ -169,10 +169,10 @@ class Provider(poetry_provider.Provider):
         pkg = super().complete_package(package)
 
         for dep in itertools.chain.from_iterable(chain):
-            if not dep.is_activated() and dep.in_extras:
-                if not ({str(e) for e in dep.in_extras} - self._active_extras):
-                    dep.activate()
-                    pkg.package.add_dependency(dep)
+            dep_in_extras = {str(e) for e in dep.in_extras}
+            if not (dep_in_extras - self._active_extras):
+                dep.activate()
+                pkg.package.add_dependency(dep)
 
         return pkg
 
