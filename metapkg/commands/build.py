@@ -84,14 +84,80 @@ class Build(base.Command):
         sources = root_pkg.get_sources()
 
         if len(sources) != 1:
-            self.error("Only single-source packages are supported")
+            self.io.write_error_line(
+                "Only single-source packages are supported"
+            )
             return 1
 
+        env = poetry_env.SystemEnv(pathlib.Path(sys.executable))
+        packages, build_pkgs = self._resolve_deps(env, target, root_pkg, [])
+
+        # Build dependency resolution could have changed the
+        # installable dependency list, so we might need to re-run
+        # the non-build-deps resolution.
+        reresolve_deps = self._check_dep_consistency(packages, build_pkgs)
+        if reresolve_deps:
+            packages, build_pkgs = self._resolve_deps(
+                env, target, root_pkg, reresolve_deps
+            )
+
+        # Check again
+        reresolve_deps = self._check_dep_consistency(packages, build_pkgs)
+        if reresolve_deps:
+            self.io.write_error_line(
+                "Unresolveable install-time vs build-time dependency graph. "
+                + "Mismatching dependencies: "
+                + ", ".join(dep.to_pep_508() for dep in reresolve_deps)
+            )
+            return 1
+
+        if keepwork:
+            workdir = tempfile.mkdtemp(prefix="metapkg.")
+        else:
+            tempdir = tempfile.TemporaryDirectory(prefix="metapkg.")
+            workdir = tempdir.name
+
+        os.chmod(workdir, 0o755)
+
+        try:
+            target.build(
+                targets.BuildRequest(
+                    io=self.io,
+                    env=env,
+                    root_pkg=root_pkg,
+                    deps=packages,
+                    build_deps=build_pkgs,
+                    workdir=workdir,
+                    outputdir=destination,
+                    build_source=build_source,
+                    build_debug=build_debug,
+                    revision=revision or "1",
+                    subdist=subdist,
+                    extra_opt=extra_opt,
+                    jobs=jobs or 0,
+                ),
+            )
+        finally:
+            if not keepwork:
+                tempdir.cleanup()
+
+        return 0
+
+    def _resolve_deps(
+        self,
+        env: poetry_env.Env,
+        target: targets.Target,
+        root_pkg: mpkg_base.BundledPackage,
+        extra_deps: list[poetry_dep.Dependency] | None = None,
+    ) -> tuple[list[mpkg_base.BasePackage], list[mpkg_base.BasePackage]]:
         root = project_package.ProjectPackage("__root__", "1")
         root.python_versions = af_python.python_dependency.pretty_constraint
         root.add_dependency(
             poetry_dep.Dependency(root_pkg.name, root_pkg.version)
         )
+        if extra_deps is not None:
+            for extra_dep in extra_deps:
+                root.add_dependency(extra_dep)
         af_repo.bundle_repo.add_package(root)
 
         target_capabilities = target.get_capabilities()
@@ -108,11 +174,12 @@ class Build(base.Command):
         provider = af_repo.Provider(root, repo_pool, self.io, extras=extras)
         resolution = mixology.resolve_version(root, provider)
 
-        env = poetry_env.SystemEnv(pathlib.Path(sys.executable))
-        pkg_map = {}
+        pkg_map: dict[mpkg_base.NormalizedName, mpkg_base.BasePackage] = {}
         graph = {}
         for dep_package in resolution.packages:
-            pkg_map[dep_package.name] = dep_package
+            pkg_map[dep_package.name] = cast(
+                mpkg_base.BasePackage, dep_package
+            )
             deps = {
                 req.name
                 for req in dep_package.requires
@@ -142,7 +209,9 @@ class Build(base.Command):
         pkg_map = {}
         graph = {}
         for dep_package in resolution.packages:
-            pkg_map[dep_package.name] = dep_package
+            pkg_map[dep_package.name] = cast(
+                mpkg_base.BasePackage, dep_package
+            )
             breqs = mpkg_base.get_build_requirements(dep_package)
             deps = {
                 req.name
@@ -198,34 +267,20 @@ class Build(base.Command):
                     build_pkgs[i + 1 : i + 1] = cr_deps
                     break
 
-        if keepwork:
-            workdir = tempfile.mkdtemp(prefix="metapkg.")
-        else:
-            tempdir = tempfile.TemporaryDirectory(prefix="metapkg.")
-            workdir = tempdir.name
+        return packages, build_pkgs
 
-        os.chmod(workdir, 0o755)
+    def _check_dep_consistency(
+        self,
+        packages: list[mpkg_base.BasePackage],
+        build_pkgs: list[mpkg_base.BasePackage],
+    ) -> list[poetry_dep.Dependency]:
+        build_dep_index = {pkg.name: pkg for pkg in build_pkgs}
+        reresolve_deps = []
+        for pkg in packages:
+            build_dep = build_dep_index.get(pkg.name)
+            if build_dep is not None and build_dep.version != pkg.version:
+                reresolve_deps.append(
+                    poetry_dep.Dependency(build_dep.name, build_dep.version)
+                )
 
-        try:
-            target.build(
-                targets.BuildRequest(
-                    io=self.io,
-                    env=env,
-                    root_pkg=root_pkg,
-                    deps=cast(list[mpkg_base.BasePackage], packages),
-                    build_deps=cast(list[mpkg_base.BasePackage], build_pkgs),
-                    workdir=workdir,
-                    outputdir=destination,
-                    build_source=build_source,
-                    build_debug=build_debug,
-                    revision=revision or "1",
-                    subdist=subdist,
-                    extra_opt=extra_opt,
-                    jobs=jobs or 0,
-                ),
-            )
-        finally:
-            if not keepwork:
-                tempdir.cleanup()
-
-        return 0
+        return reresolve_deps
