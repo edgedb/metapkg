@@ -189,6 +189,8 @@ class Build(base.Command):
         sorter = graphlib.TopologicalSorter(graph)
         packages = [pkg_map[pn] for pn in sorter.static_order()]
 
+        af_repo.bundle_repo.remove_package(root)
+
         # Build a separate package list for build deps.
         build_root = project_package.ProjectPackage("__build_root__", "1")
         build_root.python_versions = (
