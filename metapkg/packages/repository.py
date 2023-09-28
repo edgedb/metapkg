@@ -170,7 +170,7 @@ class Provider(poetry_provider.Provider):
 
         for dep in itertools.chain.from_iterable(chain):
             dep_in_extras = {str(e) for e in dep.in_extras}
-            if not (dep_in_extras - self._active_extras):
+            if dep_in_extras and not (dep_in_extras - self._active_extras):
                 dep.activate()
                 pkg.package.add_dependency(dep)
 
