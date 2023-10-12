@@ -313,6 +313,9 @@ class BundledPackage(BasePackage):
             version = "HEAD"
         underscore_v = version.replace(".", "_")
         dash_v = version.replace(".", "-")
+        parts = version.split(".")
+        major_v = parts[0]
+        major_minor_v = ".".join(parts[:2])
         for source in cls.sources:
             if isinstance(source, dict):
                 clsfile = inspect.getsourcefile(cls)
@@ -324,6 +327,8 @@ class BundledPackage(BasePackage):
                     version=version,
                     underscore_version=underscore_v,
                     dash_version=dash_v,
+                    major_v=major_v,
+                    major_minor_v=major_minor_v,
                     dirname=clsdirname,
                     **cls.get_source_url_variables(version),
                 )
