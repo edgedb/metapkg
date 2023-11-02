@@ -39,6 +39,8 @@ class Build(base.Command):
         { --source-ref= : Source version to build (VCS ref or tarball version). }
         { --pkg-revision= : Override package revision number (defaults to 1). }
         { --pkg-subdist= : Set package sub-distribution (e.g. nightly). }
+        { --pkg-tags= : Comma-separated list of key=value pairs to include in
+                        pckage metadata }
         { --extra-optimizations : Enable extra optimization
                                   (increases build times). }
     """
@@ -62,11 +64,18 @@ class Build(base.Command):
         is_release = self.option("release")
         extra_opt = self.option("extra-optimizations")
         jobs = self.option("jobs")
+        tags_string = self.option("pkg-tags")
 
         target = targets.detect_target(
             self.io, portable=generic, libc=libc, arch=arch
         )
         target.prepare()
+
+        if tags_string:
+            tags = {}
+            for pair in tags_string.split(","):
+                k, _, v = pair.strip().partition("=")
+                tags[k.strip()] = v.strip()
 
         modname, _, clsname = pkgname.rpartition(":")
 
@@ -80,6 +89,8 @@ class Build(base.Command):
             is_release=is_release,
             target=target,
         )
+        if tags:
+            root_pkg.set_metadata_tags(tags)
 
         sources = root_pkg.get_sources()
 

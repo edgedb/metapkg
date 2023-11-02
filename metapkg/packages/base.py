@@ -276,6 +276,7 @@ class BundledPackage(BasePackage):
     artifact_build_requirements: list[str | poetry_dep.Dependency] = []
 
     options: dict[str, Any]
+    metadata_tags: dict[str, str]
 
     sources: list[af_sources.SourceDecl]
     resolved_sources: list[af_sources.BaseSource] = []
@@ -638,6 +639,8 @@ class BundledPackage(BasePackage):
         else:
             self.resolved_sources = []
 
+        self.metadata_tags = {}
+
         repository.set_build_requirements(self, self.get_build_requirements())
         self.description = type(self).description
         license_id = type(self).license_id
@@ -895,6 +898,7 @@ class BundledPackage(BasePackage):
             "architecture": build.target.machine_architecture,
             "dist": build.target.ident,
             "channel": build.channel,
+            "tags": self.metadata_tags,
         }
 
         if self.slot:
@@ -931,6 +935,9 @@ class BundledPackage(BasePackage):
             "s": "build_hash",
             "b": "build_type",
         }
+
+    def set_metadata_tags(self, tags: Mapping[str, str]) -> None:
+        self.metadata_tags = dict(tags)
 
 
 class PrePackagedPackage(BundledPackage):
