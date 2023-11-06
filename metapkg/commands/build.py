@@ -71,8 +71,8 @@ class Build(base.Command):
         )
         target.prepare()
 
+        tags = {}
         if tags_string:
-            tags = {}
             for pair in tags_string.split(","):
                 k, _, v = pair.strip().partition("=")
                 tags[k.strip()] = v.strip()
