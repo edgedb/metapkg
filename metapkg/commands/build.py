@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import cast
 
 import collections
+import datetime
 import graphlib
 import importlib
 import os
@@ -142,6 +143,7 @@ class Build(base.Command):
                     outputdir=destination,
                     build_source=build_source,
                     build_debug=build_debug,
+                    build_date=datetime.datetime.now(tz=datetime.timezone.utc),
                     revision=revision or "1",
                     subdist=subdist,
                     extra_opt=extra_opt,

@@ -8,6 +8,7 @@ from typing import (
 )
 
 import collections
+import datetime
 import hashlib
 import os
 import pathlib
@@ -48,6 +49,7 @@ class BuildRequest(NamedTuple):
     outputdir: str | pathlib.Path = ""
     build_source: bool = False
     build_debug: bool = False
+    build_date: datetime.datetime | None = None
     revision: str = "1"
     subdist: str | None = None
     extra_opt: bool = False
@@ -668,6 +670,9 @@ class Build:
         self._build_deps = request.build_deps
         self._build_source = request.build_source
         self._build_debug = request.build_debug
+        self._build_date = request.build_date or datetime.datetime.now(
+            tz=datetime.timezone.utc
+        )
         self._revision = request.revision
         self._subdist = request.subdist
         self._extra_opt = request.extra_opt
@@ -709,6 +714,10 @@ class Build:
     @property
     def revision(self) -> str:
         return self._revision
+
+    @property
+    def build_date(self) -> datetime.datetime:
+        return self._build_date
 
     def get_source_abspath(self) -> pathlib.Path:
         raise NotImplementedError

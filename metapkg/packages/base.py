@@ -894,6 +894,7 @@ class BundledPackage(BasePackage):
             "version": pep440_to_semver(self.version),
             "version_details": self.get_version_details(),
             "revision": build.revision,
+            "build_date": build.build_date.isoformat(),
             "target": build.target.triple,
             "architecture": build.target.machine_architecture,
             "dist": build.target.ident,
