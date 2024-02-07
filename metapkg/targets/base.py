@@ -1240,6 +1240,14 @@ class Build:
                     io=self._io,
                 )
 
+    def get_tarball(
+        self,
+        pkg: mpkg_base.BasePackage,
+        *,
+        relative_to: Location,
+    ) -> pathlib.Path:
+        return self.get_dir(self._tarballs[pkg], relative_to=relative_to)
+
     def prepare_patches(self) -> None:
         patches_dir = self.get_patches_root(relative_to="fsroot")
 
