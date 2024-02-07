@@ -23,9 +23,9 @@ class MacOSBuild(generic.Build):
         else:
             dash_j = f"-j{self._jobs}"
         gmake = self._find_tool("gmake")
-        self._system_tools[
-            "make"
-        ] = f"env -u MAKELEVEL {gmake} {dash_j} SHELL={bash}"
+        self._system_tools["make"] = (
+            f"env -u MAKELEVEL {gmake} {dash_j} SHELL={bash}"
+        )
         self._system_tools["sed"] = self._find_tool("gsed")
         self._system_tools["tar"] = self._find_tool("gtar")
 

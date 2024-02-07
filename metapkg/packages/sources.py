@@ -431,9 +431,10 @@ class GitSource(BaseSource):
         target_tarball: pathlib.Path,
     ) -> None:
         if platform.system() != "Linux":
-            with tarfile.open(source_tarball) as modf, tarfile.open(
-                target_tarball, "a"
-            ) as tf:
+            with (
+                tarfile.open(source_tarball) as modf,
+                tarfile.open(target_tarball, "a") as tf,
+            ):
                 for m in modf.getmembers():
                     if m.issym():
                         # Skip broken symlinks.

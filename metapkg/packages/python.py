@@ -278,9 +278,8 @@ def get_build_requires_from_srcdir(
     deps = []
     for req in sys_reqs | pkg_reqs:
         dep = python_dependency_from_pep_508(req)
-        # Make sure "wheel" is not a dependency of itself and
-        # also elide setuptools, because it is always installed.
-        if dep.name == "pypkg-setuptools" or (
+        # Make sure "wheel" is not a dependency of itself.
+        if (
             package.name in {"pypkg-wheel", "pypkg-setuptools"}
             and dep.name == "pypkg-wheel"
         ):
@@ -292,6 +291,15 @@ def get_build_requires_from_srcdir(
     deps.extend(package.get_build_requirements())
 
     return deps
+
+
+def is_build_system_bootstrap_package(
+    pkgname: str,
+) -> bool:
+    return pkgname in {
+        "wheel",
+        "setuptools",
+    }
 
 
 class BasePythonPackage(base.BasePackage):
@@ -347,8 +355,9 @@ class BasePythonPackage(base.BasePackage):
         dep_names = [dep.name for dep in base.get_build_requirements(self)]
         build_deps = build.get_packages(dep_names)
 
-        if pkgname == "wheel":
-            build_command = f'"{src_python}" setup.py sdist -d ${{_wheeldir}}'
+        if is_build_system_bootstrap_package(pkgname):
+            tarball = build.get_tarball(self, relative_to="pkgsource")
+            build_command = f'cp "{tarball}" ${{_wheeldir}}/{pkgname}-{self.version}.tar.gz'
             binary = False
         else:
             args = [
@@ -445,10 +454,7 @@ class BasePythonPackage(base.BasePackage):
             if pkgname.startswith("pypkg-"):
                 pkgname = pkgname[len("pypkg-") :]
 
-        if pkgname == "wheel":
-            binary = False
-        else:
-            binary = True
+        binary = not is_build_system_bootstrap_package(pkgname)
 
         env = {
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",

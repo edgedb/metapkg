@@ -626,9 +626,9 @@ class BundledPackage(BasePackage):
 
         if reqs:
             if poetry_depgroup.MAIN_GROUP not in self._dependency_groups:
-                self._dependency_groups[
-                    poetry_depgroup.MAIN_GROUP
-                ] = poetry_depgroup.DependencyGroup(poetry_depgroup.MAIN_GROUP)
+                self._dependency_groups[poetry_depgroup.MAIN_GROUP] = (
+                    poetry_depgroup.DependencyGroup(poetry_depgroup.MAIN_GROUP)
+                )
 
             main_group = self._dependency_groups[poetry_depgroup.MAIN_GROUP]
             for req in reqs:
@@ -711,20 +711,17 @@ class BundledPackage(BasePackage):
     @overload
     def read_support_files(
         self, build: targets.Build, file_glob: str, binary: Literal[False]
-    ) -> dict[str, str]:
-        ...
+    ) -> dict[str, str]: ...
 
     @overload
     def read_support_files(
         self, build: targets.Build, file_glob: str
-    ) -> dict[str, str]:
-        ...
+    ) -> dict[str, str]: ...
 
     @overload
     def read_support_files(
         self, build: targets.Build, file_glob: str, binary: Literal[True]
-    ) -> dict[str, bytes]:
-        ...
+    ) -> dict[str, bytes]: ...
 
     def read_support_files(
         self, build: targets.Build, file_glob: str, binary: bool = False
@@ -1075,9 +1072,9 @@ class BundledCPackage(BuildSystemMakePackage):
             build.sh_append_flags(configure_flags, f"LDFLAGS", ldflags)
 
         elif build.is_stdlib(pkg):
-            configure_flags[
-                f"{var_prefix}_CFLAGS"
-            ] = f"-D_{var_prefix}_IS_SYSLIB"
+            configure_flags[f"{var_prefix}_CFLAGS"] = (
+                f"-D_{var_prefix}_IS_SYSLIB"
+            )
             std_ldflags = []
             for shlib in pkg.get_shlibs(build):
                 std_ldflags.append(f"-l{shlib}")
