@@ -7,6 +7,7 @@ import graphlib
 import importlib
 import os
 import pathlib
+import resource
 import sys
 import tempfile
 
@@ -66,6 +67,14 @@ class Build(base.Command):
         extra_opt = self.option("extra-optimizations")
         jobs = self.option("jobs")
         tags_string = self.option("pkg-tags")
+
+        # Older yum, fakeroot and possibly other tools
+        # customarily attempt to iterate over _all_
+        # file descriptors up to the limit and close them
+        # when forking subprocesses, which in the case of
+        # a high limit may be prohibitively expensive,
+        # so clamp RLIMIT_NOFILE to a lower value.
+        self._clamp_rlimit_nofile()
 
         target = targets.detect_target(
             self.io, portable=generic, libc=libc, arch=arch
@@ -299,3 +308,18 @@ class Build(base.Command):
                 )
 
         return reresolve_deps
+
+    def _clamp_rlimit_nofile(self) -> None:
+        try:
+            fno_soft, fno_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        except resource.error:
+            self.io.write_warning_line('could not read RLIMIT_NOFILE')
+        else:
+            if fno_soft > 8192 or fno_hard > 8192:
+                try:
+                    resource.setrlimit(
+                        resource.RLIMIT_NOFILE,
+                        (min(8192, fno_soft), min(8192, fno_hard)),
+                    )
+                except resource.error:
+                    self.io.write_warning_line('could not read RLIMIT_NOFILE')
