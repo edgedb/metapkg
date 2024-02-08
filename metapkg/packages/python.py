@@ -388,7 +388,7 @@ class BasePythonPackage(base.BasePackage):
             )
 
             if cflags:
-                build.sh_append_flags(env, "CFLAGS", cflags)
+                build.sh_append_quoted_flags(env, "CFLAGS", cflags)
 
             ldflags = build.sh_get_bundled_shlibs_ldflags(
                 build_deps,
@@ -396,7 +396,7 @@ class BasePythonPackage(base.BasePackage):
             )
 
             if ldflags:
-                build.sh_append_flags(env, "LDFLAGS", ldflags)
+                build.sh_append_quoted_ldflags(env, ldflags)
 
             binary = True
 
