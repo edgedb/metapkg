@@ -1173,7 +1173,7 @@ class Build:
             if bundled_tools:
                 self._tools.update(bundled_tools)
 
-        source_dirs = [pathlib.Path(helpers_pkg.__path__[0])]
+        source_dirs = [pathlib.Path(next(iter(helpers_pkg.__path__)))]
         mod_file = sys.modules[self.__module__].__file__
         assert mod_file is not None
         specific_helpers = pathlib.Path(mod_file).parent / "_helpers"
@@ -1465,17 +1465,23 @@ class Build:
     ) -> str:
         return '" "'.join(filter(None, flags))
 
+    def sh_quote_flags(
+        self,
+        flags: list[str] | tuple[str, ...],
+    ) -> list[str]:
+        return [shlex.quote(f) for f in flags if f]
+
     def sh_format_flags(
         self,
         flags: list[str] | tuple[str, ...],
     ) -> str:
-        return self.sh_join_flags([shlex.quote(f) for f in flags if f])
+        return self.sh_join_flags(self.sh_quote_flags(flags))
 
     def sh_get_bundled_shlib_ldflags(
         self,
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
-    ) -> str:
+    ) -> list[str]:
         flags = []
 
         assert self.is_bundled(pkg)
@@ -1501,32 +1507,32 @@ class Build:
                 )
 
             for shlib in pkg.get_shlibs(self):
-                flags.append(f"-l{shlib}")
+                flags.append(f"-l{shlex.quote(shlib)}")
 
-        return self.sh_join_flags(flags)
+        return flags
 
     def sh_get_bundled_shlibs_ldflags(
         self,
         deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
-    ) -> str:
+    ) -> list[str]:
         flags = []
 
         for pkg in deps:
             if self.is_bundled(pkg):
-                flags.append(
+                flags.extend(
                     self.sh_get_bundled_shlib_ldflags(
                         pkg, relative_to=relative_to
                     )
                 )
 
-        return self.sh_join_flags(flags)
+        return flags
 
     def sh_get_bundled_shlib_cflags(
         self,
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
-    ) -> str:
+    ) -> list[str]:
         flags = []
 
         assert self.is_bundled(pkg)
@@ -1536,61 +1542,41 @@ class Build:
             inc_path = root_path / include_path.relative_to("/")
             flags.append(f"-I$(pwd -P)/{shlex.quote(str(inc_path))}")
 
-        return self.sh_join_flags(flags)
+        return flags
 
     def sh_get_bundled_shlibs_cflags(
         self,
         deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
-    ) -> str:
+    ) -> list[str]:
         flags = []
 
         for pkg in deps:
             if self.is_bundled(pkg):
-                flags.append(
+                flags.extend(
                     self.sh_get_bundled_shlib_cflags(
                         pkg, relative_to=relative_to
                     )
                 )
 
-        return self.sh_join_flags(flags)
+        return flags
 
     def sh_append_global_flags(
         self,
         args: Mapping[str, str | pathlib.Path | None] | None = None,
-        flag_names: Mapping[str, str] | None = None,
     ) -> dict[str, str | pathlib.Path | None]:
         global_cflags = self.target.get_global_cflags(self)
         global_cxxflags = self.target.get_global_cxxflags(self)
         global_ldflags = self.target.get_global_ldflags(self)
         if args is None:
             args = {}
-        flag_name_map = {
-            "CFLAGS": "CFLAGS",
-            "CXXFLAGS": "CXXFLAGS",
-            "LDFLAGS": "LDFLAGS",
-            "RUSTFLAGS": "RUSTFLAGS",
-        }
-        flag_name_map.update(flag_names or {})
         conf_args = dict(args)
         if global_cflags:
-            self.sh_append_flags(
-                conf_args, flag_name_map["CFLAGS"], global_cflags
-            )
+            self.sh_append_flags(conf_args, "CFLAGS", global_cflags)
         if global_cxxflags:
-            self.sh_append_flags(
-                conf_args, flag_name_map["CXXFLAGS"], global_cxxflags
-            )
+            self.sh_append_flags(conf_args, "CXXFLAGS", global_cxxflags)
         if global_ldflags:
-            self.sh_append_flags(
-                conf_args, flag_name_map["LDFLAGS"], global_ldflags
-            )
-            rust_ldflags = []
-            for f in global_ldflags:
-                rust_ldflags.extend(["-C", f"link-arg={f}"])
-            self.sh_append_flags(
-                conf_args, flag_name_map["RUSTFLAGS"], rust_ldflags
-            )
+            self.sh_append_ldflags(conf_args, global_ldflags)
         return conf_args
 
     def sh_append_run_time_ldflags(
@@ -1607,9 +1593,9 @@ class Build:
                 )
             )
         if ldflags:
-            self.sh_append_flags(args, "LDFLAGS", ldflags)
+            self.sh_append_quoted_ldflags(args, ldflags)
 
-    def sh_append_flags(
+    def sh_append_quoted_flags(
         self,
         args: dict[str, str | pathlib.Path | None],
         key: str,
@@ -1618,7 +1604,7 @@ class Build:
         if isinstance(flags, str):
             flags_line = flags
         else:
-            flags_line = self.sh_format_flags(flags)
+            flags_line = self.sh_join_flags(flags)
         existing_flags = args.get(key)
         if existing_flags:
             assert isinstance(existing_flags, str)
@@ -1629,6 +1615,32 @@ class Build:
             args[key] = self.sh_join_flags([existing_flags, flags_line])
         else:
             args[key] = "!" + flags_line
+
+    def sh_append_flags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        flags: list[str] | tuple[str, ...],
+    ) -> None:
+        self.sh_append_quoted_flags(args, key, self.sh_quote_flags(flags))
+
+    def sh_append_quoted_ldflags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        flags: list[str] | tuple[str, ...],
+    ) -> None:
+        self.sh_append_quoted_flags(args, "LDFLAGS", flags)
+        rust_ldflags = []
+        for f in flags:
+            rust_ldflags.extend(["-C", f"link-arg={f}"])
+        self.sh_append_quoted_flags(args, "RUSTFLAGS", rust_ldflags)
+
+    def sh_append_ldflags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        flags: list[str] | tuple[str, ...],
+    ) -> None:
+        self.sh_append_quoted_ldflags(args, self.sh_quote_flags(flags))
 
     def sh_configure(
         self,

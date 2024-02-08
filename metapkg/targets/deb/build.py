@@ -11,6 +11,8 @@ import stat
 import subprocess
 import textwrap
 
+from cleo.io.outputs import stream_output as cleo_io_stream_output
+
 from metapkg import packages
 from metapkg import targets
 from metapkg import tools
@@ -598,12 +600,15 @@ class Build(targets.Build):
         else:
             workdir = self.get_source_abspath()
 
+        output = self._io.output
+        assert isinstance(output, cleo_io_stream_output.StreamOutput)
+
         tools.cmd(
             "apt-get",
             "update",
             env=env,
             cwd=str(workdir),
-            stdout=self._io.output.stream,
+            stdout=output.stream,
             stderr=subprocess.STDOUT,
         )
 
@@ -616,7 +621,7 @@ class Build(targets.Build):
             "devscripts",
             env=env,
             cwd=str(workdir),
-            stdout=self._io.output.stream,
+            stdout=output.stream,
             stderr=subprocess.STDOUT,
         )
 
@@ -628,7 +633,7 @@ class Build(targets.Build):
             str(self._debroot / "control"),
             env=env,
             cwd="/tmp",
-            stdout=self._io.output.stream,
+            stdout=output.stream,
             stderr=subprocess.STDOUT,
         )
 
@@ -640,7 +645,7 @@ class Build(targets.Build):
             "dpkg-buildpackage",
             *args,
             cwd=str(workdir),
-            stdout=self._io.output.stream,
+            stdout=output.stream,
             stderr=subprocess.STDOUT,
         )
 

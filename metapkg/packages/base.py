@@ -338,7 +338,7 @@ class BundledPackage(BasePackage):
                     if "version" not in extras:
                         extras["version"] = version
                 else:
-                    extras = {"version": version}
+                    extras = af_sources.SourceExtraDecl({"version": version})
 
                 if "vcs_version" not in extras:
                     extras["vcs_version"] = cls.to_vcs_version(
@@ -1037,29 +1037,28 @@ class BundledCPackage(BuildSystemMakePackage):
             )
 
             if var_prefix:
-                build.sh_append_flags(
+                build.sh_append_quoted_flags(
                     configure_flags,
                     f"{var_prefix}_CFLAGS",
-                    f"-I{rel_path}/include/",
+                    [f"-I{rel_path}/include/"],
                 )
-                build.sh_append_flags(
+                build.sh_append_quoted_flags(
                     configure_flags,
                     f"{var_prefix}_LIBS",
                     dep_ldflags,
                 )
             else:
-                build.sh_append_flags(
+                build.sh_append_quoted_flags(
                     configure_flags,
                     "CFLAGS",
-                    f"-I{rel_path}/include/",
+                    [f"-I{rel_path}/include/"],
                 )
-                build.sh_append_flags(
+                build.sh_append_quoted_ldflags(
                     configure_flags,
-                    f"LDFLAGS",
                     dep_ldflags,
                 )
 
-            ldflags = f"-L{rel_path}/lib/"
+            ldflags = [f"-L{rel_path}/lib/"]
 
             if platform.system() == "Darwin":
                 # In case ./configure tries to compile and test a program
@@ -1067,9 +1066,9 @@ class BundledCPackage(BuildSystemMakePackage):
                 # at its install_name location.
                 configure_flags["DYLD_FALLBACK_LIBRARY_PATH"] = root
             else:
-                ldflags += f'" "-Wl,-rpath-link,{rel_path}/lib'
+                ldflags.append(f"-Wl,-rpath-link,{rel_path}/lib")
 
-            build.sh_append_flags(configure_flags, f"LDFLAGS", ldflags)
+            build.sh_append_quoted_ldflags(configure_flags, ldflags)
 
         elif build.is_stdlib(pkg):
             configure_flags[f"{var_prefix}_CFLAGS"] = (
