@@ -70,7 +70,7 @@ def _rpm_version_to_pep440(rpmver: str) -> str:
             version += "."
             version += part.translate(_version_trans)
         else:
-            part_m = re.match(r"^([0-9]*)(.*)$", part)
+            part_m = re.match(r"^([0-9]*)([A-Za-z]*)(.*)$", part)
             if not part_m:
                 raise ValueError(f"unexpected RPM package version: {rpmver}")
 
@@ -79,7 +79,13 @@ def _rpm_version_to_pep440(rpmver: str) -> str:
                     version += "."
                 version += part_m.group(1)
 
-            rest = part_m.group(2)
+            alnum = part_m.group(2)
+            if alnum:
+                # special handling for OpenSSL-like versions, e.g 1.1.1f
+                for char in alnum:
+                    version += f".{ord(char)}"
+
+            rest = part_m.group(3)
             if rest:
                 if rest[0] in "+-~":
                     rest = rest[1:]
