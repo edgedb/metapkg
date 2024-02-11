@@ -352,8 +352,7 @@ class BasePythonPackage(base.BasePackage):
             }
         )
 
-        dep_names = [dep.name for dep in base.get_build_requirements(self)]
-        build_deps = build.get_packages(dep_names)
+        build_deps = build.get_bundled_build_reqs(self)
 
         if is_build_system_bootstrap_package(pkgname):
             tarball = build.get_tarball(self, relative_to="pkgsource")
@@ -400,7 +399,7 @@ class BasePythonPackage(base.BasePackage):
 
             binary = True
 
-        all_build_deps = build.get_packages(dep_names, recursive=True)
+        all_build_deps = build.get_bundled_build_reqs(self, recursive=True)
         env_str = build.sh_format_command("env", env, force_args_eq=True)
         env_str += " " + " ".join(build.get_ld_env(all_build_deps, "${_wd}"))
 

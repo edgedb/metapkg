@@ -53,9 +53,9 @@ canonicalize_name = packaging.utils.canonicalize_name
 NormalizedName = packaging.utils.NormalizedName
 
 
-class DummyPackage(poetry_pkg.Package):
+class AliasPackage(poetry_pkg.Package):
     def __repr__(self) -> str:
-        return "<DummyPackage {}>".format(self.unique_name)
+        return "<AliasPackage {}>".format(self.unique_name)
 
 
 class PackageFileLayout(enum.IntEnum):
@@ -656,7 +656,7 @@ class BundledPackage(BasePackage):
 
         if self.aliases:
             for alias in self.aliases:
-                pkg = DummyPackage(name=alias, version=self.version)
+                pkg = AliasPackage(name=alias, version=self.version)
                 pkg.add_dependency(
                     poetry_dep.Dependency(self.name, self.version)
                 )

@@ -10,6 +10,7 @@ from typing import (
 import collections
 import datetime
 import hashlib
+import itertools
 import os
 import pathlib
 import re
@@ -681,7 +682,7 @@ class Build:
             pkg
             for pkg in self._build_deps
             if not isinstance(
-                pkg, (tgt_pkg.SystemPackage, mpkg_base.DummyPackage)
+                pkg, (tgt_pkg.SystemPackage, mpkg_base.AliasPackage)
             )
             and pkg is not self._root_pkg
         ]
@@ -732,12 +733,11 @@ class Build:
         raise NotImplementedError
 
     def get_package(self, name: str) -> mpkg_base.BasePackage:
-        for pkg in self._deps:
+        for pkg in itertools.chain(self._deps, self._build_deps):
             if pkg.name == name:
-                return pkg
-
-        for pkg in self._build_deps:
-            if pkg.name == name:
+                if isinstance(pkg, mpkg_base.AliasPackage):
+                    aliased = next(iter(pkg.all_requires))
+                    pkg = self.get_package(aliased.name)
                 return pkg
 
         raise LookupError(f"package not found: {name}")
@@ -788,6 +788,15 @@ class Build:
             packages.add(package)
 
         return packages
+
+    def get_bundled_build_reqs(
+        self,
+        pkg: mpkg_base.BasePackage,
+        *,
+        recursive: bool = False,
+    ) -> set[mpkg_base.BasePackage]:
+        dep_names = [dep.name for dep in mpkg_base.get_build_requirements(pkg)]
+        return self.get_packages(dep_names, recursive=recursive)
 
     def is_bundled(self, pkg: mpkg_base.BasePackage) -> bool:
         return pkg in self._bundled
