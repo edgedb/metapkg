@@ -948,7 +948,8 @@ class BuildSystemMakePackage(BundledPackage):
         return self.get_make_command(build, target)
 
     def get_make_command(self, build: targets.Build, target: str) -> str:
-        make = build.sh_get_command("make")
+        args = self.get_make_args(build)
+        make = build.sh_get_command("make", args=args)
         env = self.get_make_env(build, "$(pwd)")
 
         return textwrap.dedent(
@@ -957,11 +958,23 @@ class BuildSystemMakePackage(BundledPackage):
             """
         )
 
+    def get_make_args(
+        self,
+        build: targets.Build,
+    ) -> Mapping[str, str | pathlib.Path | None]:
+        return {}
+
     def get_make_env(self, build: targets.Build, wd: str) -> str:
         return ""
 
     def get_make_target(self, build: targets.Build) -> str:
         return ""
+
+    def get_make_install_args(
+        self,
+        build: targets.Build,
+    ) -> Mapping[str, str | pathlib.Path | None]:
+        return {}
 
     def get_make_install_env(self, build: targets.Build, wd: str) -> str:
         return self.get_make_env(build, wd)
@@ -982,7 +995,8 @@ class BuildSystemMakePackage(BundledPackage):
         install_target = self.get_make_install_target(build)
 
         if install_target:
-            make = build.sh_get_command("make")
+            args = self.get_make_install_args(build)
+            make = build.sh_get_command("make", args=args)
             env = self.get_make_install_env(build, "$(pwd)")
             destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
             script += "\n" + textwrap.dedent(
@@ -1091,8 +1105,6 @@ class BundledCPackage(BuildSystemMakePackage):
         install_target = self.get_make_install_target(build)
 
         if install_target:
-            make = build.sh_get_command("make")
-            env = self.get_make_install_env(build, "$(pwd)")
             destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
             libdir = build.get_install_path("lib")
             script += "\n" + textwrap.dedent(
