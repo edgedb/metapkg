@@ -7,7 +7,6 @@ import graphlib
 import importlib
 import os
 import pathlib
-import resource
 import sys
 import tempfile
 
@@ -311,15 +310,22 @@ class Build(base.Command):
 
     def _clamp_rlimit_nofile(self) -> None:
         try:
-            fno_soft, fno_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        except resource.error:
-            self.io.write_warning_line('could not read RLIMIT_NOFILE')
+            import resource
+        except ImportError:
+            pass
         else:
-            if fno_soft > 8192 or fno_hard > 8192:
-                try:
-                    resource.setrlimit(
-                        resource.RLIMIT_NOFILE,
-                        (min(8192, fno_soft), min(8192, fno_hard)),
-                    )
-                except resource.error:
-                    self.io.write_warning_line('could not read RLIMIT_NOFILE')
+            try:
+                fno_soft, fno_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+            except resource.error:
+                self.io.write_warning_line("could not read RLIMIT_NOFILE")
+            else:
+                if fno_soft > 8192 or fno_hard > 8192:
+                    try:
+                        resource.setrlimit(
+                            resource.RLIMIT_NOFILE,
+                            (min(8192, fno_soft), min(8192, fno_hard)),
+                        )
+                    except resource.error:
+                        self.io.write_warning_line(
+                            "could not read RLIMIT_NOFILE"
+                        )
