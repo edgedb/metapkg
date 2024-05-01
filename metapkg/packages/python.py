@@ -273,7 +273,13 @@ def get_build_requires_from_srcdir(
         )
         sys_reqs = builder.build_system_requires
         env.install(sys_reqs)
-        pkg_reqs = builder.get_requires_for_build("wheel")
+        if package.name == "pypkg-setuptools":
+            # get_requires_for_build crashes on setuptools with
+            # 'MinimalDistribution' object has no attribute 'entry_points'
+            # but we know that setuptools has no external build deps
+            pkg_reqs = set()
+        else:
+            pkg_reqs = builder.get_requires_for_build("wheel")
 
     deps = []
     for req in sys_reqs | pkg_reqs:
