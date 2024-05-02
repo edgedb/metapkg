@@ -63,7 +63,13 @@ def update_repo(
     if ref == "HEAD":
         ref = None
 
-    GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
+    try:
+        GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
+    except Exception as e:
+        print('exception while cloning')
+        print(type(e))
+        print(e)
+        raise e
     repo_dir = repodir(repo_url)
     repo = Git(repo_dir)
     args: tuple[str | pathlib.Path, ...]
