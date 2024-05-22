@@ -182,7 +182,7 @@ class Build(base.Command):
         af_repo.bundle_repo.add_package(root)
 
         target_capabilities = target.get_capabilities()
-        extras = [f"capability-{c}" for c in target_capabilities]
+        extras = [f"capability-{c}" for c in target_capabilities] + list(root_pkg.features)
 
         repo_pool = af_repo.Pool()
         repo_pool.add_repository(target.get_package_repository())
