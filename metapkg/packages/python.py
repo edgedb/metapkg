@@ -273,6 +273,12 @@ def get_build_requires_from_srcdir(
         )
         sys_reqs = builder.build_system_requires
         env.install(sys_reqs)
+        if package.name == "pypkg-setuptools-rust":
+            # setuptools-rust depends on semantic-version and since
+            # the former installs itself as a setuptools plugin the
+            # get_requires_for_build() hook somehow fails miserably
+            # (possibly due to https://github.com/pypa/setuptools/issues/4417)
+            env.install(["semantic-version"])
         if package.name == "pypkg-setuptools":
             # get_requires_for_build crashes on setuptools with
             # 'MinimalDistribution' object has no attribute 'entry_points'
