@@ -19,6 +19,7 @@ setup(
     install_requires=[
         "build~=1.2.1",
         "distro~=1.9.0",
+        "packaging>=24.1",
         "requests~=2.31.0",
         "poetry~=1.2.0",
         "distlib~=0.3.8",
