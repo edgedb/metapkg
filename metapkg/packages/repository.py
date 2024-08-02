@@ -12,12 +12,12 @@ import pathlib
 import packaging.utils
 
 from poetry.repositories import exceptions as poetry_repo_exc
-from poetry.repositories import pool as poetry_pool
+from poetry.repositories import repository_pool as poetry_pool
 from poetry.repositories import repository as poetry_repo
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import vcs_dependency as poetry_vcsdep
-from poetry.core.semver import version as poetry_version
+from poetry.core.constraints import version as poetry_version
 from poetry.packages import dependency_package as poetry_deppkg
 from poetry.core.packages import package as poetry_pkg
 from poetry.mixology import incompatibility as poetry_incompat
@@ -30,38 +30,39 @@ if TYPE_CHECKING:
     from cleo.io import io as cleo_io
 
 
-class Pool(poetry_pool.Pool):
-    def package(
-        self,
-        name: str,
-        version: poetry_version.Version,
-        extras: list[str] | None = None,
-        repository: str | None = None,
-    ) -> poetry_pkg.Package:
-        for repo in self.repositories:
-            try:
-                package = repo.package(name, version, extras=extras)
-            except poetry_repo_exc.PackageNotFound:
-                continue
+class Pool(poetry_pool.RepositoryPool):
+    pass
+    # def _package(
+    #     self,
+    #     name: str,
+    #     version: poetry_version.Version,
+    #     extras: list[str] | None = None,
+    #     repository_name: str | None = None,
+    # ) -> poetry_pkg.Package:
+    #     for repo in self.repositories:
+    #         try:
+    #             package = repo.package(name, version, extras=extras)
+    #         except poetry_repo_exc.PackageNotFound:
+    #             continue
 
-            if package:
-                self._packages.append(package)
+    #         if package:
+    #             self._packages.append(package)
 
-                return package
+    #             return package
 
-        raise poetry_repo_exc.PackageNotFound(
-            f"Package {name} ({version}) not found."
-        )
+    #     raise poetry_repo_exc.PackageNotFound(
+    #         f"Package {name} ({version}) not found."
+    #     )
 
-    def find_packages(
-        self, dependency: poetry_dep.Dependency
-    ) -> list[poetry_pkg.Package]:
-        for repo in self.repositories:
-            packages = repo.find_packages(dependency)
-            if packages:
-                return packages
+    # def find_packages(
+    #     self, dependency: poetry_dep.Dependency
+    # ) -> list[poetry_pkg.Package]:
+    #     for repo in self.repositories:
+    #         packages = repo.find_packages(dependency)
+    #         if packages:
+    #             return packages
 
-        return []
+    #     return []
 
 
 class BundleRepository(poetry_repo.Repository):
@@ -80,10 +81,12 @@ class Provider(poetry_provider.Provider):
         pool: poetry_pool.Pool,
         io: cleo_io.IO,
         *,
+        installed: list[poetry_pkg.Package] | None = None,
+        locked: list[poetry_pkg.Package] | None = None,
         include_build_reqs: bool = False,
         extras: list[str] | None = None,
     ) -> None:
-        super().__init__(package, pool, io)
+        super().__init__(package, pool, io, installed=installed, locked=locked)
         self.include_build_reqs = include_build_reqs
         self._active_extras = set(extras) if extras else set()
 
@@ -93,7 +96,7 @@ class Provider(poetry_provider.Provider):
     ) -> poetry_pkg.Package:
         from . import python
 
-        pkg = self.get_package_from_vcs(
+        pkg = self._direct_origin.get_package_from_vcs(
             dependency.vcs,
             dependency.source,
             branch=dependency.branch,
