@@ -311,6 +311,7 @@ def is_build_system_bootstrap_package(
     return pkgname in {
         "wheel",
         "setuptools",
+        "maturin",
     }
 
 
