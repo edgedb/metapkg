@@ -7,6 +7,8 @@ from typing import (
 import pathlib
 import subprocess
 
+from dulwich import repo as dulwich_repo
+
 from poetry.core.vcs import git as core_git
 from poetry.vcs import git as poetry_git
 
@@ -62,6 +64,19 @@ def update_repo(
 ) -> pathlib.Path:
     if ref == "HEAD":
         ref = None
+
+    if not clean_checkout:
+        checkout = (
+            GitBackend.get_default_source_root()
+            / GitBackend.get_name_from_source_url(repo_url)
+        )
+
+        if checkout.exists() and (
+            GitBackend.get_remote_url(dulwich_repo.Repo(str(checkout)))
+            != repo_url
+        ):
+            # Origin URL has changed, perform a full clone.
+            clean_checkout = True
 
     GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
     repo_dir = repodir(repo_url)
