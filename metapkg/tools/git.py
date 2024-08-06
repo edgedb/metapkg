@@ -71,12 +71,13 @@ def update_repo(
             / GitBackend.get_name_from_source_url(repo_url)
         )
 
-        if checkout.exists() and (
-            GitBackend.get_remote_url(dulwich_repo.Repo(str(checkout)))
-            != repo_url
-        ):
-            # Origin URL has changed, perform a full clone.
-            clean_checkout = True
+        if checkout.exists():
+            cache_remote_url = GitBackend.get_remote_url(
+                dulwich_repo.Repo(str(checkout)),
+            )
+            if cache_remote_url != repo_url:
+                # Origin URL has changed, perform a full clone.
+                clean_checkout = True
 
     GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
     repo_dir = repodir(repo_url)
