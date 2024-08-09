@@ -626,8 +626,12 @@ class BundledPackage(BasePackage):
                 f"{type(self)!r} does not define the required "
                 f"title attribute"
             )
+        if not isinstance(version, poetry_version.Version):
+            self._pretty_version = pretty_version or version
+        else:
+            self._pretty_version = pretty_version or version.text
 
-        super().__init__(self.name, version, pretty_version=pretty_version)
+        super().__init__(self.name, version)
 
         if requires is not None:
             reqs = list(requires)
@@ -675,6 +679,10 @@ class BundledPackage(BasePackage):
                     poetry_dep.Dependency(self.name, self.version)
                 )
                 repository.bundle_repo.add_package(pkg)
+
+    @property
+    def pretty_version(self) -> str:
+        return self._pretty_version
 
     def get_requirements(self) -> list[poetry_dep.Dependency]:
         reqs = []
