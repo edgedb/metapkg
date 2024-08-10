@@ -373,7 +373,7 @@ class Build(targets.Build):
         tools.cmd(
             *command,
             cwd=str(self._srcroot),
-            stdout=self._io.output.stream,
+            stdout=self.stream,
             stderr=subprocess.STDOUT,
         )
 
