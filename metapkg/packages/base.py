@@ -31,9 +31,8 @@ import packaging.utils
 from poetry.core.packages import dependency as poetry_dep
 from poetry.core.packages import dependency_group as poetry_depgroup
 from poetry.core.packages import package as poetry_pkg
-from poetry.core.semver import version as poetry_version
 from poetry.core.version import pep440 as poetry_pep440
-from poetry.core.constraints import version as poetry_constr
+from poetry.core.constraints import version as poetry_version
 from poetry.core.version.pep440 import segments as poetry_pep440_segments
 from poetry.core.spdx import helpers as poetry_spdx_helpers
 
@@ -51,6 +50,7 @@ get_build_requirements = repository.get_build_requirements
 set_build_requirements = repository.set_build_requirements
 canonicalize_name = packaging.utils.canonicalize_name
 NormalizedName = packaging.utils.NormalizedName
+all_requires_include_build_reqs: bool = False
 
 
 class AliasPackage(poetry_pkg.Package):
@@ -253,6 +253,15 @@ class BasePackage(poetry_pkg.Package):
     def get_package_layout(self, build: targets.Build) -> PackageFileLayout:
         return PackageFileLayout.REGULAR
 
+    @property
+    def all_requires(
+        self,
+    ) -> list[poetry_dep.Dependency]:
+        if all_requires_include_build_reqs:
+            return super().all_requires + get_build_requirements(self)
+        else:
+            return super().all_requires
+
 
 BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
@@ -272,7 +281,7 @@ class BundledPackage(BasePackage):
     artifact_requirements: Union[
         list[str | poetry_dep.Dependency],
         dict[
-            str | poetry_constr.VersionConstraint,
+            str | poetry_version.VersionConstraint,
             list[str | poetry_dep.Dependency],
         ],
     ] = []
@@ -617,8 +626,12 @@ class BundledPackage(BasePackage):
                 f"{type(self)!r} does not define the required "
                 f"title attribute"
             )
+        if not isinstance(version, poetry_version.Version):
+            self._pretty_version = pretty_version or version
+        else:
+            self._pretty_version = pretty_version or version.text
 
-        super().__init__(self.name, version, pretty_version=pretty_version)
+        super().__init__(self.name, version)
 
         if requires is not None:
             reqs = list(requires)
@@ -628,9 +641,11 @@ class BundledPackage(BasePackage):
         reqs.extend(self.get_requirements())
 
         if reqs:
-            if poetry_depgroup.MAIN_GROUP not in self._dependency_groups:
-                self._dependency_groups[poetry_depgroup.MAIN_GROUP] = (
-                    poetry_depgroup.DependencyGroup(poetry_depgroup.MAIN_GROUP)
+            if not self.has_dependency_group(poetry_depgroup.MAIN_GROUP):
+                self.add_dependency_group(
+                    poetry_depgroup.DependencyGroup(
+                        poetry_depgroup.MAIN_GROUP
+                    ),
                 )
 
             main_group = self._dependency_groups[poetry_depgroup.MAIN_GROUP]
@@ -665,6 +680,10 @@ class BundledPackage(BasePackage):
                 )
                 repository.bundle_repo.add_package(pkg)
 
+    @property
+    def pretty_version(self) -> str:
+        return self._pretty_version
+
     def get_requirements(self) -> list[poetry_dep.Dependency]:
         reqs = []
 
@@ -673,7 +692,7 @@ class BundledPackage(BasePackage):
         if isinstance(self.artifact_requirements, dict):
             for ver, ver_reqs in self.artifact_requirements.items():
                 if isinstance(ver, str):
-                    ver = poetry_constr.parse_constraint(ver)
+                    ver = poetry_version.parse_constraint(ver)
                 if ver.allows(self.version):
                     req_spec = ver_reqs
                     break

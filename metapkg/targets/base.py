@@ -5,6 +5,7 @@ from typing import (
     Literal,
     Mapping,
     NamedTuple,
+    TextIO,
 )
 
 import collections
@@ -30,6 +31,7 @@ from . import package as tgt_pkg
 
 if TYPE_CHECKING:
     from cleo.io.io import IO
+    from cleo.io.outputs.stream_output import StreamOutput
     from distro import distro
     from poetry.utils import env as poetry_env
     from poetry.repositories import repository as poetry_repo
@@ -699,6 +701,13 @@ class Build:
     @property
     def io(self) -> IO:
         return self._io
+
+    @property
+    def stream(self) -> TextIO:
+        output = self._io.output
+        if TYPE_CHECKING:
+            assert isinstance(output, StreamOutput)
+        return output.stream
 
     @property
     def root_package(self) -> mpkg_base.BundledPackage:
