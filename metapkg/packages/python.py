@@ -409,6 +409,11 @@ class BasePythonPackage(base.BasePackage):
             if ldflags:
                 build.sh_append_quoted_ldflags(env, ldflags)
 
+            paths = build.sh_get_command_paths(self.get_dep_commands(), self)
+
+            if paths:
+                build.sh_append_paths(env, paths)
+
             binary = True
 
         all_build_deps = build.get_bundled_build_reqs(self, recursive=True)
