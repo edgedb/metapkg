@@ -201,6 +201,9 @@ class BasePackage(poetry_pkg.Package):
     def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return []
 
+    def get_dep_commands(self) -> list[str]:
+        return []
+
     def write_file_list_script(
         self, build: targets.Build, listname: str, entries: list[str]
     ) -> str:

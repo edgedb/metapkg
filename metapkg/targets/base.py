@@ -1570,6 +1570,23 @@ class Build:
 
         return flags
 
+    def sh_get_command_paths(
+        self,
+        commands: Iterable[str],
+        pkg: mpkg_base.BasePackage,
+    ) -> list[str]:
+        paths = set()
+        src_root = self.get_source_abspath()
+        for cmd in commands:
+            cmd_txt = self.sh_get_command(
+                cmd, package=pkg, relative_to="sourceroot"
+            )
+            if os.path.sep not in cmd_txt:
+                # Skip global commands
+                continue
+            paths.add(src_root / pathlib.Path(cmd_txt).parent)
+        return [str(p) for p in paths]
+
     def sh_append_global_flags(
         self,
         args: Mapping[str, str | pathlib.Path | None] | None = None,
@@ -1650,6 +1667,19 @@ class Build:
         flags: list[str] | tuple[str, ...],
     ) -> None:
         self.sh_append_quoted_ldflags(args, self.sh_quote_flags(flags))
+
+    def sh_append_paths(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        paths: list[str] | tuple[str, ...],
+    ) -> None:
+        new_paths = self.sh_quote_flags(paths)
+        old_path = args.get("PATH")
+        if not old_path:
+            old_path = os.getenv("PATH")
+        if old_path:
+            new_paths = [str(old_path), *new_paths]
+        args["PATH"] = os.pathsep.join(new_paths)
 
     def sh_configure(
         self,
