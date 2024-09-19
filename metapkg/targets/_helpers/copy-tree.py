@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from typing import *
+from typing import (
+    Collection,
+    Iterable,
+    Iterator,
+    Optional,
+    NoReturn,
+)
 
 import argparse
 import logging
@@ -238,9 +244,9 @@ def warn_about_excluded_files(
     maybe_warn()
 
 
-def add_missing_directory_entries(files: Iterable[str]) -> List[str]:
-    dirs: Set[pathlib.Path] = {pathlib.Path(".")}
-    result: Set[str] = set()
+def add_missing_directory_entries(files: Iterable[str]) -> list[str]:
+    dirs: set[pathlib.Path] = {pathlib.Path(".")}
+    result: set[str] = set()
     for file in files:
         if file.endswith("/"):
             file = file[:-1]

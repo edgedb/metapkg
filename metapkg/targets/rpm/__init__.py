@@ -1,5 +1,8 @@
 from __future__ import annotations
-from typing import *
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 import functools
 import pathlib
@@ -34,6 +37,26 @@ PACKAGE_MAP = {
     "openssl-dev": "openssl-devel",
     "libffi-dev": "libffi-devel",
     "libb2-dev": "libb2-devel",
+    "libpcre2": "pcre2",
+    "libpcre2-dev": "pcre2-devel",
+    "libxml2-dev": "libxml2-devel",
+    "libexpat": "expat",
+    "libexpat-dev": "expat-devel",
+    "libgeos": "geos",
+    "libgeos-dev": "geos-devel",
+    "libgeotiff-dev": "libgeotiff-devel",
+    "libjson-c": "json-c",
+    "libjson-c-dev": "json-c-devel",
+    "libsqlite3": "sqlite-libs",
+    "libsqlite3-dev": "sqlite-devel",
+    "libtiff-dev": "libtiff-devel",
+    "libprotobuf-c": "protobuf-c",
+    "libprotobuf-c-dev": "protobuf-c-devel",
+    "libgdal": "gdal",
+    "libgdal-dev": "gdal-devel",
+    "libproj": "proj",
+    "libproj-dev": "proj-devel",
+    "protoc-c": "protobuf-c-compiler",
 }
 
 

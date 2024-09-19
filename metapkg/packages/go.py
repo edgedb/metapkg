@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pathlib
-import shlex
 import textwrap
 
 from metapkg import targets
@@ -11,18 +10,15 @@ from . import base
 
 
 class BundledGoPackage(base.BuildSystemMakePackage):
+    @property
+    def supports_out_of_tree_builds(self) -> bool:
+        return False
+
     def get_package_layout(
         self,
         build: targets.Build,
     ) -> base.PackageFileLayout:
         return base.PackageFileLayout.SINGLE_BINARY
-
-    def get_configure_script(self, build: targets.Build) -> str:
-        sdir = shlex.quote(
-            str(build.get_source_dir(self, relative_to="pkgbuild"))
-        )
-        copy_sources = f"test ./ -ef {sdir} || cp -a {sdir}/* ./"
-        return copy_sources
 
     def get_make_install_target(self, build: targets.Build) -> str:
         return ""
@@ -35,9 +31,9 @@ class BundledGoPackage(base.BuildSystemMakePackage):
             script = super().get_build_install_script(build)
         else:
             script = ""
-        installdest = build.get_install_dir(self, relative_to="pkgbuild")
+        installdest = build.get_build_install_dir(self, relative_to="pkgbuild")
         outdir = self.get_binary_output_dir()
-        bindir = build.get_install_path("bin").relative_to("/")
+        bindir = build.get_install_path(self, "bin").relative_to("/")
         dest = installdest / bindir / self.name
         return textwrap.dedent(
             f"""\
@@ -53,7 +49,7 @@ class BundledGoPackage(base.BuildSystemMakePackage):
         return entries
 
     def get_exposed_commands(self, build: targets.Build) -> list[pathlib.Path]:
-        bindir = build.get_install_path("bin")
+        bindir = build.get_install_path(self, "bin")
 
         return [
             bindir / self.name,

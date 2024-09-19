@@ -27,7 +27,8 @@ class Build(targets.Build):
         self._pkgroot = self._droot / self._root_pkg.name_slot
         self._srcroot = self._pkgroot / self._root_pkg.name_slot
 
-        self._buildroot = pathlib.Path("BUILD")
+        self._sourceroot = pathlib.Path("BUILD")
+        self._buildroot = pathlib.Path("BUILD2")
         self._tmproot = pathlib.Path("TEMP")
         self._installroot = pathlib.Path("INSTALL")
         self._bin_shims = self._root_pkg.get_bin_shims(self)
@@ -113,7 +114,7 @@ class Build(targets.Build):
         relative_to: targets.Location = "sourceroot",
     ) -> pathlib.Path:
         return self.get_dir(
-            pathlib.Path("BUILD") / package.name, relative_to=relative_to
+            self._sourceroot / package.name, relative_to=relative_to
         )
 
     def get_temp_dir(
@@ -149,7 +150,7 @@ class Build(targets.Build):
             self._buildroot / package.name, relative_to=relative_to
         )
 
-    def get_install_dir(
+    def get_build_install_dir(
         self,
         package: mpkg.BasePackage,
         *,
@@ -161,7 +162,7 @@ class Build(targets.Build):
 
     def _get_tarball_tpl(self, package: mpkg.BasePackage) -> str:
         rp = self._root_pkg
-        return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
+        return f"{rp.name}_{rp.version.text}.orig-{package.name}{{part}}.tar{{comp}}"
 
     def build(self) -> None:
         self.prepare_tools()
@@ -242,8 +243,8 @@ class Build(targets.Build):
         provides = self._root_pkg.get_provided_packages(self, root_version)
 
         requires_exclude = [
-            f"{re.escape(str(self.get_install_path('lib')))}/.*",
-            f"{re.escape(str(self.get_install_path('bin')))}/.*",
+            f"{re.escape(str(self.get_bundle_install_path('lib')))}/.*",
+            f"{re.escape(str(self.get_bundle_install_path('bin')))}/.*",
         ]
         privatelibs = self._get_private_libs_pattern()
         if privatelibs:
@@ -438,8 +439,9 @@ class Build(targets.Build):
     def _get_source_spec(self) -> str:
         lines = []
 
-        for i, tarball in enumerate(self._tarballs.values()):
-            lines.append(f"Source{i}: {tarball.name}")
+        for i, tarballs in enumerate(self._tarballs.values()):
+            for _, tarball in tarballs:
+                lines.append(f"Source{i}: {tarball.name}")
 
         return "\n".join(lines)
 
@@ -461,30 +463,42 @@ class Build(targets.Build):
 
     def _get_package_unpack_script(self, pkg: mpkg.BasePackage) -> str:
         tarball_root = self.get_tarball_root(relative_to="pkgbuild")
-        tarball = tarball_root / self._tarballs[pkg]
-        ext = tarball.suffix
-        if ext == ".bz2":
-            compflag = "j"
-        elif ext == ".gz":
-            compflag = "z"
-        elif ext == ".tar":
-            compflag = ""
-        else:
-            raise NotImplementedError(f"tar{ext} files are not supported")
+        tarballs = self._tarballs[pkg]
+        script = []
 
-        src_dir = self.get_source_dir(pkg, relative_to="pkgbuild")
+        for src, tarball_path in tarballs:
+            tarball = tarball_root / tarball_path
+            ext = tarball.suffix
+            if ext == ".bz2":
+                compflag = "j"
+            elif ext == ".gz":
+                compflag = "z"
+            elif ext == ".xz":
+                compflag = "J"
+            elif ext == ".tar":
+                compflag = ""
+            else:
+                raise NotImplementedError(f"tar{ext} files are not supported")
 
-        return textwrap.dedent(
-            f"""
-            pushd "{src_dir}" >/dev/null
-            /usr/bin/tar -x{compflag} -f {tarball} --strip-components=1
-            popd >/dev/null
-        """
-        )
+            src_dir = self.get_source_dir(pkg, relative_to="pkgbuild")
+            if src.path:
+                src_dir /= src.path
+
+            script.append(
+                textwrap.dedent(
+                    f"""
+                pushd "{src_dir}" >/dev/null
+                /usr/bin/tar -x{compflag} -f {tarball} --strip-components=1
+                popd >/dev/null
+            """
+                )
+            )
+
+        return "\n".join(script)
 
     def _get_package_install_script(self, pkg: mpkg.BasePackage) -> str:
         source_root = self.get_source_root(relative_to="pkgbuild")
-        install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
+        install_dir = self.get_build_install_dir(pkg, relative_to="sourceroot")
         image_root = self.get_image_root(relative_to="sourceroot")
         temp_root = self.get_temp_root(relative_to="sourceroot")
         temp_dir = self.get_temp_dir(pkg, relative_to="sourceroot")
@@ -575,7 +589,7 @@ class Build(targets.Build):
                 )
 
         if self._bin_shims:
-            sysbindir = self.get_install_path("systembin")
+            sysbindir = self.get_bundle_install_path("systembin")
 
             for shim_path, data in self._bin_shims.items():
                 relpath = (sysbindir / shim_path).relative_to("/")

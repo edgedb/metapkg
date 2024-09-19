@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import os.path
 import pathlib
-import platform
 
 from metapkg import tools
 from metapkg.targets import generic
@@ -31,7 +30,7 @@ class GenericLinuxBuild(generic.Build):
     def _fixup_rpath(
         self, image_root: pathlib.Path, binary_relpath: pathlib.Path
     ) -> None:
-        inst_prefix = self.get_full_install_prefix()
+        inst_prefix = self.get_bundle_install_prefix()
         full_path = image_root / binary_relpath
         inst_path = pathlib.Path("/") / binary_relpath
         rpath_record = tools.cmd(

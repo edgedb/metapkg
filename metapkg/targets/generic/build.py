@@ -168,7 +168,7 @@ class Build(targets.Build):
             package=package,
         )
 
-    def get_install_dir(
+    def get_build_install_dir(
         self,
         package: packages.BasePackage,
         *,
@@ -182,7 +182,7 @@ class Build(targets.Build):
 
     def _get_tarball_tpl(self, package: packages.BasePackage) -> str:
         rp = self._root_pkg
-        return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
+        return f"{rp.name}_{rp.version.text}.orig-{package.name}{{part}}.tar{{comp}}"
 
     def build(self) -> None:
         self.prepare_tools()
@@ -267,7 +267,7 @@ class Build(targets.Build):
 
     def _get_package_install_script(self, pkg: packages.BasePackage) -> str:
         source_root = self.get_source_root(relative_to="pkgbuild")
-        install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
+        install_dir = self.get_build_install_dir(pkg, relative_to="sourceroot")
         image_root = self.get_image_root(relative_to="sourceroot")
         temp_root = self.get_temp_root(relative_to="sourceroot")
         temp_dir = self.get_temp_dir(pkg, relative_to="sourceroot")
@@ -343,8 +343,8 @@ class Build(targets.Build):
 
     def _get_package_extras_script(self, pkg: packages.BasePackage) -> str:
         lines = []
-        install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
-        bindir = self.get_install_path("systembin").relative_to("/")
+        install_dir = self.get_build_install_dir(pkg, relative_to="sourceroot")
+        bindir = self.get_bundle_install_path("systembin").relative_to("/")
 
         lines.append(f'mkdir -p "{install_dir / bindir}"')
         for cmd in pkg.get_exposed_commands(self):
@@ -459,7 +459,7 @@ class Build(targets.Build):
             for shlib_path in shlibs:
                 if self.target.is_allowed_system_shlib(self, shlib_path):
                     continue
-                shlib = str(shlib_path)
+                shlib = str(shlib_path.name)
                 bundled = bin_paths.get(shlib, set())
                 for rpath in rpaths:
                     shlib_path = (rpath / shlib).resolve()
@@ -505,9 +505,7 @@ class Build(targets.Build):
                             f" not define a library rpath"
                         )
 
-        # Remove the fully-versioned .so variants and any symlinks still
-        # pointing to it (usually the unversioned .so).
-        for path in to_remove - used_shlibs:
+        def _remove_so_symlinks(path: pathlib.Path) -> None:
             for sibling in path.parent.iterdir():
                 if sibling.is_symlink():
                     sibling_target = sibling.readlink()
@@ -517,7 +515,15 @@ class Build(targets.Build):
                         ).resolve()
                     if sibling_target == path:
                         sibling.unlink()
+
+        # Remove the fully-versioned .so variants and any symlinks still
+        # pointing to it (usually the unversioned .so).
+        for path in to_remove - used_shlibs:
+            _remove_so_symlinks(path)
             path.unlink()
+
+        for path in used_shlibs:
+            _remove_so_symlinks(path)
 
     def _package(self, files: list[pathlib.Path]) -> None:
         pkg = self._root_pkg
@@ -583,7 +589,7 @@ class Build(targets.Build):
             if layout is packages.PackageFileLayout.FLAT:
                 src = image_root
             else:
-                prefix = self.get_full_install_prefix().relative_to("/")
+                prefix = self.get_bundle_install_prefix().relative_to("/")
                 src = image_root / prefix
 
             tarball = f"{an}.tar"

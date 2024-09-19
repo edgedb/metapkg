@@ -68,42 +68,48 @@ class GenericOSRepository(poetry_repo.Repository):
 class GenericTarget(targets.FHSTarget):
     @property
     def name(self) -> str:
-        return f"Generic POSIX"
+        return "Generic POSIX"
 
     def get_package_repository(self) -> GenericOSRepository:
         return GenericOSRepository("generic")
 
-    def get_install_root(self, build: targets.Build) -> pathlib.Path:
+    def get_bundle_install_root(self, build: targets.Build) -> pathlib.Path:
         return pathlib.Path("/opt")
 
-    def get_install_prefix(self, build: targets.Build) -> pathlib.Path:
-        return pathlib.Path(build.root_package.name_slot)
+    def get_bundle_install_subdir(self, build: targets.Build) -> pathlib.Path:
+        return build.root_package.get_root_install_subdir(build)
 
     def get_install_path(
-        self, build: targets.Build, aspect: str
+        self,
+        build: targets.Build,
+        root: pathlib.Path,
+        root_subdir: pathlib.Path,
+        prefix: pathlib.Path,
+        aspect: targets.InstallAspect,
     ) -> pathlib.Path:
-        root = self.get_install_root(build)
-        prefix = self.get_install_prefix(build)
-
         if aspect == "sysconf":
             return root / "etc"
         elif aspect == "userconf":
             return pathlib.Path("$HOME") / ".config"
         elif aspect == "data":
-            return root / prefix / "data"
+            return prefix / "share"
         elif aspect == "legal":
-            return root / prefix / "licenses"
+            return prefix / "licenses"
+        elif aspect == "doc":
+            return prefix / "doc" / root_subdir
+        elif aspect == "man":
+            return prefix / "man"
         elif aspect == "bin":
-            return root / prefix / "bin"
+            return prefix / "bin"
         elif aspect == "systembin":
             if root == pathlib.Path("/"):
                 return root / "usr" / "bin"
             else:
                 return root / "bin"
         elif aspect == "lib":
-            return root / prefix / "lib"
+            return prefix / "lib"
         elif aspect == "include":
-            return root / prefix / "include"
+            return prefix / "include"
         elif aspect == "localstate":
             return root / "var"
         elif aspect == "runstate":

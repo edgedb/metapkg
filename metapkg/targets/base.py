@@ -29,10 +29,39 @@ from . import _helpers as helpers_pkg
 from . import package as tgt_pkg
 
 if TYPE_CHECKING:
+    from typing_extensions import (
+        TypeGuard,
+    )
+
     from cleo.io.io import IO
     from distro import distro
     from poetry.utils import env as poetry_env
     from poetry.repositories import repository as poetry_repo
+
+
+Location = Literal[
+    "fsroot",
+    "buildroot",
+    "pkgsource",
+    "sourceroot",
+    "pkgbuild",
+    "helpers",
+]
+
+InstallAspect = Literal[
+    "bin",
+    "data",
+    "doc",
+    "man",
+    "include",
+    "lib",
+    "runstate",
+    "localstate",
+    "legal",
+    "sysconf",
+    "systembin",
+    "userconf",
+]
 
 
 class TargetAction:
@@ -126,12 +155,15 @@ class Target:
     ) -> dict[pathlib.Path, str]:
         return {}
 
-    def get_package_ld_env(
+    def sh_get_package_ld_env(
         self, build: Build, package: mpkg_base.BasePackage, wd: str
     ) -> dict[str, str]:
         raise NotImplementedError
 
     def get_ld_env_keys(self, build: Build) -> list[str]:
+        raise NotImplementedError
+
+    def get_shlib_filename(self, shlib: str) -> str:
         raise NotImplementedError
 
     def get_shlib_path_link_time_ldflags(
@@ -184,16 +216,20 @@ class Target:
     def get_exe_suffix(self) -> str:
         raise NotImplementedError
 
-    def get_install_root(self, build: Build) -> pathlib.Path:
+    def get_bundle_install_root(self, build: Build) -> pathlib.Path:
         raise NotImplementedError
 
-    def get_install_prefix(self, build: Build) -> pathlib.Path:
+    def get_bundle_install_subdir(self, build: Build) -> pathlib.Path:
         raise NotImplementedError
 
-    def get_full_install_prefix(self, build: Build) -> pathlib.Path:
-        return self.get_install_root(build) / self.get_install_prefix(build)
-
-    def get_install_path(self, build: Build, aspect: str) -> pathlib.Path:
+    def get_install_path(
+        self,
+        build: Build,
+        root: pathlib.Path,
+        root_subdir: pathlib.Path,
+        prefix: pathlib.Path,
+        aspect: InstallAspect,
+    ) -> pathlib.Path:
         raise NotImplementedError
 
     def supports_lto(self) -> bool:
@@ -437,19 +473,26 @@ class LinuxTarget(PosixTarget):
             raise RuntimeError(f"cannot determine gcc version:\n{gcc_ver}")
         return tuple(int(v) for v in m.group(1).split(".")) >= (10, 0)
 
-    def get_package_ld_env(
+    def sh_get_package_ld_env(
         self, build: Build, package: mpkg_base.BasePackage, wd: str
     ) -> dict[str, str]:
-        pkg_install_root = build.get_install_dir(
+        pkg_install_root = build.get_build_install_dir(
             package, relative_to="pkgbuild"
         )
-        pkg_lib_path = pkg_install_root / build.get_install_path(
-            "lib"
-        ).relative_to("/")
-        return {"LD_LIBRARY_PATH": f"{wd}/{pkg_lib_path}"}
+        libdir = package.get_install_path(build, "lib")
+        if libdir is not None:
+            pkg_lib_path = pkg_install_root / libdir.relative_to("/")
+            return {
+                "LD_LIBRARY_PATH": f"{wd}/{shlex.quote(str(pkg_lib_path))}",
+            }
+        else:
+            return {}
 
     def get_ld_env_keys(self, build: Build) -> list[str]:
         return ["LD_LIBRARY_PATH"]
+
+    def get_shlib_filename(self, shlib: str) -> str:
+        return f"lib{shlib}.so"
 
     def get_shlib_path_link_time_ldflags(
         self, build: Build, path: str
@@ -470,7 +513,7 @@ class LinuxTarget(PosixTarget):
         if path:
             rpath = f"$ORIGIN/{shlex.quote(path)}"
         else:
-            rpath = f"$ORIGIN"
+            rpath = "$ORIGIN"
 
         # NOTE: we explicitly disable "new dtags" to get DT_RPATH,
         #       because we DO NOT want LD_LIBRARY_PATH to mess things
@@ -597,43 +640,46 @@ class FHSTarget(PosixTarget):
     def sh_get_command(self, command: str) -> str:
         return command
 
-    def get_install_root(self, build: Build) -> pathlib.Path:
+    def get_bundle_install_root(self, build: Build) -> pathlib.Path:
         return pathlib.Path("/")
 
-    def get_install_prefix(self, build: Build) -> pathlib.Path:
+    def get_bundle_install_subdir(self, build: Build) -> pathlib.Path:
         libdir = self.get_arch_libdir()
-        return (libdir / build.root_package.name_slot).relative_to("/")
+        return (
+            libdir / build.root_package.get_root_install_subdir(build)
+        ).relative_to("/")
 
-    def get_install_path(self, build: Build, aspect: str) -> pathlib.Path:
-        root = self.get_install_root(build)
-        prefix = self.get_install_prefix(build)
-
+    def get_install_path(
+        self,
+        build: Build,
+        root: pathlib.Path,
+        root_subdir: pathlib.Path,
+        prefix: pathlib.Path,
+        aspect: InstallAspect,
+    ) -> pathlib.Path:
         if aspect == "sysconf":
             return root / "etc"
         elif aspect == "userconf":
             return pathlib.Path("$HOME") / ".config"
         elif aspect == "data":
-            return root / "usr" / "share" / build.root_package.name_slot
+            return root / "usr" / "share" / root_subdir
         elif aspect == "legal":
-            return (
-                root
-                / "usr"
-                / "share"
-                / "doc"
-                / build.root_package.name_slot
-                / "licenses"
-            )
+            return root / "usr" / "share" / "doc" / root_subdir / "licenses"
+        elif aspect == "doc":
+            return root / "usr" / "share" / "doc" / root_subdir
+        elif aspect == "man":
+            return root / "usr" / "share" / "man"
         elif aspect == "bin":
-            return root / prefix / "bin"
+            return prefix / "bin"
         elif aspect == "systembin":
             if root == pathlib.Path("/"):
                 return self.get_sys_bindir()
             else:
                 return root / "bin"
         elif aspect == "lib":
-            return root / prefix / "lib"
+            return prefix / "lib"
         elif aspect == "include":
-            return root / "usr" / "include" / build.root_package.name_slot
+            return root / "usr" / "include" / root_subdir
         elif aspect == "localstate":
             return root / "var"
         elif aspect == "runstate":
@@ -648,11 +694,6 @@ class FHSTarget(PosixTarget):
             return pathlib.Path("/usr/share/zoneinfo")
         else:
             return None
-
-
-Location = Literal[
-    "fsroot", "buildroot", "pkgsource", "sourceroot", "pkgbuild", "helpers"
-]
 
 
 class Build:
@@ -678,6 +719,8 @@ class Build:
         self._subdist = request.subdist
         self._extra_opt = request.extra_opt
         self._jobs = request.jobs
+        if self._jobs == 0:
+            self._jobs = os.cpu_count() or 1
         self._bundled = [
             pkg
             for pkg in self._build_deps
@@ -693,7 +736,10 @@ class Build:
         self._tools: dict[str, pathlib.Path] = {}
         self._common_tools: dict[str, pathlib.Path] = {}
         self._system_tools: dict[str, str] = {}
-        self._tarballs: dict[mpkg_base.BasePackage, pathlib.Path] = {}
+        self._tarballs: dict[
+            mpkg_base.BasePackage,
+            list[tuple[mpkg_sources.BaseSource, pathlib.Path]],
+        ] = {}
         self._patches: list[tuple[str, str]] = []
 
     @property
@@ -719,6 +765,10 @@ class Build:
     @property
     def build_date(self) -> datetime.datetime:
         return self._build_date
+
+    @property
+    def build_parallelism(self) -> int:
+        return self._jobs
 
     def get_source_abspath(self) -> pathlib.Path:
         raise NotImplementedError
@@ -789,19 +839,34 @@ class Build:
 
         return packages
 
-    def get_bundled_build_reqs(
+    def get_build_reqs(
         self,
         pkg: mpkg_base.BasePackage,
         *,
         recursive: bool = False,
-    ) -> set[mpkg_base.BasePackage]:
-        dep_names = [dep.name for dep in mpkg_base.get_build_requirements(pkg)]
-        return self.get_packages(dep_names, recursive=recursive)
+        bundled_only: bool = True,
+    ) -> set[mpkg_base.BundledPackage]:
+        dep_names = [
+            dep.name
+            for dep in mpkg_base.get_build_requirements(pkg)
+            if dep.is_activated() and self._env.is_valid_for_marker(dep.marker)
+        ]
+        return self.get_packages(
+            dep_names,
+            recursive=recursive,
+            bundled_only=bundled_only,
+        )  # type: ignore
 
-    def is_bundled(self, pkg: mpkg_base.BasePackage) -> bool:
+    def is_bundled(
+        self,
+        pkg: mpkg_base.BasePackage,
+    ) -> TypeGuard[mpkg_base.BundledPackage]:
         return pkg in self._bundled
 
-    def is_stdlib(self, pkg: mpkg_base.BasePackage) -> bool:
+    def is_stdlib(
+        self,
+        pkg: mpkg_base.BasePackage,
+    ) -> TypeGuard[tgt_pkg.StandardSystemPackage]:
         return isinstance(pkg, tgt_pkg.StandardSystemPackage)
 
     def extra_optimizations_enabled(self) -> bool:
@@ -829,17 +894,10 @@ class Build:
         self.shrinkwrap()
 
     def define_tools(self) -> None:
-        # Undefining MAKELEVEL is required because
-        # some package makefiles have
-        # conditions on MAKELEVEL.
-        if self._jobs == 0:
-            dash_j = f"-j{os.cpu_count()}"
-        else:
-            dash_j = f"-j{self._jobs}"
-        self._system_tools["make"] = f"env -u MAKELEVEL make {dash_j}"
+        self._system_tools["make"] = "make"
         self._system_tools["cp"] = "cp"
         self._system_tools["cargo"] = "cargo"
-        self._system_tools["python"] = "python3"
+        self._system_tools["python"] = "/usr/bin/env python3"
         self._system_tools["install"] = "install"
         self._system_tools["patch"] = "patch"
         self._system_tools["useradd"] = "useradd"
@@ -849,6 +907,8 @@ class Build:
         self._system_tools["bash"] = "/bin/bash"
         self._system_tools["find"] = "find"
         self._system_tools["meson"] = "meson"
+        self._system_tools["cmake"] = "cmake"
+        self._system_tools["ninja"] = "ninja"
 
     def prepare(self) -> None:
         self.define_tools()
@@ -882,7 +942,7 @@ class Build:
         tools.cmd(
             tar,
             "--transform",
-            f"flags=r;s|^\\./||",
+            "flags=r;s|^\\./||",
             "-c",
             "-f",
             os.path.relpath(shipment, start=intermediates),
@@ -904,22 +964,129 @@ class Build:
 
         return self.get_path(path, relative_to=relative_to, package=package)
 
-    def get_install_dir(
+    def get_build_install_dir(
         self,
         package: mpkg_base.BasePackage,
         *,
         relative_to: Location = "sourceroot",
     ) -> pathlib.Path:
+        """Return the path at which *package* is installed in the buildroot.
+
+        NOTE: this is NOT the same as --prefix or get_install_*() which
+        determine the path at which the package is supposed to be installed
+        in the target system.
+        """
         raise NotImplementedError
 
-    def get_install_path(self, aspect: str) -> pathlib.Path:
-        return self._target.get_install_path(self, aspect)
+    def get_bundle_install_root(self) -> pathlib.Path:
+        return self._target.get_bundle_install_root(self)
 
-    def get_install_prefix(self) -> pathlib.Path:
-        return self._target.get_install_prefix(self)
+    def get_bundle_install_subdir(self) -> pathlib.Path:
+        """Return the subdirectory under install root at which the bundle
+        would be installed in the target system."""
+        return self._target.get_bundle_install_subdir(self)
 
-    def get_full_install_prefix(self) -> pathlib.Path:
-        return self._target.get_full_install_prefix(self)
+    def get_bundle_install_prefix(self) -> pathlib.Path:
+        """Return the absolute install prefix at which the bundle would be
+        installed in the target system.  Usually a combination of install
+        root and install subdir. You want to pass this as --prefix= while
+        configuring packages."""
+        return (
+            self.get_bundle_install_root() / self.get_bundle_install_subdir()
+        )
+
+    def get_install_prefix(self, pkg: mpkg_base.BasePackage) -> pathlib.Path:
+        """Return the absolute install prefix at which the bundle would be
+        installed in the target system.  Usually a combination of install
+        root and install subdir. You want to pass this as --prefix= while
+        configuring packages."""
+        prefix = self.get_bundle_install_prefix()
+        if pkg != self._root_pkg:
+            prefix /= self._root_pkg.get_dep_install_subdir(self, pkg)
+        return prefix
+
+    def get_rel_install_prefix(
+        self, pkg: mpkg_base.BasePackage
+    ) -> pathlib.Path:
+        """Same as get_install_prefix() but without the leading slash"""
+        return self.get_install_prefix(pkg).relative_to("/")
+
+    def get_bundle_install_path(
+        self,
+        aspect: InstallAspect,
+    ) -> pathlib.Path:
+        """Return the absolute install path at which a particular aspect
+        of the bundle would be installed in the target system.  For example,
+        get_install_path("lib") returns the value you'd want to pass to
+        --libdir when configuring a package, etc."""
+        root = self.get_bundle_install_root()
+        prefix = self.get_bundle_install_prefix()
+        subdir = self.root_package.get_root_install_subdir(self)
+        return self._target.get_install_path(
+            self, root, subdir, prefix, aspect
+        )
+
+    def get_install_path(
+        self,
+        pkg: mpkg_base.BasePackage,
+        aspect: InstallAspect,
+    ) -> pathlib.Path:
+        """Return the absolute install path at which a particular aspect
+        of the bundle would be installed in the target system.  For example,
+        get_install_path("lib") returns the value you'd want to pass to
+        --libdir when configuring a package, etc."""
+        root = self.get_bundle_install_root()
+        subdir = self.root_package.get_root_install_subdir(self)
+        prefix = self.get_install_prefix(pkg)
+        if prefix != self.get_bundle_install_prefix():
+            # Prefixed sub-package, no reason to follow target-specific
+            # layout, just do a variation of FHS under the prefix
+            return self._get_prefixed_install_path(
+                root, subdir, prefix, aspect
+            )
+        else:
+            return self._target.get_install_path(
+                self, root, subdir, prefix, aspect
+            )
+
+    def get_rel_install_path(
+        self,
+        pkg: mpkg_base.BasePackage,
+        aspect: InstallAspect,
+    ) -> pathlib.Path:
+        """Return a particular aspect install path relative to install prefix."""
+        prefix = self.get_install_prefix(pkg)
+        path = self.get_install_path(pkg, aspect)
+        if path.is_relative_to(prefix):
+            return path.relative_to(prefix)
+        else:
+            return path
+
+    def _get_prefixed_install_path(
+        self,
+        root: pathlib.Path,
+        root_subdir: pathlib.Path,
+        prefix: pathlib.Path,
+        aspect: InstallAspect,
+    ) -> pathlib.Path:
+        if aspect == "sysconf":
+            return prefix / "etc"
+        elif aspect == "userconf":
+            return prefix / "userconfig"
+        elif aspect == "data":
+            return prefix / "share"
+        elif aspect == "bin":
+            return prefix / "bin"
+        elif aspect == "systembin":
+            return prefix / "bin"
+        elif aspect == "lib":
+            return prefix / "lib"
+        elif aspect == "include":
+            return prefix / "include"
+        else:
+            return self._target.get_install_path(
+                self, root, root_subdir, prefix, aspect
+            )
 
     def get_helpers_root(
         self, *, relative_to: Location = "sourceroot"
@@ -971,10 +1138,13 @@ class Build:
         args: Mapping[str, str | pathlib.Path | None] | None = None,
         force_args_eq: bool = False,
         linebreaks: bool = True,
+        system_only: bool = False,
     ) -> str:
-        path = self._tools.get(command)
-        if not path:
-            path = self._common_tools.get(command)
+        path = None
+        if not system_only:
+            path = self._tools.get(command)
+            if not path:
+                path = self._common_tools.get(command)
 
         if not path:
             # This is an unclaimed command.  Assume system executable.
@@ -989,18 +1159,7 @@ class Build:
             rel_path = self.get_path(
                 path, package=package, relative_to=relative_to
             )
-            if rel_path.suffix == ".py":
-                python = self.sh_get_command(
-                    "python", package=package, relative_to=relative_to
-                )
-
-                cmd = f"{python} {shlex.quote(str(rel_path))}"
-
-            elif rel_path.suffix == ".sh" or not rel_path.suffix:
-                cmd = shlex.quote(str(rel_path))
-
-            else:
-                raise RuntimeError(f"unexpected tool type: {path}")
+            cmd = shlex.quote(str(rel_path))
 
         if args is not None:
             cmd = self.sh_append_args(
@@ -1019,7 +1178,7 @@ class Build:
         args_parts = []
         for arg, val in args.items():
             if val is None:
-                args_parts.append(arg)
+                args_parts.append(shlex.quote(arg))
             else:
                 val = str(val)
                 if not val.startswith("!"):
@@ -1027,6 +1186,7 @@ class Build:
                 else:
                     val = val[1:]
                 sep = "=" if arg.startswith("--") or force_args_eq else " "
+                arg = shlex.quote(arg)
                 args_parts.append(f"{arg}{sep}{val}")
 
         sep = " \\\n    " if linebreaks else " "
@@ -1086,12 +1246,14 @@ class Build:
             "runstate",
             "localstate",
             "legal",
+            "doc",
+            "man",
             "userconf",
         ):
-            path = self.get_install_path(aspect)
+            path = self.get_install_path(package, aspect)  # type: ignore
             variables[f"{aspect}dir"] = str(path)
 
-        variables["prefix"] = str(self.get_install_prefix())
+        variables["prefix"] = str(self.get_bundle_install_subdir())
         variables["slot"] = package.slot
         variables["identifier"] = self.target.get_package_system_ident(
             self, package
@@ -1123,12 +1285,27 @@ class Build:
         return f"{shlex.quote(str(cmd))}"
 
     def sh_write_python_helper(
-        self, name: str, text: str, *, relative_to: Location
+        self,
+        name: str,
+        text: str,
+        *,
+        relative_to: Location,
+        helper_path_relative_to: Location | None = None,
+        system_only: bool = False,
     ) -> str:
-        python = self.sh_get_command("python", relative_to=relative_to)
-        path = self.sh_write_helper(name, text, relative_to=relative_to)
-
-        return f"{shlex.quote(python)} {path}"
+        python = self.sh_get_command(
+            "python", relative_to=relative_to, system_only=system_only
+        )
+        if python.startswith("/usr/bin/env"):
+            shebang = python
+        else:
+            shebang = f"/usr/bin/env {python}"
+        text = f"#!{shebang}" + "\n\n" + text
+        if helper_path_relative_to is None:
+            helper_path_relative_to = relative_to
+        return self.sh_write_helper(
+            name, text, relative_to=helper_path_relative_to
+        )
 
     def sh_write_bash_helper(
         self, name: str, text: str, *, relative_to: Location
@@ -1148,9 +1325,7 @@ class Build:
 
     def get_tarball_tpl(self, package: mpkg_base.BasePackage) -> str:
         rp = self._root_pkg
-        return (
-            f"{rp.name_slot}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
-        )
+        return f"{rp.name_slot}_{rp.version.text}.orig-{package.name}{{part}}.tar{{comp}}"
 
     def get_tarball_root(
         self, *, relative_to: Location = "sourceroot"
@@ -1219,43 +1394,76 @@ class Build:
 
         for pkg in self._bundled:
             tarball_tpl = self.get_tarball_tpl(pkg)
-            for source in pkg.get_sources():
+            source_map = {}
+            counter = 0
+            for src in pkg.get_sources():
+                if src.path:
+                    part = f'-{str(src.path).strip("/").replace("/", "-")}'
+                else:
+                    if counter == 0:
+                        part = ""
+                    else:
+                        part = f"-{counter}"
+                    counter += 1
+                source_map[src] = part
+
+            for source, part in source_map.items():
                 tarball = source.tarball(
                     pkg,
                     tarball_tpl,
                     target_dir=tarball_root,
                     io=self._io,
                     build=self,
+                    part=part,
                 )
 
-                self._tarballs[pkg] = tarball
+                try:
+                    self._tarballs[pkg].append((source, tarball))
+                except KeyError:
+                    self._tarballs[pkg] = [(source, tarball)]
 
     def unpack_sources(self) -> None:
         if isinstance(self._root_pkg, mpkg_base.PrePackagedPackage):
             assert len(self._tarballs) == 1
-            tarball = next(iter(self._tarballs.values()))
+            _, (_, tarball) = next(iter(self._tarballs.values()))
             self._io.write_line(f"<info>Extracting {tarball.name}...</>")
             mpkg_sources.unpack(
                 tarball,
                 dest=self.get_source_abspath(),
                 io=self._io,
+                build=self,
             )
         else:
-            for pkg, tarball in self._tarballs.items():
-                self._io.write_line(f"<info>Extracting {tarball.name}...</>")
-                mpkg_sources.unpack(
-                    tarball,
-                    dest=self.get_source_dir(pkg, relative_to="fsroot"),
-                    io=self._io,
-                )
+            for pkg, tarballs in self._tarballs.items():
+                for src, tarball in tarballs:
+                    dest = self.get_source_dir(pkg, relative_to="fsroot")
+                    if src.path:
+                        dest /= src.path
+                        self._io.write_line(
+                            f"<info>Extracting {tarball.name} to {src.path}...</>"
+                        )
+                    else:
+                        self._io.write_line(
+                            f"<info>Extracting {tarball.name}...</>"
+                        )
+                    mpkg_sources.unpack(
+                        tarball,
+                        dest=dest,
+                        io=self._io,
+                        build=self,
+                        strip_components=src.extras.get("strip_components", 1),
+                    )
 
-    def get_tarball(
+    def get_tarballs(
         self,
         pkg: mpkg_base.BasePackage,
         *,
         relative_to: Location,
-    ) -> pathlib.Path:
-        return self.get_dir(self._tarballs[pkg], relative_to=relative_to)
+    ) -> list[tuple[mpkg_sources.BaseSource, pathlib.Path]]:
+        return [
+            (src, self.get_dir(tarball, relative_to=relative_to))
+            for (src, tarball) in self._tarballs[pkg]
+        ]
 
     def prepare_patches(self) -> None:
         patches_dir = self.get_patches_root(relative_to="fsroot")
@@ -1344,7 +1552,7 @@ class Build:
             packages = tuple(self._bundled)
 
         if stage == "complete":
-            stages = ["configure", "build", "build_install"]
+            stages = ["prepare", "configure", "build", "build_install"]
         else:
             stages = [stage]
 
@@ -1370,7 +1578,7 @@ class Build:
 
         if service_scripts:
             if self.target.has_capability("systemd"):
-                rundir = self.get_install_path("runstate")
+                rundir = self.get_bundle_install_path("runstate")
                 systemd = rundir / "systemd" / "system"
 
                 script = textwrap.dedent(
@@ -1432,7 +1640,7 @@ class Build:
                 script_lines.append(f'pushd "{bdir}" >/dev/null\n')
             script_lines.append(f"{pkg_script}\n")
             if build_time:
-                script_lines.append(f"popd >/dev/null")
+                script_lines.append("popd >/dev/null")
 
             script = "".join(script_lines)
         else:
@@ -1443,11 +1651,14 @@ class Build:
     def get_ld_env(
         self,
         deps: Iterable[mpkg_base.BasePackage],
-        wd: str,
+        wd: str | None = None,
         extra: Iterable[str] = (),
-    ) -> list[str]:
+    ) -> mpkg_base.Args:
+        if wd is None:
+            wd = "$(pwd -P)"
         env: dict[str, list[str]] = collections.defaultdict(list)
         keys = self.target.get_ld_env_keys(self)
+        extra_vals = list(extra)
         for k in keys:
             env[k] = []
 
@@ -1455,24 +1666,22 @@ class Build:
             if not self.is_bundled(pkg):
                 continue
 
-            if not pkg.get_shlib_paths(self):
-                continue
-
-            for k, v in self.target.get_package_ld_env(self, pkg, wd).items():
+            pkg_ld_env = self.target.sh_get_package_ld_env(self, pkg, wd)
+            for k, v in pkg_ld_env.items():
                 env[k].append(v)
 
-        env_list = []
+        env_args: mpkg_base.Args = {}
         for k, vv in env.items():
-            v = ":".join(vv + list(extra) + [f"${{{k}}}"])
-            env_list.append(f'{k}="{v}"')
+            self.sh_prepend_quoted_paths(env_args, k, vv + extra_vals)
 
-        return env_list
+        return env_args
 
     def sh_join_flags(
         self,
         flags: list[str] | tuple[str, ...],
+        sep: str = '" "',
     ) -> str:
-        return '" "'.join(filter(None, flags))
+        return sep.join(filter(None, flags))
 
     def sh_quote_flags(
         self,
@@ -1486,24 +1695,109 @@ class Build:
     ) -> str:
         return self.sh_join_flags(self.sh_quote_flags(flags))
 
-    def sh_get_bundled_shlib_ldflags(
+    def sh_get_bundled_install_path(
         self,
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
+        wd: str | None = None,
+    ) -> str:
+        root = self.get_build_install_dir(pkg, relative_to=relative_to)
+        path = root / self.get_rel_install_prefix(pkg)
+        if wd is None:
+            wd = "$(pwd -P)"
+        return f"{wd}/{shlex.quote(str(path))}"
+
+    def sh_append_pkgconfig_paths(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        pkg: mpkg_base.BundledPackage,
+        relative_to: Location = "pkgbuild",
+        wd: str | None = None,
+    ) -> None:
+        if not pkg.get_pkg_config_meta().provides_pkg_config:
+            return
+
+        pkgs = [pkg] + [
+            dep
+            for dep in self.get_build_reqs(pkg, recursive=True)
+            if dep.get_pkg_config_meta().provides_pkg_config
+        ]
+
+        for pkg in pkgs:
+            rel_path = self.sh_get_bundled_install_path(
+                pkg, relative_to=relative_to, wd=wd
+            )
+
+            prefix = self.get_install_prefix(pkg)
+            rel_lib_dir = self.get_install_path(pkg, "lib").relative_to(prefix)
+
+            self.sh_prepend_quoted_paths(
+                args,
+                "PKG_CONFIG_PATH",
+                [f"{rel_path / rel_lib_dir}/pkgconfig"],
+            )
+
+            self.sh_prepend_quoted_paths(
+                args,
+                "PKG_CONFIG_PATH",
+                [f"{rel_path}/share/pkgconfig"],
+            )
+
+            self.sh_prepend_quoted_paths(
+                args,
+                "CMAKE_PREFIX_PATH",
+                [f"{rel_path}"],
+                sep="';'",
+            )
+
+    def sh_get_bundled_pkg_lib_path(
+        self,
+        pkg: mpkg_base.BasePackage,
+        relative_to: Location = "pkgbuild",
+        wd: str | None = None,
+    ) -> str | None:
+        if wd is None:
+            wd = "$(pwd -P)"
+        assert self.is_bundled(pkg)
+
+        root_path = self.get_build_install_dir(pkg, relative_to=relative_to)
+        shlib_path = pkg.get_install_path(self, "lib")
+        if shlib_path is not None:
+            lib_path = root_path / shlib_path.relative_to("/")
+            return f"{wd}/{shlex.quote(str(lib_path))}"
+        else:
+            return None
+
+    def sh_must_get_bundled_pkg_lib_path(
+        self,
+        pkg: mpkg_base.BasePackage,
+        relative_to: Location = "pkgbuild",
+        wd: str | None = None,
+    ) -> str:
+        path = self.sh_get_bundled_pkg_lib_path(pkg, relative_to, wd)
+        if path is None:
+            raise AssertionError(f"{pkg.name} does not define a DSO lib path")
+        return path
+
+    def sh_get_bundled_pkg_ldflags(
+        self,
+        pkg: mpkg_base.BasePackage,
+        relative_to: Location = "pkgbuild",
+        wd: str | None = None,
     ) -> list[str]:
         flags = []
 
         assert self.is_bundled(pkg)
 
-        root_path = self.get_install_dir(pkg, relative_to=relative_to)
-        for shlib_path in pkg.get_shlib_paths(self):
-            # link-time dependency
-            link_time = root_path / shlib_path.relative_to("/")
+        lib_path = self.sh_get_bundled_pkg_lib_path(
+            pkg,
+            relative_to=relative_to,
+            wd=wd,
+        )
+        if lib_path is not None:
+            # link-time
             flags.extend(
-                self.target.get_shlib_path_link_time_ldflags(
-                    self,
-                    f"$(pwd -P)/{shlex.quote(str(link_time))}",
-                ),
+                self.target.get_shlib_path_link_time_ldflags(self, lib_path),
             )
 
             if pkg not in self._build_only:
@@ -1511,49 +1805,77 @@ class Build:
                 flags.extend(
                     self.target.get_shlib_path_run_time_ldflags(
                         self,
-                        shlex.quote(str(shlib_path)),
+                        shlex.quote(str(self.get_install_path(pkg, "lib"))),
                     ),
                 )
 
-            for shlib in pkg.get_shlibs(self):
-                flags.append(f"-l{shlex.quote(shlib)}")
-
         return flags
 
-    def sh_get_bundled_shlibs_ldflags(
+    def sh_get_bundled_pkgs_ldflags(
         self,
         deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
+        wd: str | None = None,
     ) -> list[str]:
         flags = []
 
         for pkg in deps:
             if self.is_bundled(pkg):
                 flags.extend(
-                    self.sh_get_bundled_shlib_ldflags(
-                        pkg, relative_to=relative_to
+                    self.sh_get_bundled_pkg_ldflags(
+                        pkg, relative_to=relative_to, wd=wd
                     )
                 )
 
         return flags
 
-    def sh_get_bundled_shlib_cflags(
+    def sh_get_bundled_pkg_include_path(
         self,
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
-    ) -> list[str]:
-        flags = []
-
+        wd: str | None = None,
+    ) -> str | None:
         assert self.is_bundled(pkg)
 
-        root_path = self.get_install_dir(pkg, relative_to=relative_to)
-        for include_path in pkg.get_include_paths(self):
-            inc_path = root_path / include_path.relative_to("/")
-            flags.append(f"-I$(pwd -P)/{shlex.quote(str(inc_path))}")
+        if wd is None:
+            wd = "$(pwd -P)"
 
-        return flags
+        rel_inc_path = pkg.get_install_path(self, "include")
+        if rel_inc_path is not None:
+            root_path = self.get_build_install_dir(
+                pkg, relative_to=relative_to
+            )
+            inc_path = root_path / rel_inc_path.relative_to("/")
+            return f"{wd}/{shlex.quote(str(inc_path))}"
+        else:
+            return None
 
-    def sh_get_bundled_shlibs_cflags(
+    def sh_must_get_bundled_pkg_include_path(
+        self,
+        pkg: mpkg_base.BasePackage,
+        relative_to: Location = "pkgbuild",
+        wd: str | None = None,
+    ) -> str:
+        path = self.sh_get_bundled_pkg_include_path(pkg, relative_to, wd)
+        if path is None:
+            raise AssertionError(
+                f"{pkg.name} does not define a header include path"
+            )
+        return path
+
+    def sh_get_bundled_pkg_cflags(
+        self,
+        pkg: mpkg_base.BasePackage,
+        relative_to: Location = "pkgbuild",
+        wd: str | None = None,
+    ) -> list[str]:
+        path = self.sh_get_bundled_pkg_include_path(pkg, relative_to, wd=wd)
+        if path is not None:
+            return [f"-I{path}"]
+        else:
+            return []
+
+    def sh_get_bundled_pkgs_cflags(
         self,
         deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
@@ -1563,12 +1885,33 @@ class Build:
         for pkg in deps:
             if self.is_bundled(pkg):
                 flags.extend(
-                    self.sh_get_bundled_shlib_cflags(
+                    self.sh_get_bundled_pkg_cflags(
                         pkg, relative_to=relative_to
                     )
                 )
 
         return flags
+
+    def sh_get_bundled_pkg_bin_path(
+        self,
+        pkg: mpkg_base.BasePackage,
+        relative_to: Location = "pkgbuild",
+        wd: str | None = None,
+    ) -> str | None:
+        assert self.is_bundled(pkg)
+
+        if wd is None:
+            wd = "$(pwd -P)"
+
+        rel_bin_path = pkg.get_install_path(self, "bin")
+        if rel_bin_path:
+            root_path = self.get_build_install_dir(
+                pkg, relative_to=relative_to
+            )
+            bin_path = root_path / rel_bin_path.relative_to("/")
+            return f"{wd}/{shlex.quote(str(bin_path))}"
+        else:
+            return None
 
     def sh_get_command_paths(
         self,
@@ -1610,45 +1953,112 @@ class Build:
         args: dict[str, str | pathlib.Path | None],
         pkg: mpkg_base.BasePackage,
     ) -> None:
-        shlib_paths = pkg.get_shlib_paths(self)
-        ldflags = []
-        for shlib_path in shlib_paths:
-            ldflags.extend(
+        lib_path = pkg.get_install_path(self, "lib")
+        if lib_path is not None:
+            self.sh_append_quoted_ldflags(
+                args,
                 self.target.get_shlib_path_run_time_ldflags(
-                    self, shlex.quote(str(shlib_path))
-                )
+                    self,
+                    shlex.quote(str(lib_path)),
+                ),
             )
+
+    def sh_append_link_time_ldflags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        pkg: mpkg_base.BasePackage,
+        wd: str | None = None,
+    ) -> None:
+        build_deps = self.get_build_reqs(pkg, recursive=True)
+        ldflags = self.sh_get_bundled_pkgs_ldflags(
+            build_deps,
+            relative_to="pkgbuild",
+            wd=wd,
+        )
         if ldflags:
             self.sh_append_quoted_ldflags(args, ldflags)
+
+    def sh_combine_quoted_flags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        flags: list[str] | tuple[str, ...] | str,
+        *,
+        sep: str = '" "',
+        how: Literal["append", "prepend", "replace"],
+    ) -> None:
+        if isinstance(flags, str):
+            flags_line = flags
+        else:
+            flags_line = self.sh_join_flags(flags, sep=sep)
+        existing_flags = args.get(key)
+        if existing_flags and how != "replace":
+            assert isinstance(existing_flags, str)
+            if not existing_flags.startswith("!"):
+                raise AssertionError(
+                    f"{key} must be pre-quoted: {existing_flags}"
+                )
+            if how == "append":
+                args[key] = self.sh_join_flags(
+                    [existing_flags, flags_line],
+                    sep=sep,
+                )
+            elif how == "prepend":
+                args[key] = "!" + self.sh_join_flags(
+                    [flags_line, existing_flags[1:]],
+                    sep=sep,
+                )
+            else:
+                raise AssertionError(
+                    f"unrecognized sh_combined_quoted_flags mode: {how!r}"
+                )
+        else:
+            args[key] = "!" + flags_line
+
+    def sh_replace_quoted_flags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        flags: list[str] | tuple[str, ...] | str,
+        *,
+        sep: str = '" "',
+    ) -> None:
+        self.sh_combine_quoted_flags(args, key, flags, sep=sep, how="replace")
 
     def sh_append_quoted_flags(
         self,
         args: dict[str, str | pathlib.Path | None],
         key: str,
         flags: list[str] | tuple[str, ...] | str,
+        *,
+        sep: str = '" "',
     ) -> None:
-        if isinstance(flags, str):
-            flags_line = flags
-        else:
-            flags_line = self.sh_join_flags(flags)
-        existing_flags = args.get(key)
-        if existing_flags:
-            assert isinstance(existing_flags, str)
-            if not existing_flags.startswith("!"):
-                raise AssertionError(
-                    f"{key} must be pre-quoted: {existing_flags}"
-                )
-            args[key] = self.sh_join_flags([existing_flags, flags_line])
-        else:
-            args[key] = "!" + flags_line
+        self.sh_combine_quoted_flags(args, key, flags, sep=sep, how="append")
+
+    def sh_prepend_quoted_flags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        flags: list[str] | tuple[str, ...] | str,
+        *,
+        sep: str = '" "',
+    ) -> None:
+        self.sh_combine_quoted_flags(args, key, flags, sep=sep, how="prepend")
 
     def sh_append_flags(
         self,
         args: dict[str, str | pathlib.Path | None],
         key: str,
         flags: list[str] | tuple[str, ...],
+        *,
+        sep: str = '" "',
     ) -> None:
-        self.sh_append_quoted_flags(args, key, self.sh_quote_flags(flags))
+        self.sh_append_quoted_flags(
+            args,
+            key,
+            self.sh_quote_flags(flags),
+            sep=sep,
+        )
 
     def sh_append_quoted_ldflags(
         self,
@@ -1668,23 +2078,86 @@ class Build:
     ) -> None:
         self.sh_append_quoted_ldflags(args, self.sh_quote_flags(flags))
 
+    def sh_append_quoted_paths(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        paths: list[str] | tuple[str, ...],
+        *,
+        sep: str = os.pathsep,
+        ignore_env: bool = False,
+    ) -> None:
+        new_paths = list(paths)
+        if not args.get(key) and not ignore_env:
+            new_paths.insert(0, f"${{{key}}}")
+        self.sh_append_quoted_flags(args, key, new_paths, sep=sep)
+
     def sh_append_paths(
         self,
         args: dict[str, str | pathlib.Path | None],
+        key: str,
         paths: list[str] | tuple[str, ...],
+        *,
+        sep: str = os.pathsep,
+        ignore_env: bool = False,
     ) -> None:
         new_paths = self.sh_quote_flags(paths)
-        old_path = args.get("PATH")
-        if not old_path:
-            old_path = os.getenv("PATH")
-        if old_path:
-            new_paths = [str(old_path), *new_paths]
-        args["PATH"] = os.pathsep.join(new_paths)
+        self.sh_append_quoted_paths(
+            args, key, new_paths, sep=sep, ignore_env=ignore_env
+        )
 
-    def sh_configure(
+    def sh_prepend_quoted_paths(
         self,
-        path: str | pathlib.Path,
-        args: Mapping[str, str | pathlib.Path | None],
-    ) -> str:
-        conf_args = self.sh_append_global_flags(args)
-        return self.sh_format_command(path, conf_args, force_args_eq=True)
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        paths: list[str] | tuple[str, ...],
+        *,
+        sep: str = os.pathsep,
+        ignore_env: bool = False,
+    ) -> None:
+        new_paths = list(paths)
+        if not args.get(key) and not ignore_env:
+            new_paths.append(f"${{{key}}}")
+        self.sh_prepend_quoted_flags(args, key, new_paths, sep=sep)
+
+    def sh_prepend_paths(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        paths: list[str] | tuple[str, ...],
+        *,
+        sep: str = os.pathsep,
+        ignore_env: bool = False,
+    ) -> None:
+        new_paths = self.sh_quote_flags(paths)
+        self.sh_prepend_quoted_paths(
+            args, key, new_paths, sep=sep, ignore_env=ignore_env
+        )
+
+    def sh_replace_quoted_paths(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        paths: list[str] | tuple[str, ...] | str,
+        *,
+        sep: str = os.pathsep,
+    ) -> None:
+        self.sh_replace_quoted_flags(args, key, paths, sep=sep)
+
+    def sh_replace_paths(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        paths: (
+            list[str | pathlib.Path]
+            | tuple[str | pathlib.Path, ...]
+            | str
+            | pathlib.Path
+        ),
+        *,
+        sep: str = os.pathsep,
+    ) -> None:
+        if not isinstance(paths, (list, tuple)):
+            paths = [paths]
+        quoted_paths = self.sh_quote_flags([str(p) for p in paths])
+        self.sh_replace_quoted_flags(args, key, quoted_paths, sep=sep)

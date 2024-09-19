@@ -8,6 +8,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    cast,
     overload,
 )
 
@@ -15,6 +16,7 @@ import collections
 import copy
 import dataclasses
 import enum
+import functools
 import glob
 import hashlib
 import inspect
@@ -22,6 +24,7 @@ import os
 import pathlib
 import platform
 import pprint
+import re
 import shlex
 import sys
 import textwrap
@@ -36,12 +39,14 @@ from poetry.core.version import pep440 as poetry_pep440
 from poetry.core.constraints import version as poetry_constr
 from poetry.core.version.pep440 import segments as poetry_pep440_segments
 from poetry.core.spdx import helpers as poetry_spdx_helpers
+from poetry.repositories import exceptions as poetry_repo_exc
 
 from metapkg import tools
 from . import repository
 from . import sources as af_sources
 
 if TYPE_CHECKING:
+    from typing_extensions import TypeAlias
     from cleo.io import io as cleo_io
     from metapkg import targets
     from poetry.repositories import repository as poetry_repo
@@ -51,6 +56,9 @@ get_build_requirements = repository.get_build_requirements
 set_build_requirements = repository.set_build_requirements
 canonicalize_name = packaging.utils.canonicalize_name
 NormalizedName = packaging.utils.NormalizedName
+
+
+Args: TypeAlias = dict[str, Union[str, pathlib.Path, None]]
 
 
 class AliasPackage(poetry_pkg.Package):
@@ -76,6 +84,40 @@ class BasePackage(poetry_pkg.Package):
     def slot_suffix(self) -> str:
         return ""
 
+    @classmethod
+    def get_dep_pkg_name(cls) -> str:
+        """Name used by pkg-config or CMake to refer to this package."""
+        return str(cls.name).upper()
+
+    def get_dep_pkg_config_script(self) -> str | None:
+        return None
+
+    @property
+    def provides_pkg_config(self) -> bool:
+        return False
+
+    @property
+    def provides_shlibs(self) -> bool:
+        return False
+
+    @property
+    def provides_c_headers(self) -> bool:
+        return False
+
+    @property
+    def provides_build_tools(self) -> bool:
+        return False
+
+    def get_pkg_config_meta(self) -> PkgConfigMeta:
+        return PkgConfigMeta(
+            pkg_name=self.get_dep_pkg_name(),
+            pkg_config_script=self.get_dep_pkg_config_script(),
+            provides_pkg_config=self.provides_pkg_config,
+            provides_shlibs=self.provides_shlibs,
+            provides_c_headers=self.provides_c_headers,
+            provides_build_tools=self.provides_build_tools,
+        )
+
     def get_sources(self) -> list[af_sources.BaseSource]:
         raise NotImplementedError
 
@@ -88,11 +130,18 @@ class BasePackage(poetry_pkg.Package):
     def get_license_files_pattern(self) -> str:
         return "{LICENSE*,COPYING,NOTICE,COPYRIGHT}"
 
+    def get_prepare_script(self, build: targets.Build) -> str:
+        return ""
+
     def get_configure_script(self, build: targets.Build) -> str:
-        raise NotImplementedError(f"{self}.configure()")
+        return ""
 
     def get_build_script(self, build: targets.Build) -> str:
         raise NotImplementedError(f"{self}.build()")
+
+    def get_build_env(self, build: targets.Build, wd: str) -> Args:
+        all_build_deps = build.get_build_reqs(self, recursive=True)
+        return build.get_ld_env(all_build_deps, wd=wd)
 
     def get_build_install_script(self, build: targets.Build) -> str:
         script = ""
@@ -100,9 +149,10 @@ class BasePackage(poetry_pkg.Package):
         licenses = self.get_license_files_pattern()
         if licenses:
             sdir = build.get_source_dir(self, relative_to="pkgbuild")
-            legaldir = build.get_install_path("legal").relative_to("/")
+            legaldir = build.get_install_path(self, "legal").relative_to("/")
             lic_dest = (
-                build.get_install_dir(self, relative_to="pkgbuild") / legaldir
+                build.get_build_install_dir(self, relative_to="pkgbuild")
+                / legaldir
             )
             prefix = str(lic_dest / self.name)
             script += textwrap.dedent(
@@ -117,6 +167,9 @@ class BasePackage(poetry_pkg.Package):
             )
 
         return script
+
+    def get_build_install_env(self, build: targets.Build, wd: str) -> Args:
+        return self.get_build_env(build, wd=wd)
 
     def get_build_tools(self, build: targets.Build) -> dict[str, pathlib.Path]:
         return {}
@@ -192,29 +245,56 @@ class BasePackage(poetry_pkg.Package):
     def get_exposed_commands(self, build: targets.Build) -> list[pathlib.Path]:
         return []
 
-    def get_shlib_paths(self, build: targets.Build) -> list[pathlib.Path]:
-        return []
+    def get_install_path(
+        self,
+        build: targets.Build,
+        aspect: targets.InstallAspect,
+    ) -> pathlib.Path | None:
+        return None
 
     def get_shlibs(self, build: targets.Build) -> list[str]:
-        return []
-
-    def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
         return []
 
     def get_dep_commands(self) -> list[str]:
         return []
 
+    def get_dep_install_subdir(
+        self,
+        build: targets.Build,
+        pkg: BasePackage,
+    ) -> pathlib.Path:
+        return pathlib.Path("")
+
+    def get_root_install_subdir(
+        self,
+        build: targets.Build,
+    ) -> pathlib.Path:
+        raise NotImplementedError
+
     def write_file_list_script(
         self, build: targets.Build, listname: str, entries: list[str]
     ) -> str:
-        installdest = build.get_install_dir(self, relative_to="pkgbuild")
+        installdest = build.get_build_install_dir(self, relative_to="pkgbuild")
 
         paths: dict[str, str | pathlib.Path] = {}
-        for aspect in ("systembin", "bin", "data", "include", "lib", "legal"):
-            path = build.get_install_path(aspect).relative_to("/")
-            paths[f"{aspect}dir"] = path
+        for aspect in (
+            "systembin",
+            "bin",
+            "data",
+            "include",
+            "lib",
+            "legal",
+            "doc",
+            "man",
+        ):
+            path = build.get_install_path(self, aspect)  # type: ignore
+            paths[f"{aspect}dir"] = path.relative_to("/")
+            path = build.get_bundle_install_path(aspect)  # type: ignore
+            paths[f"bundle{aspect}dir"] = path.relative_to("/")
 
-        paths["prefix"] = build.get_full_install_prefix().relative_to("/")
+        paths["name"] = self.name
+        paths["version"] = str(self.version)
+        paths["prefix"] = build.get_rel_install_prefix(self)
         paths["exesuffix"] = build.get_exe_suffix()
 
         processed_entries = []
@@ -254,6 +334,22 @@ class BasePackage(poetry_pkg.Package):
         return PackageFileLayout.REGULAR
 
 
+@dataclasses.dataclass(kw_only=True)
+class PkgConfigMeta:
+    #: Name used by pkg-config or CMake or autoconf to refer to this package.
+    pkg_name: str
+    #: Package-provided a package-config script, eg bin/package-config
+    pkg_config_script: str | None = None
+    #: Whether the package provides a pkg-config (*.pc) file
+    provides_pkg_config: bool = False
+    #: Whether the package provides shared libraries
+    provides_shlibs: bool = False
+    #: Whether the package provides C/C++ header files
+    provides_c_headers: bool = False
+    #: Whether the package provides build tools
+    provides_build_tools: bool = False
+
+
 BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
 
@@ -276,7 +372,15 @@ class BundledPackage(BasePackage):
             list[str | poetry_dep.Dependency],
         ],
     ] = []
-    artifact_build_requirements: list[str | poetry_dep.Dependency] = []
+    artifact_build_requirements: Union[
+        list[str | poetry_dep.Dependency],
+        dict[
+            str | poetry_constr.VersionConstraint,
+            list[str | poetry_dep.Dependency],
+        ],
+    ] = []
+
+    build_requires: list[poetry_dep.Dependency]
 
     options: dict[str, Any]
     metadata_tags: dict[str, str]
@@ -294,6 +398,10 @@ class BundledPackage(BasePackage):
             return f"-{self.slot}"
         else:
             return ""
+
+    @property
+    def supports_out_of_tree_builds(self) -> bool:
+        return True
 
     @property
     def name_slot(self) -> str:
@@ -349,6 +457,7 @@ class BundledPackage(BasePackage):
                     )
 
                 src = af_sources.source_for_url(url, extras)
+                src.path = cast(str, source.get("path"))
 
                 csum = source.get("csum")
                 csum_url = source.get("csum_url")
@@ -497,6 +606,7 @@ class BundledPackage(BasePackage):
         revision: str | None = None,
         is_release: bool = False,
         target: targets.Target,
+        requires: list[poetry_dep.Dependency] | None = None,
     ) -> BundledPackage_T:
         sources = cls._get_sources(version)
         is_git = cls.get_vcs_source(version) is not None
@@ -567,6 +677,7 @@ class BundledPackage(BasePackage):
             pretty_version=pretty_version,
             source_version=source_version,
             resolved_sources=sources,
+            requires=requires,
         )
 
     @classmethod
@@ -578,11 +689,39 @@ class BundledPackage(BasePackage):
         pretty_version = f"{full_ver}.s{version_hash[:7]}"
         return version, pretty_version
 
+    def get_root_install_subdir(self, build: targets.Build) -> pathlib.Path:
+        return pathlib.Path(self.name_slot)
+
+    def get_dep_pkg_config_meta(self, dep: BasePackage) -> PkgConfigMeta:
+        if isinstance(dep, BundledPackage):
+            return dep.get_pkg_config_meta()
+        else:
+            return _get_bundled_pkg_config_meta(dep.name)
+
     def get_sources(self) -> list[af_sources.BaseSource]:
         if self.resolved_sources:
             return self.resolved_sources
         else:
             return self._get_sources(version=self.source_version)
+
+    def get_install_path(
+        self,
+        build: targets.Build,
+        aspect: targets.InstallAspect,
+    ) -> pathlib.Path | None:
+        pkg_config = self.get_pkg_config_meta()
+        if aspect == "lib" and not pkg_config.provides_shlibs:
+            return None
+        elif aspect == "include" and not pkg_config.provides_c_headers:
+            return None
+        elif (
+            aspect == "bin"
+            and not pkg_config.provides_build_tools
+            and not pkg_config.pkg_config_script
+        ):
+            return None
+        else:
+            return build.get_install_path(self, aspect)
 
     def get_patches(
         self,
@@ -665,27 +804,37 @@ class BundledPackage(BasePackage):
                 )
                 repository.bundle_repo.add_package(pkg)
 
-    def get_requirements(self) -> list[poetry_dep.Dependency]:
+    def _get_requirements(
+        self,
+        spec: (
+            dict[
+                str | poetry_constr.VersionConstraint,
+                list[str | poetry_dep.Dependency],
+            ]
+            | list[str | poetry_dep.Dependency]
+        ),
+        prop: str,
+    ) -> list[poetry_dep.Dependency]:
         reqs = []
 
         req_spec: list[str | poetry_dep.Dependency] = []
 
-        if isinstance(self.artifact_requirements, dict):
-            for ver, ver_reqs in self.artifact_requirements.items():
+        if isinstance(spec, dict):
+            for ver, ver_reqs in spec.items():
                 if isinstance(ver, str):
                     ver = poetry_constr.parse_constraint(ver)
                 if ver.allows(self.version):
                     req_spec = ver_reqs
                     break
             else:
-                if self.artifact_requirements:
+                if spec:
                     raise RuntimeError(
-                        f"artifact_requirements for {self.name!r} are not "
+                        f"{prop} for {self.name!r} are not "
                         f"empty, but don't match the requested version "
                         f"{self.version}"
                     )
         else:
-            req_spec = self.artifact_requirements
+            req_spec = spec
 
         for item in req_spec:
             if isinstance(item, str):
@@ -694,14 +843,17 @@ class BundledPackage(BasePackage):
                 reqs.append(item)
         return reqs
 
+    def get_requirements(self) -> list[poetry_dep.Dependency]:
+        return self._get_requirements(
+            self.artifact_requirements,
+            "artifact_requirements",
+        )
+
     def get_build_requirements(self) -> list[poetry_dep.Dependency]:
-        reqs = []
-        for item in self.artifact_build_requirements:
-            if isinstance(item, str):
-                reqs.append(poetry_dep.Dependency.create_from_pep_508(item))
-            else:
-                reqs.append(item)
-        return reqs
+        return self._get_requirements(
+            self.artifact_build_requirements,
+            "artifact_build_requirements",
+        )
 
     def clone(self: BundledPackage_T) -> BundledPackage_T:
         clone = self.__class__(self.version)
@@ -784,12 +936,26 @@ class BundledPackage(BasePackage):
         entries = super().get_file_ignore_entries(build)
         return entries + self._read_install_entries(build, "ignore")
 
+    def get_prepare_script(self, build: targets.Build) -> str:
+        script = ""
+
+        if not self.supports_out_of_tree_builds:
+            sdir = shlex.quote(
+                str(build.get_source_dir(self, relative_to="pkgbuild"))
+            )
+            script += f"test ./ -ef {sdir} || cp -a {sdir}/* ./\n"
+
+        return script
+
     def get_build_install_script(self, build: targets.Build) -> str:
+        script = super().get_build_install_script(build)
         service_scripts = self.get_service_scripts(build)
         if service_scripts:
             install = build.sh_get_command("cp", relative_to="pkgbuild")
             extras_dir = build.get_extras_root(relative_to="pkgbuild")
-            install_dir = build.get_install_dir(self, relative_to="pkgbuild")
+            install_dir = build.get_build_install_dir(
+                self, relative_to="pkgbuild"
+            )
             ensuredir = build.target.get_action("ensuredir", build)
             if TYPE_CHECKING:
                 assert isinstance(ensuredir, targets.EnsureDirAction)
@@ -808,9 +974,9 @@ class BundledPackage(BasePackage):
                 cmd = build.sh_format_command(install, args)
                 commands.append(cmd)
 
-            return "\n".join(commands)
-        else:
-            return ""
+            return script + "\n" + "\n".join(commands)
+
+        return script
 
     def get_resources(self, build: targets.Build) -> dict[str, bytes]:
         return self.read_support_files(build, "resources/*", binary=True)
@@ -941,46 +1107,124 @@ class BundledPackage(BasePackage):
         self.metadata_tags = dict(tags)
 
 
+@functools.cache
+def _get_bundled_pkg_config_meta(name: str) -> PkgConfigMeta:
+    package = _get_pkg_in_bundle_repo(poetry_dep.Dependency(name, "*"))
+    if isinstance(package, BasePackage):
+        return package.get_pkg_config_meta()
+    else:
+        return PkgConfigMeta(
+            pkg_name=package.name.upper(),
+            pkg_config_script=None,
+            provides_pkg_config=False,
+            provides_shlibs=False,
+            provides_c_headers=False,
+            provides_build_tools=False,
+        )
+
+
+@functools.cache
+def _get_pkg_in_bundle_repo(dep: poetry_dep.Dependency) -> poetry_pkg.Package:
+    packages = repository.bundle_repo.find_packages(dep)
+    if not packages:
+        raise poetry_repo_exc.PackageNotFound(
+            f"package {dep.pretty_name} not found in bundled repo."
+        )
+
+    packages.sort(key=lambda pkg: pkg.version, reverse=True)
+    return packages[0]
+
+
+def get_bundled_pkg(dep: poetry_dep.Dependency) -> BundledPackage:
+    package = _get_pkg_in_bundle_repo(dep)
+    if not isinstance(package, BundledPackage):
+        raise RuntimeError(
+            f"package {package} is in the bundle repo, but it "
+            "is not a BundledPackage"
+        )
+    return package
+
+
 class PrePackagedPackage(BundledPackage):
     pass
 
 
 class BuildSystemMakePackage(BundledPackage):
-    def get_build_script(self, build: targets.Build) -> str:
-        target = self.get_make_target(build)
-        return self.get_make_command(build, target)
 
-    def get_make_command(self, build: targets.Build, target: str) -> str:
+    def get_build_script(self, build: targets.Build) -> str:
         args = self.get_make_args(build)
-        make = build.sh_get_command("make", args=args)
-        env = self.get_make_env(build, "$(pwd)")
+        target = self.get_make_target(build)
+        return self.get_build_command(build, args, target)
+
+    def get_build_command(
+        self,
+        build: targets.Build,
+        args: Args,
+        target: str = "",
+    ) -> str:
+        wd = "${_wd}"
+        # Undefining MAKELEVEL is required because
+        # some package makefiles have
+        # conditions on MAKELEVEL.
+        env = build.sh_format_command(
+            "env",
+            {"-uMAKELEVEL": None} | self.get_build_env(build, wd=wd),
+            force_args_eq=True,
+            linebreaks=False,
+        )
+        make_args = {f"-j{build.build_parallelism}": None} | args
+        make = build.sh_get_command("make", args=make_args, force_args_eq=True)
+
+        if target:
+            target = shlex.quote(target)
 
         return textwrap.dedent(
             f"""\
-            {make} {target} {env}
+            _wd=$(pwd -P)
+            {env} {make} {target}
             """
         )
 
-    def get_make_args(
+    def get_build_install_command(
         self,
         build: targets.Build,
-    ) -> Mapping[str, str | pathlib.Path | None]:
-        return {}
+        args: Args,
+        target: str,
+    ) -> str:
+        wd = "${_wd}"
+        env = build.sh_format_command(
+            "env",
+            {"-uMAKELEVEL": None} | self.get_build_install_env(build, wd=wd),
+            force_args_eq=True,
+            linebreaks=False,
+        )
+        make_args: Args = {f"-j{build.build_parallelism}": None}
+        build.sh_append_quoted_flags(
+            make_args,
+            "DESTDIR",
+            [self.sh_get_make_install_destdir(build, wd=wd)],
+        )
+        make_args |= args
+        make = build.sh_get_command("make", args=make_args, force_args_eq=True)
 
-    def get_make_env(self, build: targets.Build, wd: str) -> str:
-        return ""
+        if target:
+            target = shlex.quote(target)
+
+        return textwrap.dedent(
+            f"""\
+            _wd=$(pwd -P)
+            {env} {make} {target}
+            """
+        )
+
+    def get_make_args(self, build: targets.Build) -> Args:
+        return {}
 
     def get_make_target(self, build: targets.Build) -> str:
         return ""
 
-    def get_make_install_args(
-        self,
-        build: targets.Build,
-    ) -> Mapping[str, str | pathlib.Path | None]:
+    def get_make_install_args(self, build: targets.Build) -> Args:
         return {}
-
-    def get_make_install_env(self, build: targets.Build, wd: str) -> str:
-        return self.get_make_env(build, wd)
 
     def get_make_install_target(self, build: targets.Build) -> str:
         return "install"
@@ -990,23 +1234,23 @@ class BuildSystemMakePackage(BundledPackage):
         build: targets.Build,
         wd: str,
     ) -> str:
-        instdir = build.get_install_dir(self, relative_to="pkgbuild")
+        instdir = build.get_build_install_dir(
+            self, relative_to="pkgbuild"
+        ) / self.get_make_install_destdir_subdir(build)
         return f"{wd}/{shlex.quote(str(instdir))}"
+
+    def get_make_install_destdir_subdir(
+        self,
+        build: targets.Build,
+    ) -> pathlib.Path:
+        return pathlib.Path("")
 
     def get_build_install_script(self, build: targets.Build) -> str:
         script = super().get_build_install_script(build)
-        install_target = self.get_make_install_target(build)
-
-        if install_target:
+        if target := self.get_make_install_target(build):
             args = self.get_make_install_args(build)
-            make = build.sh_get_command("make", args=args)
-            env = self.get_make_install_env(build, "$(pwd)")
-            destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
-            script += "\n" + textwrap.dedent(
-                f"""\
-                {make} {env} DESTDIR={destdir} "{install_target}"
-                """
-            )
+            make_install = self.get_build_install_command(build, args, target)
+            script += "\n" + make_install
 
         return script
 
@@ -1016,178 +1260,560 @@ class BuildSystemMakePackage(BundledPackage):
 
 
 class BundledCPackage(BuildSystemMakePackage):
-    def sh_configure(
-        self,
-        build: targets.Build,
-        path: str | pathlib.Path,
-        args: Mapping[str, str | pathlib.Path | None],
-    ) -> str:
-        conf_args = dict(args)
-        build.sh_append_run_time_ldflags(conf_args, self)
-        if "--prefix" not in args:
-            conf_args["--prefix"] = str(build.get_full_install_prefix())
+    # Assume all C packages are well-behaved and install *.pc files.
+    @property
+    def provides_pkg_config(self) -> bool:
+        return True
 
-        conf_args = build.sh_append_global_flags(conf_args)
-        return build.sh_format_command(path, conf_args, force_args_eq=True)
+    @property
+    def provides_shlibs(self) -> bool:
+        return True
 
-    def get_shlib_paths(self, build: targets.Build) -> list[pathlib.Path]:
-        return [build.get_full_install_prefix() / "lib"]
-
-    def get_include_paths(self, build: targets.Build) -> list[pathlib.Path]:
-        return [build.get_full_install_prefix() / "include"]
+    @property
+    def provides_c_headers(self) -> bool:
+        return True
 
     def configure_dependency(
         self,
         build: targets.Build,
-        configure_flags: dict[str, str | pathlib.Path | None],
-        depname: str,
-        var_prefix: str,
+        dep: BasePackage,
+        conf_args: Args,
+        conf_env: Args,
+        wd: str | None = None,
     ) -> None:
-        pkg = build.get_package(depname)
-        if build.is_bundled(pkg):
-            root = build.get_install_dir(pkg, relative_to="pkgbuild")
-            path = root / build.get_full_install_prefix().relative_to("/")
-            rel_path = f'$(pwd)/"{path}"'
+        if build.is_bundled(dep):
+            build.sh_append_pkgconfig_paths(conf_env, dep, wd=wd)
 
-            dep_ldflags = build.sh_get_bundled_shlib_ldflags(
-                pkg, relative_to="pkgbuild"
-            )
-
-            if var_prefix:
-                build.sh_append_quoted_flags(
-                    configure_flags,
-                    f"{var_prefix}_CFLAGS",
-                    [f"-I{rel_path}/include/"],
-                )
-                build.sh_append_quoted_flags(
-                    configure_flags,
-                    f"{var_prefix}_LIBS",
-                    dep_ldflags,
-                )
-            else:
-                build.sh_append_quoted_flags(
-                    configure_flags,
-                    "CFLAGS",
-                    [f"-I{rel_path}/include/"],
-                )
-                build.sh_append_quoted_ldflags(
-                    configure_flags,
-                    dep_ldflags,
-                )
-
+            rel_path = build.sh_get_bundled_install_path(dep, wd=wd)
             ldflags = [f"-L{rel_path}/lib/"]
 
             if platform.system() == "Darwin":
+                root = build.get_build_install_dir(dep, relative_to="pkgbuild")
                 # In case ./configure tries to compile and test a program
                 # and it fails because dependency is not yet installed
                 # at its install_name location.
-                configure_flags["DYLD_FALLBACK_LIBRARY_PATH"] = root
+                conf_env["DYLD_FALLBACK_LIBRARY_PATH"] = root
             else:
                 ldflags.append(f"-Wl,-rpath-link,{rel_path}/lib")
 
-            build.sh_append_quoted_ldflags(configure_flags, ldflags)
+            build.sh_append_quoted_ldflags(conf_env, ldflags)
 
-        elif build.is_stdlib(pkg):
-            configure_flags[f"{var_prefix}_CFLAGS"] = (
-                f"-D_{var_prefix}_IS_SYSLIB"
-            )
-            std_ldflags = []
-            for shlib in pkg.get_shlibs(build):
-                std_ldflags.append(f"-l{shlib}")
-            configure_flags[f"{var_prefix}_LIBS"] = build.sh_join_flags(
-                std_ldflags
-            )
+            bin_path = build.sh_get_bundled_pkg_bin_path(dep)
+            if bin_path:
+                build.sh_prepend_quoted_paths(conf_env, "PATH", [bin_path])
+
+    def sh_get_configure_command(self, build: targets.Build) -> str:
+        if self.supports_out_of_tree_builds:
+            sdir = build.get_source_dir(self, relative_to="pkgbuild")
+        else:
+            sdir = build.get_build_dir(self, relative_to="pkgbuild")
+
+        return shlex.quote(str(sdir / "configure"))
+
+    def get_configure_args(
+        self,
+        build: targets.Build,
+        wd: str | None = None,
+    ) -> Args:
+        conf_args: Args = {}
+        return conf_args
+
+    def get_configure_env(
+        self,
+        build: targets.Build,
+        wd: str | None = None,
+    ) -> Args:
+        env_args: Args = {}
+        build.sh_append_run_time_ldflags(env_args, self)
+        build.sh_append_link_time_ldflags(env_args, self, wd=wd)
+        all_build_deps = build.get_build_reqs(self, recursive=True)
+        return build.sh_append_global_flags(env_args) | build.get_ld_env(
+            all_build_deps, wd=wd
+        )
 
     def get_configure_script(self, build: targets.Build) -> str:
-        sdir = build.get_source_dir(self, relative_to="pkgbuild")
-        configure = sdir / "configure"
-        return self.sh_configure(build, configure, {})
+        script = super().get_configure_script(build)
+        script += "_wd=$(pwd -P)\n"
+        wd = "${_wd}"
+        cmd = self.sh_get_configure_command(build)
+
+        args = self.get_configure_args(build, wd=wd)
+        env = self.get_configure_env(build, wd=wd)
+
+        for build_dep in build.get_build_reqs(self, bundled_only=False):
+            self.configure_dependency(build, build_dep, args, env, wd=wd)
+
+        conf_script = build.sh_append_args(
+            cmd, args, force_args_eq=True, linebreaks=False
+        )
+
+        if env:
+            env_script = build.sh_format_command(
+                "env", env, force_args_eq=True
+            )
+            script += f"{env_script} {textwrap.indent(conf_script, '  ')}"
+        else:
+            script += conf_script
+
+        return script
 
     def get_build_install_script(self, build: targets.Build) -> str:
         script = super().get_build_install_script(build)
         install_target = self.get_make_install_target(build)
 
         if install_target:
+            find = build.sh_get_command("find")
+            sed = build.sh_get_command("sed")
             destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
-            libdir = build.get_install_path("lib")
+            libdir = build.get_install_path(self, "lib")
+            re_libdir = re.escape(str(libdir))
+            includedir = build.get_install_path(self, "include")
+            re_includedir = re.escape(str(includedir))
+            prefix = build.get_install_prefix(self)
+            re_prefix = re.escape(str(prefix))
             script += "\n" + textwrap.dedent(
                 f"""\
                 _d={destdir}
-                find "$_d" -name '*.la' -exec sed -i -r -e \
-                    "s|{libdir}|${{_d}}{libdir}|g" {{}} \;
+                {find} "$_d" -name '*.la' -exec {sed} -i -r -e \
+                    "s|{re_libdir}|${{_d}}{libdir}|g" {{}} \\;
+                {find} "$_d" -path '*/pkgconfig/*.pc' -exec {sed} -i -r -e \
+                    "s|includedir\\s*=.*|includedir=${{_d}}{includedir}|g
+                     s|libdir\\s*=.*|libdir=${{_d}}{libdir}|g
+                     s|exec_prefix\\s*=.*|exec_prefix=${{_d}}{prefix}|g
+                    " {{}} \\;
+                {find} "$_d" -path '*/cmake/*/*.cmake' -exec {sed} -i -r -e \
+                    "s|_IMPORT_PREFIX\\s+\\"{re_prefix}\\"|_IMPORT_PREFIX \\"${{_d}}{prefix}\\"|g
+                     s|(\\"\\|;){re_includedir}|\\1${{_d}}{includedir}|g
+                     s|(\\"\\|;){re_libdir}|\\1${{_d}}{libdir}|g
+                    " {{}} \\;
                 """
             )
+            if cfg := self.get_dep_pkg_config_script():
+                script += "\n" + textwrap.dedent(
+                    f"""\
+                    {find} "$_d" -path '*/bin/{cfg}' -exec {sed} -i -r -e \
+                        "s|includedir\\s*=.*|includedir=${{_d}}{includedir}|g
+                         s|libdir\\s*=.*|libdir=${{_d}}{libdir}|g
+                         s|exec_prefix\\s*=.*|exec_prefix=${{_d}}{prefix}|g
+                         s|(-I){re_includedir}|\\1${{_d}}{includedir}|g
+                         s|(-L){re_libdir}|\\1${{_d}}{libdir}|g
+                        " {{}} \\;
+                    """
+                )
 
         return script
 
 
-class BundledCMesonPackage(BundledCPackage):
-    def sh_configure(
+class BundledCAutoconfPackage(BundledCPackage):
+    def get_configure_args(
         self,
         build: targets.Build,
-        path: str | pathlib.Path,
-        args: Mapping[str, str | pathlib.Path | None],
-    ) -> str:
-        conf_args = dict(args)
-        if "--prefix" not in args:
-            conf_args["--prefix"] = str(build.get_full_install_prefix())
-        if "--sysconfdir" not in args:
-            conf_args["--sysconfdir"] = build.get_install_path("sysconf")
-        # if "--datarootdir" not in args:
-        #     conf_args["--datarootdir"] = build.get_install_path("data")
-        if "--bindir" not in args:
-            conf_args["--bindir"] = build.get_install_path("bin")
-        if "--sbindir" not in args:
-            conf_args["--sbindir"] = build.get_install_path("bin")
-        if "--libdir" not in args:
-            conf_args["--libdir"] = build.get_install_path("lib")
-        if "--includedir" not in args:
-            conf_args["--includedir"] = build.get_install_path("include")
-        env_args: dict[str, str | pathlib.Path | None] = {}
+        wd: str | None = None,
+    ) -> Args:
+        return super().get_configure_args(build, wd=wd) | {
+            "--prefix": build.get_install_prefix(self),
+            "--bindir": build.get_install_path(self, "bin"),
+            "--sbindir": build.get_install_path(self, "bin"),
+            "--sysconfdir": build.get_install_path(self, "sysconf"),
+            "--localstatedir": build.get_install_path(self, "localstate"),
+            "--libdir": build.get_install_path(self, "lib"),
+            "--includedir": build.get_install_path(self, "include"),
+            "--datarootdir": build.get_install_path(self, "data"),
+            "--docdir": build.get_install_path(self, "doc"),
+            "--mandir": build.get_install_path(self, "man"),
+        }
+
+    def configure_dependency(
+        self,
+        build: targets.Build,
+        dep: BasePackage,
+        conf_args: Args,
+        conf_env: Args,
+        wd: str | None = None,
+    ) -> None:
+        super().configure_dependency(build, dep, conf_args, conf_env, wd=wd)
+        try:
+            pkg_config_meta = self.get_dep_pkg_config_meta(dep)
+        except poetry_repo_exc.PackageNotFound:
+            # This is a preinstalled system build-time package,
+            # for which we have no in-tree definition.
+            return
+
+        var_prefix = pkg_config_meta.pkg_name
+        if build.is_bundled(dep):
+            if not pkg_config_meta.provides_pkg_config:
+                dep_ldflags = build.sh_get_bundled_pkg_ldflags(dep, wd=wd)
+
+                for shlib in dep.get_shlibs(build):
+                    dep_ldflags.append(f"-l{shlex.quote(shlib)}")
+
+                transitive_deps = build.get_build_reqs(dep, recursive=True)
+                transitive_cflags = build.sh_get_bundled_pkgs_cflags(
+                    transitive_deps
+                )
+
+                rel_path = build.sh_get_bundled_install_path(
+                    dep, relative_to="pkgbuild", wd=wd
+                )
+
+                build.sh_append_quoted_flags(
+                    conf_args,
+                    f"{var_prefix}_CFLAGS",
+                    [f"-I{rel_path}/include"],
+                )
+                build.sh_append_quoted_flags(
+                    conf_args,
+                    f"{var_prefix}_LIBS",
+                    dep_ldflags,
+                )
+                build.sh_append_quoted_flags(
+                    conf_args,
+                    f"{var_prefix}_CFLAGS",
+                    transitive_cflags,
+                )
+
+        elif build.is_stdlib(dep):
+            conf_args[f"{var_prefix}_CFLAGS"] = f"-D_{var_prefix}_IS_SYSLIB"
+            std_ldflags = []
+            for shlib in dep.get_shlibs(build):
+                std_ldflags.append(f"-l{shlib}")
+            conf_args[f"{var_prefix}_LIBS"] = build.sh_join_flags(std_ldflags)
+
+
+class BundledCMesonPackage(BundledCPackage):
+    def sh_get_configure_command(self, build: targets.Build) -> str:
+        sdir = str(build.get_source_dir(self, relative_to="pkgbuild"))
+        bdir = str(build.get_build_dir(self, relative_to="pkgbuild"))
+        meson = build.sh_get_command("meson")
+        return f"{meson} setup {shlex.quote(sdir)} {shlex.quote(bdir)}"
+
+    def get_configure_args(
+        self,
+        build: targets.Build,
+        wd: str | None = None,
+    ) -> Args:
+        return {
+            "--prefix": build.get_install_prefix(self),
+            "--sysconfdir": build.get_install_path(self, "sysconf"),
+            "--bindir": build.get_install_path(self, "bin"),
+            "--sbindir": build.get_install_path(self, "bin"),
+            "--libdir": build.get_install_path(self, "lib"),
+            "--includedir": build.get_install_path(self, "include"),
+            # Meson does not support --docdir
+            # "--docdir": build.get_install_path(self, "doc"),
+            "--mandir": build.get_install_path(self, "man"),
+            "-Ddefault_library": "shared",
+        }
+
+    def get_configure_env(
+        self,
+        build: targets.Build,
+        wd: str | None = None,
+    ) -> Args:
+        env_args = dict(super().get_configure_env(build, wd))
         build.sh_append_run_time_ldflags(env_args, self)
         env_args = build.sh_append_global_flags(env_args)
-        conf = build.sh_format_command(path, conf_args, force_args_eq=True)
-        env = build.sh_format_command("env", env_args, force_args_eq=True)
-        return f"{env} {conf}"
+        return env_args
 
-    def get_configure_script(self, build: targets.Build) -> str:
-        sdir = build.get_source_dir(self, relative_to="pkgbuild")
-        meson = build.sh_get_command("meson")
-        configure_flags = {
-            "setup": None,
-            str(sdir): None,
-            "build": None,
-            "-Ddefault_library": "shared",
-            "-Ddistro_install": "true",
-            "-Dwith_INIReader": "true",
+    def get_build_command(
+        self,
+        build: targets.Build,
+        args: Args,
+        target: str = "",
+    ) -> str:
+        wd = "${_wd}"
+
+        env = build.sh_format_command(
+            "env",
+            self.get_build_env(build, wd=wd),
+            force_args_eq=True,
+            linebreaks=False,
+        )
+
+        bdir = str(build.get_build_dir(self, relative_to="pkgbuild"))
+        meson_args: Args = {
+            "compile": None,
+            "-C": bdir,
         }
-        return self.sh_configure(build, meson, configure_flags)
+        ninja_args = {
+            f"-j{build.build_parallelism}": None,
+            "--verbose": None,
+        } | args
+        ninja_args_line = build.sh_format_args(
+            ninja_args, force_args_eq=True, linebreaks=False
+        )
+        build.sh_append_quoted_flags(
+            meson_args,
+            "--ninja-args",
+            [ninja_args_line],
+        )
+        if target:
+            meson_args[target] = None
 
-    def get_configure_target(self, build: targets.Build) -> str:
-        return self.name
-
-    def get_build_script(self, build: targets.Build) -> str:
-        meson = build.sh_get_command("meson")
-        env = self.get_make_env(build, "$(pwd)")
+        meson_compile = build.sh_get_command(
+            "meson",
+            args=meson_args,
+            force_args_eq=False,
+        )
 
         return textwrap.dedent(
             f"""\
-            {meson} compile -C build
+            _wd=$(pwd -P)
+            {env} {meson_compile}
             """
         )
 
     def get_build_install_script(self, build: targets.Build) -> str:
         script = BundledPackage.get_build_install_script(self, build)
         meson = build.sh_get_command("meson")
-        env = self.get_make_install_env(build, "$(pwd)")
         destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
+        bdir = str(build.get_build_dir(self, relative_to="pkgbuild"))
         script += "\n" + textwrap.dedent(
             f"""\
-            {meson} install -C build --destdir={destdir} --no-rebuild
+            {meson} install -C {shlex.quote(bdir)} --destdir={destdir} --no-rebuild
             """
         )
 
         return script
+
+
+CMakeTargetBuildSystem = Literal["make", "ninja"]
+
+
+class BundledCMakePackage(BundledCPackage):
+    def sh_get_configure_command(self, build: targets.Build) -> str:
+        srcdir = str(build.get_source_dir(self, relative_to="pkgbuild"))
+        bdir = str(build.get_build_dir(self, relative_to="pkgbuild"))
+        return build.sh_get_command(
+            "cmake", args={"-S": srcdir, "-B": bdir}, linebreaks=False
+        )
+
+    def get_target_build_system(
+        self,
+        build: targets.Build,
+    ) -> CMakeTargetBuildSystem:
+        return "make"
+
+    def get_configure_script(self, build: targets.Build) -> str:
+        build_rules_path = str(
+            build.get_build_dir(self, relative_to="fsroot")
+            / "metapkg_rules.cmake"
+        )
+        build_rules: list[str] = []
+        config_path = "metapkg_common_config.cmake"
+        config = []
+
+        buildsys = self.get_target_build_system(build)
+        if buildsys == "make":
+            make = build.sh_get_command("make")
+            config.append(
+                f'set(CMAKE_MAKE_PROGRAM "{make}" CACHE PATH "path to make")'
+            )
+        elif buildsys == "ninja":
+            ninja = build.sh_get_command("ninja")
+            config.append(
+                f'set(CMAKE_MAKE_PROGRAM "{ninja}" CACHE PATH "path to ninja")'
+            )
+        else:
+            raise AssertionError(f"unexpected target build system: {buildsys}")
+
+        config.append(
+            'set(CMAKE_PREFIX_PATH "$ENV{CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)'
+        )
+
+        config.append(
+            'set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY CACHE STRING "" FORCE)'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_PREFIX "{build.get_install_prefix(self)}" CACHE STRING "" FORCE)'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_BINDIR "{build.get_rel_install_path(self, "bin")}" '
+            f'CACHE PATH "Output directory for binaries")'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_LIBDIR "{build.get_rel_install_path(self, "lib")}" '
+            f'CACHE PATH "Output directory for libraries")'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_INCLUDEDIR "{build.get_rel_install_path(self, "include")}" '
+            f'CACHE PATH "Output directory for headers")'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_DATAROOTDIR "{build.get_rel_install_path(self, "data")}" '
+            f'CACHE PATH "Output directory for data")'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_DOCDIR "{build.get_rel_install_path(self, "doc")}" '
+            f'CACHE PATH "Output directory for documentation")'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_MANDIR "{build.get_rel_install_path(self, "man")}" '
+            f'CACHE PATH "Output directory for man pages")'
+        )
+
+        config.extend(
+            [
+                f'set(CMAKE_USER_MAKE_RULES_OVERRIDE "{build_rules_path}" '
+                + 'CACHE FILEPATH "metapkg override rules")',
+                'set(BUILD_SHARED_LIBS ON CACHE BOOL "")',
+                'set(Python3_FIND_UNVERSIONED_NAMES FIRST CACHE STRING "")',
+                'set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON CACHE BOOL "")',
+                'set(CMAKE_TLS_VERIFY ON CACHE BOOL "")',
+                'set(CMAKE_COMPILE_WARNING_AS_ERROR OFF CACHE BOOL "")',
+            ]
+        )
+
+        build_rules_text = textwrap.indent(
+            "\n".join(build_rules), " " * 12
+        ).lstrip()
+        config_text = textwrap.indent("\n".join(config), " " * 12).lstrip()
+        script = textwrap.dedent(
+            f"""
+            _wd=$(pwd -P)
+            cat > "{build_rules_path}" <<- '_EOF_'
+            {build_rules_text}
+            _EOF_
+            cat > "{config_path}" <<- '_EOF_'
+            {config_text}
+            _EOF_
+            """
+        )
+        return script + super().get_configure_script(build)
+
+    def get_configure_args(
+        self,
+        build: targets.Build,
+        wd: str | None = None,
+    ) -> Args:
+        if self.get_target_build_system(build) == "make":
+            generator = "Unix Makefiles"
+        else:
+            generator = "Ninja"
+
+        return {
+            "-Cmetapkg_common_config.cmake": None,
+            f"-G{generator}": None,
+            "-DCMAKE_BUILD_TYPE": "metapkg",
+            "-DCMAKE_VERBOSE_MAKEFILE": "ON",
+            "-DCMAKE_POLICY_DEFAULT_CMP0144": "NEW",
+        }
+
+    def get_configure_env(
+        self,
+        build: targets.Build,
+        wd: str | None = None,
+    ) -> Args:
+        env_args = dict(super().get_configure_env(build, wd))
+        build.sh_append_run_time_ldflags(env_args, self)
+        env_args = build.sh_append_global_flags(env_args)
+        return env_args
+
+    def get_build_command(
+        self,
+        build: targets.Build,
+        args: Args,
+        target: str = "",
+    ) -> str:
+        args = args | {f"-j{build.build_parallelism}": None}
+        if self.get_target_build_system(build) == "ninja":
+            args |= {"--verbose": None}
+        else:
+            args |= {"V": "100"}
+
+        bdir = str(build.get_build_dir(self, relative_to="pkgbuild"))
+        cmake_args: Args = {
+            "--build": None,
+            bdir: None,
+        }
+        if target:
+            cmake_args["--target"] = target
+
+        cmake = build.sh_get_command(
+            "cmake", args=cmake_args, force_args_eq=True
+        )
+
+        cmake += " -- "
+
+        cmake_build = build.sh_append_args(
+            cmake,
+            args,
+            force_args_eq=True,
+        )
+
+        env = build.sh_format_command(
+            "env",
+            self.get_build_env(build, wd="${_wd}"),
+            force_args_eq=True,
+            linebreaks=False,
+        )
+
+        return textwrap.dedent(
+            f"""\
+            _wd=$(pwd -P)
+            {env} {cmake_build}
+            """
+        )
+
+    def get_build_install_command(
+        self,
+        build: targets.Build,
+        args: Args,
+        target: str,
+    ) -> str:
+        bdir = str(build.get_build_dir(self, relative_to="pkgbuild"))
+        cmake_args: Args = {
+            "--install": None,
+            bdir: None,
+            "--verbose": None,
+        } | dict(args)
+
+        cmake = build.sh_get_command(
+            "cmake", args=cmake_args, force_args_eq=True
+        )
+
+        wd = "${_wd}"
+        env_args = self.get_build_install_env(build, wd=wd)
+        build.sh_append_quoted_flags(
+            env_args,
+            "DESTDIR",
+            [self.sh_get_make_install_destdir(build, wd=wd)],
+        )
+
+        env = build.sh_format_args(
+            env_args,
+            force_args_eq=True,
+            linebreaks=False,
+        )
+
+        return textwrap.dedent(
+            f"""\
+            _wd=$(pwd -P)
+            {env} {cmake}
+            """
+        )
+
+    def configure_dependency(
+        self,
+        build: targets.Build,
+        dep: BasePackage,
+        conf_args: Args,
+        conf_env: Args,
+        wd: str | None = None,
+    ) -> None:
+        super().configure_dependency(build, dep, conf_args, conf_env, wd=wd)
+
+        if build.is_bundled(dep):
+            var_prefix = self.get_dep_pkg_config_meta(dep).pkg_name
+            rel_path = build.sh_get_bundled_install_path(dep, wd=wd)
+            conf_args[f"-D{var_prefix}_ROOT"] = f"!{rel_path}"
 
 
 _semver_phase_spelling_map = {

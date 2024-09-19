@@ -33,6 +33,7 @@ setup(
     ],
     extras_require={
         "test": [
+            "typing-extensions~=4.0",
             "types-requests~=2.31.0.2",
         ]
     },

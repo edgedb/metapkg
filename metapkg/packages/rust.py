@@ -6,6 +6,7 @@ from typing import (
 import pathlib
 import textwrap
 
+from poetry.core.packages import dependency as poetry_dep
 from poetry.core.semver import version as poetry_version
 from poetry.core.version import pep440 as poetry_pep440
 
@@ -63,9 +64,6 @@ class BundledRustPackage(base.BundledPackage):
 
         return version
 
-    def get_configure_script(self, build: targets.Build) -> str:
-        return ""
-
     def get_build_script(self, build: targets.Build) -> str:
         return ""
 
@@ -75,9 +73,9 @@ class BundledRustPackage(base.BundledPackage):
         sed = build.sh_get_command("sed")
         installdest = build.get_temp_dir(self, relative_to="pkgbuild")
         src = build.get_source_dir(self, relative_to="pkgbuild")
-        bindir = build.get_install_path("systembin").relative_to("/")
+        bindir = build.get_bundle_install_path("systembin").relative_to("/")
         install_bindir = (
-            build.get_install_dir(self, relative_to="pkgbuild") / bindir
+            build.get_build_install_dir(self, relative_to="pkgbuild") / bindir
         )
         env = build.sh_append_global_flags({})
         env["RUST_BACKTRACE"] = "1"
@@ -115,6 +113,7 @@ class BundledAdHocRustPackage(BundledRustPackage):
         revision: str | None = None,
         is_release: bool = False,
         target: targets.Target,
+        requires: list[poetry_dep.Dependency] | None = None,
     ) -> BundledAdHocRustPackage:
         sources = cls._get_sources(version)
 
@@ -147,4 +146,5 @@ class BundledAdHocRustPackage(BundledRustPackage):
             pretty_version=pretty_version,
             source_version=version,
             resolved_sources=sources,
+            requires=requires,
         )
