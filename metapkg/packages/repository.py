@@ -44,7 +44,7 @@ def _DependencyCache_search_for(
         dependency.source_subdirectory,
     )
 
-    packages = self.cache.get(key)
+    packages = self.cache.get(key)  # type: ignore
     if packages is None:
         packages = self.provider.search_for(dependency)
     else:
@@ -54,7 +54,7 @@ def _DependencyCache_search_for(
             if dependency.constraint.allows(p.package.version)
         ]
 
-    self.cache[key] = packages
+    self.cache[key] = packages  # type: ignore
 
     return packages
 
