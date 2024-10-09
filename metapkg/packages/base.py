@@ -250,7 +250,19 @@ class BasePackage(poetry_pkg.Package):
         build: targets.Build,
         aspect: targets.InstallAspect,
     ) -> pathlib.Path | None:
-        return None
+        pkg_config = self.get_pkg_config_meta()
+        if aspect == "lib" and not pkg_config.provides_shlibs:
+            return None
+        elif aspect == "include" and not pkg_config.provides_c_headers:
+            return None
+        elif (
+            aspect == "bin"
+            and not pkg_config.provides_build_tools
+            and not pkg_config.pkg_config_script
+        ):
+            return None
+        else:
+            return build.get_install_path(self, aspect)
 
     def get_shlibs(self, build: targets.Build) -> list[str]:
         return []
@@ -703,25 +715,6 @@ class BundledPackage(BasePackage):
             return self.resolved_sources
         else:
             return self._get_sources(version=self.source_version)
-
-    def get_install_path(
-        self,
-        build: targets.Build,
-        aspect: targets.InstallAspect,
-    ) -> pathlib.Path | None:
-        pkg_config = self.get_pkg_config_meta()
-        if aspect == "lib" and not pkg_config.provides_shlibs:
-            return None
-        elif aspect == "include" and not pkg_config.provides_c_headers:
-            return None
-        elif (
-            aspect == "bin"
-            and not pkg_config.provides_build_tools
-            and not pkg_config.pkg_config_script
-        ):
-            return None
-        else:
-            return build.get_install_path(self, aspect)
 
     def get_patches(
         self,

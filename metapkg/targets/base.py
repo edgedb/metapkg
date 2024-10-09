@@ -1913,22 +1913,22 @@ class Build:
         else:
             return None
 
-    def sh_get_command_paths(
+    def sh_get_bundled_pkgs_bin_paths(
         self,
-        commands: Iterable[str],
-        pkg: mpkg_base.BasePackage,
+        deps: Iterable[mpkg_base.BasePackage],
+        relative_to: Location = "pkgbuild",
     ) -> list[str]:
-        paths = set()
-        src_root = self.get_source_abspath()
-        for cmd in commands:
-            cmd_txt = self.sh_get_command(
-                cmd, package=pkg, relative_to="sourceroot"
-            )
-            if os.path.sep not in cmd_txt:
-                # Skip global commands
-                continue
-            paths.add(src_root / pathlib.Path(cmd_txt).parent)
-        return [str(p) for p in paths]
+        paths = []
+
+        for pkg in deps:
+            if self.is_bundled(pkg):
+                path = self.sh_get_bundled_pkg_bin_path(
+                    pkg, relative_to=relative_to
+                )
+                if path is not None:
+                    paths.append(path)
+
+        return paths
 
     def sh_append_global_flags(
         self,

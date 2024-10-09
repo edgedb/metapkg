@@ -414,10 +414,12 @@ class BasePythonPackage(base.BasePackage):
             if ldflags:
                 build.sh_append_quoted_ldflags(env, ldflags)
 
-            paths = build.sh_get_command_paths(self.get_dep_commands(), self)
+            bin_paths = build.sh_get_bundled_pkgs_bin_paths(
+                build_deps, relative_to="pkgsource"
+            )
 
-            if paths:
-                build.sh_prepend_paths(env, "PATH", paths)
+            if bin_paths:
+                build.sh_prepend_quoted_paths(env, "PATH", bin_paths)
 
             binary = True
 
