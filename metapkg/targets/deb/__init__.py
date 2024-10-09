@@ -40,6 +40,17 @@ PACKAGE_MAP = {
     "ncurses": "ncurses-bin",
     "libffi-dev": "libffi-dev",
     "openssl-dev": "libssl-dev",
+    "libexpat": "libexpat?",
+    "libexpat-dev": "libexpat?-dev",
+    "libgeos": "libgeos-c1v?",
+    "libgeotiff": "libgeotiff?",
+    "libjson-c": "libjson-c?",
+    "libsqlite3": "libsqlite3-?",
+    "libtiff": "libtiff?",
+    "libprotobuf-c": "libprotobuf-c?",
+    "libgdal": "libgdal??",
+    "libproj": "libproj??",
+    "protoc-c": "protobuf-c-compiler",
 }
 
 
@@ -180,7 +191,7 @@ class DebRepository(poetry_repo.Repository):
                 if not seen_name:
                     if not line.endswith(":"):
                         raise RuntimeError(
-                            "cannot parse apt-cache policy output"
+                            f"cannot parse apt-cache policy output:\n{output}"
                         )
                     meta["name"] = line[:-1]
                     seen_name = True
@@ -217,12 +228,13 @@ class DebRepository(poetry_repo.Repository):
 
                     last_indent = indent
                 else:
-                    raise RuntimeError("cannot parse apt-cache policy output")
-
-            meta["versions"] = versions
-            if versions:
+                    raise RuntimeError(
+                        f"cannot parse apt-cache policy output:\n{output}"
+                    )
+            else:
                 vno += 1
 
+            meta["versions"] = versions
             lines = lines[vno:]
             metas.append(meta)
 

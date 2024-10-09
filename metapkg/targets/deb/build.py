@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import *
 
 import datetime
 import json
@@ -148,7 +147,7 @@ class Build(targets.Build):
             self._buildroot / package.name, relative_to=relative_to
         )
 
-    def get_install_dir(
+    def get_build_install_dir(
         self,
         package: packages.BasePackage,
         *,
@@ -160,7 +159,7 @@ class Build(targets.Build):
 
     def _get_tarball_tpl(self, package: packages.BasePackage) -> str:
         rp = self._root_pkg
-        return f"{rp.name}_{rp.version.text}.orig-{package.name}.tar{{comp}}"
+        return f"{rp.name}_{rp.version.text}.orig-{package.name}{{part}}.tar{{comp}}"
 
     def _format_version(self) -> str:
         return packages.pep440_to_semver(self._root_pkg.version)
@@ -184,7 +183,7 @@ class Build(targets.Build):
         with open(debsource / "format", "w") as f:
             f.write("3.0 (quilt)\n")
         with open(self._debroot / "compat", "w") as f:
-            f.write("9\n")
+            f.write("10\n")
 
     def _write_control(self) -> None:
         build_deps = ",\n ".join(
@@ -465,7 +464,7 @@ class Build(targets.Build):
 
     def _get_package_install_script(self, pkg: packages.BasePackage) -> str:
         source_root = self.get_source_root(relative_to="pkgbuild")
-        install_dir = self.get_install_dir(pkg, relative_to="sourceroot")
+        install_dir = self.get_build_install_dir(pkg, relative_to="sourceroot")
         temp_dir = self.get_temp_dir(pkg, relative_to="sourceroot")
 
         il_script_text = self._get_package_script(pkg, "install_list")
@@ -509,7 +508,8 @@ class Build(targets.Build):
                 | sed -e "s/ /?/g" \\
                 > "debian/{self._root_pkg.name_slot}.install"
 
-            dh_install --sourcedir="{install_dir}" --fail-missing
+            dh_install --sourcedir="{install_dir}"
+            dh_missing --sourcedir="{install_dir}" --fail-missing
 
             popd >/dev/null
         """
@@ -519,7 +519,9 @@ class Build(targets.Build):
         paths = []
 
         for pkg in self._installable:
-            paths.extend(pkg.get_shlib_paths(self))
+            path = pkg.get_install_path(self, "lib")
+            if path is not None:
+                paths.append(path)
 
         return paths
 
@@ -528,7 +530,7 @@ class Build(targets.Build):
         symlinks = []
 
         extras_dir = self.get_extras_root(relative_to="fsroot")
-        sys_bindir = self.get_install_path("systembin").relative_to("/")
+        sys_bindir = self.get_bundle_install_path("systembin").relative_to("/")
 
         for pkg in self._installable:
             for path, content in pkg.get_service_scripts(self).items():
@@ -562,7 +564,7 @@ class Build(targets.Build):
                 str(self._debroot / f"{self._root_pkg.name}-common")
             )
 
-            sysbindir = self.get_install_path("systembin")
+            sysbindir = self.get_bundle_install_path("systembin")
 
             for shim_path, data in self._bin_shims.items():
                 bin_path = (sysbindir / shim_path).relative_to("/")

@@ -108,11 +108,18 @@ class HashVerification(BaseVerification):
 
 
 class BaseSource:
-    def __init__(self, url: str, name: str, **extras: Any) -> None:
+    def __init__(
+        self,
+        url: str,
+        name: str,
+        path: str | None = None,
+        **extras: Any,
+    ) -> None:
         self.url = url
         self.verifications: list[BaseVerification] = []
         self.name = name
         self.extras = extras
+        self.path = path
 
     def add_verification(self, verification: BaseVerification) -> None:
         self.verifications.append(verification)
@@ -137,6 +144,7 @@ class BaseSource:
         target_dir: pathlib.Path,
         io: cleo_io.IO,
         build: targets.Build,
+        part: str = "",
     ) -> pathlib.Path:
         raise NotImplementedError
 
@@ -202,6 +210,8 @@ class HttpsSource(BaseSource):
         *,
         target_dir: pathlib.Path,
         io: cleo_io.IO,
+        part: str = "",
+        build: targets.Build | None = None,
     ) -> pathlib.Path:
         if name_tpl is None:
             assert pkg is not None
@@ -216,10 +226,12 @@ class HttpsSource(BaseSource):
             comp = src.suffix
         elif src.suffix == ".zip":
             comp = ".gz"
-            target_path = target_dir / name_tpl.format(part="", comp=comp)
+            target_path = target_dir / name_tpl.format(part=part, comp=comp)
             with tempfile.TemporaryDirectory() as tmpdir:
                 destdir = pathlib.Path(tmpdir)
-                unpack(src, dest=destdir, io=io, strip_top=False)
+                unpack(
+                    src, dest=destdir, io=io, strip_components=0, build=build
+                )
                 subdirs = os.listdir(destdir)
                 if len(subdirs) > 1:
                     raise RuntimeError(
@@ -233,7 +245,7 @@ class HttpsSource(BaseSource):
             raise RuntimeError(f"unsupported archive format: {src.suffix}")
 
         if copy:
-            target_path = target_dir / name_tpl.format(part="", comp=comp)
+            target_path = target_dir / name_tpl.format(part=part, comp=comp)
             shutil.copy(src, target_path)
 
         return target_path
@@ -246,8 +258,11 @@ class HttpsSource(BaseSource):
         target_dir: pathlib.Path,
         io: cleo_io.IO,
         build: targets.Build,
+        part: str = "",
     ) -> pathlib.Path:
-        return self._tarball(pkg, name_tpl, target_dir=target_dir, io=io)
+        return self._tarball(
+            pkg, name_tpl, part=part, build=build, target_dir=target_dir, io=io
+        )
 
     def copy(
         self,
@@ -275,11 +290,12 @@ class LocalSource(BaseSource):
         target_dir: pathlib.Path,
         io: cleo_io.IO,
         build: targets.Build,
+        part: str = "",
     ) -> pathlib.Path:
         comp = ".gz"
         if name_tpl is None:
             name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
-        target_path = target_dir / name_tpl.format(part="", comp=comp)
+        target_path = target_dir / name_tpl.format(part=part, comp=comp)
 
         tar = shlex.split(build.sh_get_command("tar"))
         tools.cmd(
@@ -364,12 +380,13 @@ class GitSource(BaseSource):
         target_dir: pathlib.Path,
         io: cleo_io.IO,
         build: targets.Build,
+        part: str = "",
     ) -> pathlib.Path:
         self.download(io)
         repo = tools.git.repo(self.url)
         if name_tpl is None:
             name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
-        target_path = target_dir / name_tpl.format(part="", comp="")
+        target_path = target_dir / name_tpl.format(part=part, comp="")
 
         repo.run(
             "archive",
@@ -493,7 +510,8 @@ def unpack(
     dest: pathlib.Path,
     io: cleo_io.IO,
     *,
-    strip_top: bool = True,
+    build: targets.Build | None = None,
+    strip_components: int = 1,
 ) -> None:
     parts = archive.name.split(".")
     if len(parts) == 1:
@@ -505,59 +523,89 @@ def unpack(
     ext = parts[-1]
 
     if parts[-2] == "tar" or ext in {"tgz", "tbz2", "tar"}:
-        unpack_tar(archive, dest, strip_top=strip_top)
+        unpack_tar(
+            archive, dest, build=build, strip_components=strip_components
+        )
     elif parts[-1] == "zip":
-        unpack_zip(archive, dest, strip_top=strip_top)
+        unpack_zip(
+            archive, dest, build=build, strip_components=strip_components
+        )
     else:
         raise ValueError(f"{archive.name} is not a supported archive")
 
 
 def unpack_tar(
-    archive: pathlib.Path, dest: pathlib.Path, *, strip_top: bool
+    archive: pathlib.Path,
+    dest: pathlib.Path,
+    *,
+    build: targets.Build | None = None,
+    strip_components: int,
 ) -> None:
     ext = archive.suffix
 
-    if ext in (".gz", ".tgz"):
-        compression = "gz"
-    elif ext in (".bz2", ".tbz2"):
-        compression = "bz2"
-    elif ext == ".xz":
-        compression = "xz"
+    if build is not None:
+        if ext in (".gz", ".tgz"):
+            compression = "z"
+        elif ext in (".bz2", ".tbz2"):
+            compression = "j"
+        elif ext == ".xz":
+            compression = "J"
+        else:
+            raise ValueError(f"{archive.name} is not a supported archive")
+
+        tar = build.sh_get_command("tar", relative_to="fsroot")
+        args = [
+            f"-x{compression}",
+            f"-f{archive}",
+            f"-C{dest}",
+        ]
+        if strip_components:
+            args.append(f"--strip-components={strip_components}")
+
+        tools.cmd(tar, *args)
     else:
-        raise ValueError(f"{archive.name} is not a supported archive")
+        if ext in (".gz", ".tgz"):
+            compression = "gz"
+        elif ext in (".bz2", ".tbz2"):
+            compression = "bz2"
+        elif ext == ".xz":
+            compression = "xz"
+        else:
+            raise ValueError(f"{archive.name} is not a supported archive")
 
-    tf = tarfile.open(archive, f"r:{compression}")
-    try:
-        for member in tf.getmembers():
-            if strip_top:
-                member_parts = pathlib.Path(member.name).parts
-                if len(member_parts) < 2:
-                    continue
+        with tarfile.open(archive, f"r:{compression}") as tf:
+            for member in tf.getmembers():
+                if strip_components:
+                    member_parts = pathlib.Path(member.name).parts
+                    if len(member_parts) <= strip_components:
+                        continue
 
-                path = pathlib.Path(member_parts[1]).joinpath(
-                    *member_parts[2:]
-                )
-                member.name = str(path)
-            tf.extract(member, path=dest)
-    finally:
-        tf.close()
+                    path = pathlib.Path(
+                        member_parts[strip_components]
+                    ).joinpath(*member_parts[strip_components + 1 :])
+                    member.name = str(path)
+                tf.extract(member, path=dest)
 
 
 def unpack_zip(
-    archive: pathlib.Path, dest: pathlib.Path, *, strip_top: bool
+    archive: pathlib.Path,
+    dest: pathlib.Path,
+    *,
+    strip_components: int,
+    build: targets.Build | None = None,
 ) -> None:
     zf = zipfile.ZipFile(archive)
 
     try:
         for member in zf.infolist():
-            if strip_top:
+            if strip_components:
                 member_parts = pathlib.Path(member.filename).parts
-                if len(member_parts) == 1:
+                if len(member_parts) == strip_components:
                     continue
 
-                relpath = pathlib.Path(member_parts[1]).joinpath(
-                    *member_parts[2:]
-                )
+                relpath = pathlib.Path(
+                    member_parts[strip_components]
+                ).joinpath(*member_parts[strip_components + 1 :])
             else:
                 relpath = pathlib.Path(member.filename)
             targetpath = dest / relpath

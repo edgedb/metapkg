@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import *
 
 import pathlib
 import re
@@ -284,7 +283,15 @@ class MacOSTarget(generic.GenericTarget):
         return repo
 
     def _get_necessary_host_tools(self) -> list[str]:
-        return ["bash", "make", "gnu-sed", "gnu-tar"]
+        return [
+            "bash",
+            "make",
+            "gnu-sed",
+            "gnu-tar",
+            "cmake",
+            "ninja",
+            "meson",
+        ]
 
     def prepare(self) -> None:
         if not shutil.which("brew"):
@@ -406,22 +413,25 @@ class MacOSTarget(generic.GenericTarget):
         else:
             return super().get_action(name, build)
 
-    def get_package_ld_env(
+    def sh_get_package_ld_env(
         self, build: targets.Build, package: mpkg.BasePackage, wd: str
     ) -> dict[str, str]:
-        pkg_install_root = build.get_install_dir(
+        pkg_install_root = build.get_build_install_dir(
             package, relative_to="pkgbuild"
         )
         pkg_lib_path = pkg_install_root / build.get_install_path(
-            "lib"
+            package, "lib"
         ).relative_to("/")
 
         return {
-            "DYLD_LIBRARY_PATH": f"{wd}/{pkg_lib_path}",
+            "DYLD_LIBRARY_PATH": f"{wd}/{shlex.quote(str(pkg_lib_path))}",
         }
 
-    def get_ld_env_keys(self, build: targets.Build) -> List[str]:
+    def get_ld_env_keys(self, build: targets.Build) -> list[str]:
         return ["DYLD_LIBRARY_PATH"]
+
+    def get_shlib_filename(self, shlib: str) -> str:
+        return f"lib{shlib}.dylib"
 
     def get_shlib_path_link_time_ldflags(
         self, build: targets.Build, path: str
@@ -487,7 +497,12 @@ class MacOSNativePackageTarget(MacOSTarget):
             return package.identifier
 
     def get_install_path(
-        self, build: targets.Build, aspect: str
+        self,
+        build: targets.Build,
+        root: pathlib.Path,
+        root_subdir: pathlib.Path,
+        prefix: pathlib.Path,
+        aspect: targets.InstallAspect,
     ) -> pathlib.Path:
         if aspect == "localstate":
             return pathlib.Path("/") / "var"
@@ -496,26 +511,29 @@ class MacOSNativePackageTarget(MacOSTarget):
         elif aspect == "runstate":
             return pathlib.Path("/") / "var" / "run"
         elif aspect == "systembin":
-            return self.get_install_root(build).parent.parent / "bin"
+            return root.parent.parent / "bin"
         elif aspect == "data":
-            return (
-                self.get_install_root(build)
-                / "share"
-                / build.root_package.name_slot
-            )
+            return root / "share" / root_subdir
+        elif aspect == "doc":
+            return root / "share" / "doc" / root_subdir
+        elif aspect == "man":
+            return root / "share" / "man"
         else:
-            return super().get_install_path(build, aspect)
+            return super().get_install_path(
+                build, root, root_subdir, prefix, aspect
+            )
 
     def get_framework_root(self, build: targets.Build) -> pathlib.Path:
         rpkg = build.root_package
         return pathlib.Path(f"/Library/Frameworks/{rpkg.title}.framework")
 
-    def get_install_root(self, build: targets.Build) -> pathlib.Path:
+    def get_bundle_install_root(self, build: targets.Build) -> pathlib.Path:
         rpkg = build.root_package
         return self.get_framework_root(build) / "Versions" / rpkg.slot
 
-    def get_install_prefix(self, build: targets.Build) -> pathlib.Path:
-        return pathlib.Path("lib") / build.root_package.name_slot
+    def get_bundle_install_subdir(self, build: targets.Build) -> pathlib.Path:
+        root_subdir = build.root_package.get_root_install_subdir(build)
+        return pathlib.Path("lib") / root_subdir
 
     def get_resource_path(
         self, build: targets.Build, resource: str
@@ -537,19 +555,19 @@ class MacOSNativePackageTarget(MacOSTarget):
         capabilities = super().get_capabilities()
         return capabilities + ["launchd"]
 
-    def get_package_ld_env(
+    def sh_get_package_ld_env(
         self, build: targets.Build, package: mpkg.BasePackage, wd: str
     ) -> dict[str, str]:
-        env = super().get_package_ld_env(build, package, wd)
-        pkg_install_root = build.get_install_dir(
+        env = super().sh_get_package_ld_env(build, package, wd)
+        pkg_install_root = build.get_build_install_dir(
             package, relative_to="pkgbuild"
         )
         fw_root = self.get_framework_root(build).parent
         pkg_fw_root = pkg_install_root / fw_root.relative_to("/")
-        env["DYLD_FRAMEWORK_PATH"] = f"{wd}/{pkg_fw_root}"
+        env["DYLD_FRAMEWORK_PATH"] = f"{wd}/{shlex.quote(str(pkg_fw_root))}"
         return env
 
-    def get_ld_env_keys(self, build: targets.Build) -> List[str]:
+    def get_ld_env_keys(self, build: targets.Build) -> list[str]:
         return super().get_ld_env_keys(build) + ["DYLD_FRAMEWORK_PATH"]
 
     def get_builder(self) -> type[macbuild.NativePackageBuild]:

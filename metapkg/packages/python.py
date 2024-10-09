@@ -317,12 +317,13 @@ def is_build_system_bootstrap_package(
 class BasePythonPackage(base.BasePackage):
     source: af_sources.BaseSource
 
-    def get_configure_script(self, build: targets.Build) -> str:
-        return ""
-
     def sh_get_build_wheel_env(
-        self, build: targets.Build, *, site_packages_var: str
-    ) -> dict[str, str]:
+        self,
+        build: targets.Build,
+        *,
+        site_packages: str,
+        wd: str,
+    ) -> base.Args:
         return {}
 
     def get_build_script(self, build: targets.Build) -> str:
@@ -333,13 +334,13 @@ class BasePythonPackage(base.BasePackage):
         build_python = build.sh_get_command("python")
         dest = build.get_temp_root(
             relative_to="pkgbuild"
-        ) / build.get_full_install_prefix().relative_to("/")
+        ) / build.get_rel_install_prefix(self)
 
         sitescript = f'import site; print(site.getsitepackages(["{dest}"])[0])'
 
         src_dest = build.get_temp_root(
             relative_to="pkgsource"
-        ) / build.get_full_install_prefix().relative_to("/")
+        ) / build.get_rel_install_prefix(self)
 
         src_sitescript = (
             f'import site; print(site.getsitepackages(["{src_dest}"])[0])'
@@ -364,10 +365,12 @@ class BasePythonPackage(base.BasePackage):
             }
         )
 
-        build_deps = build.get_bundled_build_reqs(self)
+        build_deps = build.get_build_reqs(self)
 
         if is_build_system_bootstrap_package(pkgname):
-            tarball = build.get_tarball(self, relative_to="pkgsource")
+            tarballs = build.get_tarballs(self, relative_to="pkgsource")
+            assert len(tarballs) == 1, "expected exactly one tarball"
+            _, tarball = tarballs[0]
             build_command = f'cp "{tarball}" ${{_wheeldir}}/{pkgname}-{self.version}.tar.gz'
             binary = False
         else:
@@ -389,11 +392,13 @@ class BasePythonPackage(base.BasePackage):
             )
             env.update(
                 self.sh_get_build_wheel_env(
-                    build, site_packages_var="${_sitepkg_from_src}"
+                    build,
+                    site_packages="${_sitepkg_from_src}",
+                    wd="${_wd}",
                 )
             )
 
-            cflags = build.sh_get_bundled_shlibs_cflags(
+            cflags = build.sh_get_bundled_pkgs_cflags(
                 build_deps,
                 relative_to="pkgsource",
             )
@@ -401,7 +406,7 @@ class BasePythonPackage(base.BasePackage):
             if cflags:
                 build.sh_append_quoted_flags(env, "CFLAGS", cflags)
 
-            ldflags = build.sh_get_bundled_shlibs_ldflags(
+            ldflags = build.sh_get_bundled_pkgs_ldflags(
                 build_deps,
                 relative_to="pkgsource",
             )
@@ -409,16 +414,17 @@ class BasePythonPackage(base.BasePackage):
             if ldflags:
                 build.sh_append_quoted_ldflags(env, ldflags)
 
-            paths = build.sh_get_command_paths(self.get_dep_commands(), self)
+            bin_paths = build.sh_get_bundled_pkgs_bin_paths(
+                build_deps, relative_to="pkgsource"
+            )
 
-            if paths:
-                build.sh_append_paths(env, paths)
+            if bin_paths:
+                build.sh_prepend_quoted_paths(env, "PATH", bin_paths)
 
             binary = True
 
-        all_build_deps = build.get_bundled_build_reqs(self, recursive=True)
+        env |= self.get_build_env(build, wd="${_wd}")
         env_str = build.sh_format_command("env", env, force_args_eq=True)
-        env_str += " " + " ".join(build.get_ld_env(all_build_deps, "${_wd}"))
 
         build_cmds = [build_command]
         build_cmds.extend(self.get_extra_python_build_commands(build))
@@ -461,7 +467,7 @@ class BasePythonPackage(base.BasePackage):
         common_script = super().get_build_install_script(build)
 
         python = build.sh_get_command("python", package=self)
-        root = build.get_install_dir(self, relative_to="pkgbuild")
+        root = build.get_build_install_dir(self, relative_to="pkgbuild")
         wheeldir_script = 'import pathlib; print(pathlib.Path(".").resolve())'
 
         pkgname = getattr(self, "dist_name", None)
@@ -504,8 +510,8 @@ class BasePythonPackage(base.BasePackage):
     def get_install_list_script(self, build: targets.Build) -> str:
         common_script = super().get_install_list_script(build)
 
-        prefix = build.get_full_install_prefix()
-        dest = build.get_install_dir(self, relative_to="pkgbuild")
+        prefix = build.get_install_prefix(self)
+        dest = build.get_build_install_dir(self, relative_to="pkgbuild")
 
         pkgname = getattr(self, "dist_name", None)
         if pkgname is None:
@@ -591,12 +597,16 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         revision: str | None = None,
         is_release: bool = False,
         target: targets.Target,
+        requires: list[poetry_dep.Dependency] | None = None,
     ) -> BundledPythonPackage_T:
         repo = cls.resolve_vcs_repo(io, version)
         repo_dir = repo.work_tree
         dist = get_dist(repo_dir)
 
-        requires = []
+        if requires is not None:
+            requires = list(requires)
+        else:
+            requires = []
         for req in dist.metadata.run_requires:
             dep = python_dependency_from_pep_508(req)
             requires.append(dep)
@@ -663,13 +673,17 @@ class FlitCore(PythonPackage):
 
 class Tomli(PythonPackage):
     def sh_get_build_wheel_env(
-        self, build: targets.Build, *, site_packages_var: str
-    ) -> dict[str, str]:
-        env = dict(
-            super().sh_get_build_wheel_env(
-                build, site_packages_var=site_packages_var
-            )
-        )
+        self,
+        build: targets.Build,
+        *,
+        site_packages: str,
+        wd: str,
+    ) -> mpkg.Args:
         sdir = build.get_source_dir(self, relative_to="pkgbuild")
-        env["EXTRA_PYTHONPATH"] = str(sdir)
-        return env
+        return super().sh_get_build_wheel_env(
+            build,
+            site_packages=site_packages,
+            wd=wd,
+        ) | {
+            "EXTRA_PYTHONPATH": sdir,
+        }

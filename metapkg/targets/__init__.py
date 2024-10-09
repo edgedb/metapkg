@@ -6,6 +6,7 @@ import platform
 from .base import (
     Build,
     BuildRequest,
+    InstallAspect,
     Target,
     Location,
     LinuxTarget,
@@ -26,6 +27,7 @@ __all__ = (
     "BuildRequest",
     "EnsureDirAction",
     "AddUserAction",
+    "InstallAspect",
     "Location",
     "Target",
     "LinuxTarget",

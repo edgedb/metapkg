@@ -101,14 +101,6 @@ class Build(base.Command):
         if tags:
             root_pkg.set_metadata_tags(tags)
 
-        sources = root_pkg.get_sources()
-
-        if len(sources) != 1:
-            self.io.write_error_line(
-                "Only single-source packages are supported"
-            )
-            return 1
-
         env = poetry_env.SystemEnv(pathlib.Path(sys.executable))
         packages, build_pkgs = self._resolve_deps(env, target, root_pkg, [])
 

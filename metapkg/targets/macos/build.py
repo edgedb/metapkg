@@ -18,16 +18,12 @@ class MacOSBuild(generic.Build):
         super().define_tools()
         bash = self._find_tool("bash")
         self._system_tools["bash"] = bash
-        if self._jobs == 0:
-            dash_j = f"-j{os.cpu_count()}"
-        else:
-            dash_j = f"-j{self._jobs}"
         gmake = self._find_tool("gmake")
-        self._system_tools["make"] = (
-            f"env -u MAKELEVEL {gmake} {dash_j} SHELL={bash}"
-        )
+        self._system_tools["make"] = gmake
         self._system_tools["sed"] = self._find_tool("gsed")
         self._system_tools["tar"] = self._find_tool("gtar")
+        self._system_tools["cmake"] = self._find_tool("cmake")
+        self._system_tools["ninja"] = self._find_tool("ninja")
 
     def _find_tool(self, tool: str) -> str:
         tool_path = shutil.which(tool)
@@ -38,7 +34,7 @@ class MacOSBuild(generic.Build):
     def _fixup_rpath(
         self, image_root: pathlib.Path, binary_relpath: pathlib.Path
     ) -> None:
-        inst_prefix = self.get_full_install_prefix()
+        inst_prefix = self.get_bundle_install_prefix()
         full_path = image_root / binary_relpath
         inst_path = pathlib.Path("/") / binary_relpath
         shlibs, existing_rpaths = self.target.get_shlib_refs(
@@ -65,6 +61,7 @@ class MacOSBuild(generic.Build):
                             f"RPATH {rpath} points outside of install image, "
                             f"removing"
                         )
+                        continue
                 rpaths.add(rpath)
 
         args: list[str | pathlib.Path] = []
@@ -118,7 +115,7 @@ class NativePackageBuild(MacOSBuild):
         selectdir = installer / "Common"
         selectdir.mkdir(parents=True)
 
-        sysbindir = self.get_install_path("systembin")
+        sysbindir = self.get_bundle_install_path("systembin")
 
         for path, data in self._root_pkg.get_bin_shims(self).items():
             bin_path = (sysbindir / path).relative_to("/")
@@ -137,7 +134,7 @@ class NativePackageBuild(MacOSBuild):
 
         paths_d = selectdir / "etc" / "paths.d" / self._root_pkg.identifier
         paths_d.parent.mkdir(parents=True)
-        sysbindir = self.get_install_path("systembin")
+        sysbindir = self.get_bundle_install_path("systembin")
 
         with open(paths_d, "w") as f:
             print(sysbindir, file=f)
