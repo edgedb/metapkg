@@ -306,12 +306,12 @@ class MacOSTarget(generic.GenericTarget):
         brew_env = "env HOMEBREW_NO_AUTO_UPDATE=1"
         brew_inst = (
             f'if brew ls --versions "$1"; '
-            f'then {brew_env} brew upgrade "$1"; '
-            f'else {brew_env} brew install "$1"; fi'
+            f'then {brew_env} brew upgrade "$1" || true; '
+            f'else {brew_env} brew install "$1" || true; fi'
         )
         for tool in self._get_necessary_host_tools():
             tools.cmd(
-                "/bin/sh", "-c", brew_inst, "--", tool, errors_are_fatal=False
+                "/bin/sh", "-c", brew_inst, "--", tool
             )
 
     def is_binary_code_file(
