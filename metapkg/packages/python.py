@@ -540,11 +540,22 @@ class BasePythonPackage(base.BasePackage):
             if not record.exists():
                 raise RuntimeError(f'no wheel RECORD for {pkgname}')
 
+            entries = set()
+
             with open(record) as f:
                 for entry in f:
                     filename = entry.split(',')[0]
                     install_path = (sitepackages / filename).resolve()
-                    print(install_path.relative_to('/'))
+                    rel_install_path = install_path.relative_to('/')
+                    if rel_install_path.parent.name == "bin":
+                        # Avoid installing entry point scripts,
+                        # have packages opt-in explicitly.
+                        continue
+                    entries.add(rel_install_path)
+                    entries.update(rel_install_path.parents)
+
+            for entry in sorted(entries):
+                print(entry)
         """
         )
 

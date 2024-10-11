@@ -516,6 +516,8 @@ class MacOSNativePackageTarget(MacOSTarget):
             return root / "share" / root_subdir
         elif aspect == "doc":
             return root / "share" / "doc" / root_subdir
+        elif aspect == "info":
+            return root / "share" / "info"
         elif aspect == "man":
             return root / "share" / "man"
         else:

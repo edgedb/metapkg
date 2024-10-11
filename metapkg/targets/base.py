@@ -53,6 +53,7 @@ InstallAspect = Literal[
     "data",
     "doc",
     "man",
+    "info",
     "include",
     "lib",
     "runstate",
@@ -667,6 +668,8 @@ class FHSTarget(PosixTarget):
             return root / "usr" / "share" / "doc" / root_subdir / "licenses"
         elif aspect == "doc":
             return root / "usr" / "share" / "doc" / root_subdir
+        elif aspect == "info":
+            return root / "usr" / "share" / "info"
         elif aspect == "man":
             return root / "usr" / "share" / "man"
         elif aspect == "bin":

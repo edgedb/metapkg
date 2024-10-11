@@ -127,8 +127,14 @@ class BasePackage(poetry_pkg.Package):
     def get_build_requirements(self) -> list[poetry_dep.Dependency]:
         return []
 
-    def get_license_files_pattern(self) -> str:
-        return "{LICENSE*,COPYING,NOTICE,COPYRIGHT}"
+    def get_license_files_patterns(self) -> list[str]:
+        return [
+            "LICENSE*",
+            "LICENCE*",
+            "COPYING",
+            "NOTICE",
+            "COPYRIGHT",
+        ]
 
     def get_prepare_script(self, build: targets.Build) -> str:
         return ""
@@ -146,7 +152,7 @@ class BasePackage(poetry_pkg.Package):
     def get_build_install_script(self, build: targets.Build) -> str:
         script = ""
 
-        licenses = self.get_license_files_pattern()
+        licenses = self.get_license_files_patterns()
         if licenses:
             sdir = build.get_source_dir(self, relative_to="pkgbuild")
             legaldir = build.get_install_path(self, "legal").relative_to("/")
@@ -155,10 +161,11 @@ class BasePackage(poetry_pkg.Package):
                 / legaldir
             )
             prefix = str(lic_dest / self.name)
+            licenses_pattern = "{" + ",".join(licenses) + "}"
             script += textwrap.dedent(
                 f"""\
                 mkdir -p "{lic_dest}"
-                for _lic_src in "{sdir}"/{licenses}; do
+                for _lic_src in "{sdir}"/{licenses_pattern}; do
                     if [ -e "$_lic_src" ]; then
                         cp "$_lic_src" "{prefix}-$(basename "$_lic_src")"
                     fi
@@ -185,9 +192,12 @@ class BasePackage(poetry_pkg.Package):
         listname: str,
         *,
         entries: list[str],
+        imply_parents: bool,
     ) -> str:
         if entries:
-            script = self.write_file_list_script(build, listname, entries)
+            script = self.write_file_list_script(
+                build, listname, entries, imply_parents
+            )
         else:
             script = ""
 
@@ -195,8 +205,11 @@ class BasePackage(poetry_pkg.Package):
 
     def get_file_install_entries(self, build: targets.Build) -> list[str]:
         entries = []
-        if self.get_license_files_pattern():
-            entries.append("{legaldir}/*")
+        for shlib in self.get_shlibs(build):
+            shlib_fn = build.target.get_shlib_filename(shlib)
+            entries.append(f"{{libdir}}/{shlib_fn}*")
+        for lic_pattern in self.get_license_files_patterns():
+            entries.append(f"{{legaldir}}/{{name}}-{lic_pattern}")
         return entries
 
     def get_install_list_script(self, build: targets.Build) -> str:
@@ -204,21 +217,63 @@ class BasePackage(poetry_pkg.Package):
         entries += [
             str(p.relative_to("/")) for p in self.get_service_scripts(build)
         ]
-        return self._get_file_list_script(build, "install", entries=entries)
+        return self._get_file_list_script(
+            build,
+            "install",
+            entries=entries,
+            imply_parents=True,
+        )
 
     def get_file_no_install_entries(self, build: targets.Build) -> list[str]:
-        return []
+        return [
+            # Never install static libraries or libtool stuff
+            "{libdir}/*.a",
+            "{libdir}/*.la",
+        ]
 
     def get_no_install_list_script(self, build: targets.Build) -> str:
         entries = self.get_file_no_install_entries(build)
-        return self._get_file_list_script(build, "no_install", entries=entries)
+        return self._get_file_list_script(
+            build,
+            "no_install",
+            entries=entries,
+            imply_parents=False,
+        )
 
     def get_file_ignore_entries(self, build: targets.Build) -> list[str]:
-        return []
+        return [
+            # ignore binaries by default, packages can opt-in with
+            # explicit entries in install.list
+            "{bindir}/*",
+            # autoconf, pkg-config and CMake stuff are not useful
+            "{datadir}/aclocal/**",
+            "{libdir}/aclocal/**",
+            "{datadir}/cmake/**",
+            "{libdir}/cmake/**",
+            "{datadir}/pkgconfig/**",
+            "{libdir}/pkgconfig/**",
+            # likewise, include files
+            "{includedir}/**",
+            # And the documentation
+            "{mandir}/**",
+            "{docdir}/**",
+            "{infodir}/**",
+            "{datadir}/gtk-doc/**",
+            "{bundlemandir}/**",
+            "{bundledocdir}/**",
+            "{bundleinfodir}/**",
+            "{bundledatadir}/gtk-doc",
+            "{bundledatadir}/gtk-doc/**",
+        ]
 
     def get_ignore_list_script(self, build: targets.Build) -> str:
         entries = self.get_file_ignore_entries(build)
-        return self._get_file_list_script(build, "ignore", entries=entries)
+        return self._get_file_list_script(
+            build,
+            "ignore",
+            entries=entries,
+            imply_parents=True,
+        )
 
     def get_private_libraries(self, build: targets.Build) -> list[str]:
         return []
@@ -284,7 +339,11 @@ class BasePackage(poetry_pkg.Package):
         raise NotImplementedError
 
     def write_file_list_script(
-        self, build: targets.Build, listname: str, entries: list[str]
+        self,
+        build: targets.Build,
+        listname: str,
+        entries: list[str],
+        imply_parents: bool,
     ) -> str:
         installdest = build.get_build_install_dir(self, relative_to="pkgbuild")
 
@@ -298,6 +357,7 @@ class BasePackage(poetry_pkg.Package):
             "legal",
             "doc",
             "man",
+            "info",
         ):
             path = build.get_install_path(self, aspect)  # type: ignore
             paths[f"{aspect}dir"] = path.relative_to("/")
@@ -324,16 +384,25 @@ class BasePackage(poetry_pkg.Package):
 
             patterns = {patterns}
 
+            matches = set()
+
             for pattern in patterns:
                 if pattern.endswith('/**'):
                     pattern += "/*"
                 for p in tmp.glob(pattern):
                     if p.exists():
-                        print(p.relative_to(tmp))
+                        rel_p = p.relative_to(tmp)
+                        matches.add(rel_p)
+                        if {imply_parents}:
+                            matches.update(rel_p.parents)
+
+            for match in matches:
+                print(match)
         """
         ).format(
             installdest=str(installdest),
             patterns=pprint.pformat(processed_entries),
+            imply_parents=str(imply_parents),
         )
 
         scriptfile_name = f"_gen_{listname}_list_{self.unique_name}.py"
@@ -1358,9 +1427,9 @@ class BundledCPackage(BuildSystemMakePackage):
             find = build.sh_get_command("find")
             sed = build.sh_get_command("sed")
             destdir = self.sh_get_make_install_destdir(build, "$(pwd)")
-            libdir = build.get_install_path(self, "lib")
+            libdir = self.get_install_path(build, "lib")
             re_libdir = re.escape(str(libdir))
-            includedir = build.get_install_path(self, "include")
+            includedir = self.get_install_path(build, "include")
             re_includedir = re.escape(str(includedir))
             prefix = build.get_install_prefix(self)
             re_prefix = re.escape(str(prefix))
@@ -1414,6 +1483,7 @@ class BundledCAutoconfPackage(BundledCPackage):
             "--datarootdir": build.get_install_path(self, "data"),
             "--docdir": build.get_install_path(self, "doc"),
             "--mandir": build.get_install_path(self, "man"),
+            "--infodir": build.get_install_path(self, "info"),
         }
 
     def configure_dependency(
@@ -1491,10 +1561,12 @@ class BundledCMesonPackage(BundledCPackage):
             "--bindir": build.get_install_path(self, "bin"),
             "--sbindir": build.get_install_path(self, "bin"),
             "--libdir": build.get_install_path(self, "lib"),
+            "--localstatedir": build.get_install_path(self, "localstate"),
             "--includedir": build.get_install_path(self, "include"),
             # Meson does not support --docdir
             # "--docdir": build.get_install_path(self, "doc"),
             "--mandir": build.get_install_path(self, "man"),
+            "--infodir": build.get_install_path(self, "info"),
             "-Ddefault_library": "shared",
         }
 
@@ -1650,6 +1722,11 @@ class BundledCMakePackage(BundledCPackage):
         config.append(
             f'set(CMAKE_INSTALL_MANDIR "{build.get_rel_install_path(self, "man")}" '
             f'CACHE PATH "Output directory for man pages")'
+        )
+
+        config.append(
+            f'set(CMAKE_INSTALL_INFODIR "{build.get_rel_install_path(self, "info")}" '
+            f'CACHE PATH "Output directory for info pages")'
         )
 
         config.extend(
