@@ -303,14 +303,16 @@ class MacOSTarget(generic.GenericTarget):
             return
 
         tools.cmd("brew", "update")
-        brew_env = "env HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1"
+        brew_env = "env HOMEBREW_NO_AUTO_UPDATE=1"
         brew_inst = (
             f'if brew ls --versions "$1"; '
             f'then {brew_env} brew upgrade "$1"; '
             f'else {brew_env} brew install "$1"; fi'
         )
         for tool in self._get_necessary_host_tools():
-            tools.cmd("/bin/sh", "-c", brew_inst, "--", tool)
+            tools.cmd(
+                "/bin/sh", "-c", brew_inst, "--", tool, errors_are_fatal=False
+            )
 
     def is_binary_code_file(
         self, build: targets.Build, path: pathlib.Path
