@@ -45,7 +45,9 @@ def main() -> int:
             os.unlink(str(full_path))
 
     for path in install_set - no_install_set:
-        print(path)
+        full_path = install_dir / path
+        if not full_path.is_dir():
+            print(path)
 
     return 0
 
