@@ -168,6 +168,9 @@ class Target:
     def get_shlib_filename(self, shlib: str) -> str:
         raise NotImplementedError
 
+    def get_shlib_filename_patterns(self, shlib: str) -> list[str]:
+        raise NotImplementedError
+
     def get_shlib_path_link_time_ldflags(
         self,
         build: Build,
@@ -494,6 +497,9 @@ class LinuxTarget(PosixTarget):
 
     def get_shlib_filename(self, shlib: str) -> str:
         return f"lib{shlib}.so"
+
+    def get_shlib_filename_patterns(self, shlib: str) -> list[str]:
+        return [f"lib{shlib}.so", f"lib{shlib}.so.*"]
 
     def get_shlib_path_link_time_ldflags(
         self, build: Build, path: str

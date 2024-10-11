@@ -438,6 +438,9 @@ class MacOSTarget(generic.GenericTarget):
     def get_shlib_filename(self, shlib: str) -> str:
         return f"lib{shlib}.dylib"
 
+    def get_shlib_filename_patterns(self, shlib: str) -> list[str]:
+        return [f"lib{shlib}.dylib", f"lib{shlib}.*.dylib"]
+
     def get_shlib_path_link_time_ldflags(
         self, build: targets.Build, path: str
     ) -> list[str]:

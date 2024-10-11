@@ -206,8 +206,8 @@ class BasePackage(poetry_pkg.Package):
     def get_file_install_entries(self, build: targets.Build) -> list[str]:
         entries = []
         for shlib in self.get_shlibs(build):
-            shlib_fn = build.target.get_shlib_filename(shlib)
-            entries.append(f"{{libdir}}/{shlib_fn}*")
+            for shlib_pat in build.target.get_shlib_filename_patterns(shlib):
+                entries.append(f"{{libdir}}/{shlib_pat}")
         for lic_pattern in self.get_license_files_patterns():
             entries.append(f"{{legaldir}}/{{name}}-{lic_pattern}")
         return entries
