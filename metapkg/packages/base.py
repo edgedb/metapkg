@@ -589,7 +589,7 @@ class BundledPackage(BasePackage):
         cls, ref: str | None = None
     ) -> af_sources.GitSource | None:
         sources = cls._get_sources(version=ref)
-        if len(sources) == 1 and isinstance(sources[0], af_sources.GitSource):
+        if isinstance(sources[0], af_sources.GitSource):
             return sources[0]
         else:
             return None
@@ -714,9 +714,7 @@ class BundledPackage(BasePackage):
         elif version is not None:
             source_version = version
             git_date = ""
-        elif len(sources) == 1 and isinstance(
-            sources[0], af_sources.LocalSource
-        ):
+        elif isinstance(sources[0], af_sources.LocalSource):
             source_dir = sources[0].url
             version = cls.version_from_source(pathlib.Path(source_dir))
             source_version = version

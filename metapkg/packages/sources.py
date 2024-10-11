@@ -43,17 +43,13 @@ class SourceDecl(SourceDeclBase, total=False):
     extras: SourceExtraDecl | None
 
 
-SourceExtraDecl = TypedDict(
-    "SourceExtraDecl",
-    {
-        "exclude_submodules": list[str],
-        "clone_depth": int,
-        "version": str,
-        "vcs_version": str,
-        "include_gitdir": bool,
-    },
-    total=False,
-)
+class SourceExtraDecl(TypedDict, total=False):
+    exclude_submodules: list[str]
+    clone_depth: int
+    version: str
+    vcs_version: str
+    include_gitdir: bool
+    archive: bool
 
 
 class BaseVerification:
@@ -218,7 +214,13 @@ class HttpsSource(BaseSource):
             name_tpl = f"{pkg.unique_name}{{part}}.tar{{comp}}"
         src = self.download(io)
         copy = True
-        if src.suffix == ".tgz":
+        if "archive" in self.extras and not self.extras["archive"]:
+            copy = False
+            comp = ".gz"
+            target_path = target_dir / name_tpl.format(part=part, comp=comp)
+            with tarfile.open(target_path, "w:gz") as tf:
+                tf.add(str(src), arcname=src.name)
+        elif src.suffix == ".tgz":
             comp = ".gz"
         elif src.suffix == ".tbz2":
             comp = ".bzip2"

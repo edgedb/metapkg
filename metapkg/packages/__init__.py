@@ -22,6 +22,7 @@ from .base import (
 from .go import BundledGoPackage, BundledAdHocGoPackage
 from .python import PythonPackage, BundledPythonPackage
 from .rust import BundledRustPackage, BundledAdHocRustPackage
+from .sources import BaseSource, HttpsSource
 
 
 __all__ = (
@@ -48,4 +49,6 @@ __all__ = (
     "get_bundled_pkg",
     "pep440_to_semver",
     "semver_pre_tag",
+    "BaseSource",
+    "HttpsSource",
 )

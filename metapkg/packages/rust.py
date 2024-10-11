@@ -117,14 +117,8 @@ class BundledAdHocRustPackage(BundledRustPackage):
     ) -> BundledAdHocRustPackage:
         sources = cls._get_sources(version)
 
-        if len(sources) == 1 and isinstance(
-            sources[0], mpkg_sources.LocalSource
-        ):
+        if isinstance(sources[0], mpkg_sources.LocalSource):
             source_dir = sources[0].url
-        else:
-            raise AssertionError(
-                "expected a single local source for ad-hoc package"
-            )
 
         version = cls.version_from_cargo(pathlib.Path(source_dir))
         if not revision:
