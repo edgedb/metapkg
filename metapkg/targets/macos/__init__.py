@@ -252,6 +252,9 @@ _sys_shlibs_re = re.compile(
 
 
 class MacOSTarget(generic.GenericTarget):
+    def __init__(self, arch: str) -> None:
+        super().__init__(arch, libc="libSystem")
+
     @property
     def name(self) -> str:
         return f"Generic macOS"
@@ -310,9 +313,7 @@ class MacOSTarget(generic.GenericTarget):
             f'else {brew_env} brew install "$1" || true; fi'
         )
         for tool in self._get_necessary_host_tools():
-            tools.cmd(
-                "/bin/sh", "-c", brew_inst, "--", tool
-            )
+            tools.cmd("/bin/sh", "-c", brew_inst, "--", tool)
 
     def is_binary_code_file(
         self, build: targets.Build, path: pathlib.Path

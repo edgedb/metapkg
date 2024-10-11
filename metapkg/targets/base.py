@@ -88,8 +88,9 @@ class BuildRequest(NamedTuple):
 
 
 class Target:
-    def __init__(self, arch: str) -> None:
+    def __init__(self, arch: str, libc: str) -> None:
         self.arch = arch
+        self.libc = libc
 
     @property
     def name(self) -> str:
@@ -401,8 +402,7 @@ class LinuxAddUserAction(AddUserAction):
 
 class LinuxTarget(PosixTarget):
     def __init__(self, arch: str, libc: str) -> None:
-        super().__init__(arch)
-        self.libc = libc
+        super().__init__(arch, libc)
         if libc == "musl":
             self._sys_shlibs = {
                 r"libc(\.musl-[\w-]+)?",

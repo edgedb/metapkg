@@ -11,7 +11,7 @@ from . import build as winbuild
 
 class WindowsTarget(generic.GenericTarget):
     def __init__(self, version: tuple[int, ...], arch: str) -> None:
-        super().__init__(arch)
+        super().__init__(arch, libc="vcrt")
         self.version = version
 
     @property

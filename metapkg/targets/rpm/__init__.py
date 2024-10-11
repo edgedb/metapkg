@@ -210,7 +210,7 @@ class BaseRPMTarget(targets.FHSTarget, targets.LinuxDistroTarget):
     def __init__(
         self, distro_info: distro.InfoDict, arch: str, libc: str
     ) -> None:
-        targets.FHSTarget.__init__(self, arch)
+        targets.FHSTarget.__init__(self, arch, libc=libc)
         targets.LinuxDistroTarget.__init__(
             self, distro_info=distro_info, arch=arch, libc=libc
         )
