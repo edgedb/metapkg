@@ -88,7 +88,7 @@ class GenericTarget(targets.FHSTarget):
         aspect: targets.InstallAspect,
     ) -> pathlib.Path:
         if aspect == "sysconf":
-            return root / "etc"
+            return prefix / "etc"
         elif aspect == "userconf":
             return pathlib.Path("$HOME") / ".config"
         elif aspect == "data":
