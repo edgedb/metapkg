@@ -16,11 +16,9 @@ class Build(generic.Build):
         find = shutil.which("find")
         assert find is not None, "could not locate `find`"
         self._system_tools["find"] = find
-        # Must use bsdtar, not msys tar, because the latter
-        # chokes on Windows paths.
-        windir = os.environ.get("WINDIR")
-        assert windir, "WINDIR env var is not set"
-        self._system_tools["tar"] = f"{windir}/System32/tar.exe"
+        tar = shutil.which("tar")
+        assert tar is not None, "could not locate `tar`"
+        self._system_tools["tar"] = tar
         self._system_tools["meson"] = "meson"
         self._system_tools["cmake"] = "cmake"
         self._system_tools["ninja"] = "ninja"

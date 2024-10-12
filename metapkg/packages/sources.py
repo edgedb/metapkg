@@ -536,9 +536,19 @@ def unpack(
         raise ValueError(f"{archive.name} is not a supported archive")
 
 
+def _win_path_to_msys_path(
+    path: pathlib.PurePath,
+) -> pathlib.PurePosixPath:
+    return (
+        pathlib.PurePosixPath("/")
+        / path.drive.lower()
+        / path.relative_to(path.drive + "\\")
+    )
+
+
 def unpack_tar(
-    archive: pathlib.Path,
-    dest: pathlib.Path,
+    archive: pathlib.PurePath,
+    dest: pathlib.PurePath,
     *,
     build: targets.Build | None = None,
     strip_components: int,
@@ -554,6 +564,10 @@ def unpack_tar(
             compression = "J"
         else:
             raise ValueError(f"{archive.name} is not a supported archive")
+
+        if platform.system() == "Windows":
+            archive = _win_path_to_msys_path(archive)
+            dest = _win_path_to_msys_path(dest)
 
         tar = build.sh_get_command("tar", relative_to="fsroot")
         args = [
