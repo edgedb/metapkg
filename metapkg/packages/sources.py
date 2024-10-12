@@ -541,7 +541,7 @@ def _win_path_to_msys_path(
 ) -> pathlib.PurePosixPath:
     return (
         pathlib.PurePosixPath("/")
-        / path.drive.lower()
+        / path.drive.rstrip(":").lower()
         / path.relative_to(path.drive + "\\")
     )
 
