@@ -558,8 +558,8 @@ def unpack_tar(
         tar = build.sh_get_command("tar", relative_to="fsroot")
         args = [
             f"-x{compression}",
-            f"-f{shlex.quote(str(archive))}",
-            f"-C{shlex.quote(str(dest))}",
+            f"-f{archive}",
+            f"-C{dest}",
         ]
         if strip_components:
             args.append(f"--strip-components={strip_components}")
