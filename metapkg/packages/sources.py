@@ -219,7 +219,10 @@ class HttpsSource(BaseSource):
             comp = ".gz"
             target_path = target_dir / name_tpl.format(part=part, comp=comp)
             with tarfile.open(target_path, "w:gz") as tf:
-                tf.add(str(src), arcname=src.name)
+                tf.add(
+                    str(src),
+                    arcname=str(pathlib.Path(src.name) / src.name),
+                )
         elif src.suffix == ".tgz":
             comp = ".gz"
         elif src.suffix == ".tbz2":
