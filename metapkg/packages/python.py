@@ -164,7 +164,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
         return package
 
     def get_package_info(
-        self, name: packaging.utils.NormalizedName
+        self, name: base.NormalizedName
     ) -> dict[str, Any]:
         if name.startswith("pypkg-"):
             name = packaging.utils.canonicalize_name(name[len("pypkg-") :])
@@ -604,6 +604,7 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
         cls: Type[BundledPythonPackage_T],
         io: cleo_io.IO,
         *,
+        name: base.NormalizedName | None = None,
         version: str | None = None,
         revision: str | None = None,
         is_release: bool = False,
@@ -633,6 +634,7 @@ class BundledPythonPackage(BasePythonPackage, base.BundledPackage):
 
         package = cls(
             ver,
+            name=name,
             pretty_version=pretty_version,
             requires=requires,
             source_version=cls.resolve_vcs_version(io, repo),

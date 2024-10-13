@@ -87,7 +87,7 @@ class BasePackage(poetry_pkg.Package):
     @classmethod
     def get_dep_pkg_name(cls) -> str:
         """Name used by pkg-config or CMake to refer to this package."""
-        return str(cls.name).upper()
+        return str(cls.ident).upper()
 
     def get_dep_pkg_config_script(self) -> str | None:
         return None
@@ -435,7 +435,7 @@ BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
 
 class BundledPackage(BasePackage):
-    name: ClassVar[packaging.utils.NormalizedName]
+    ident: ClassVar[str]
     title: ClassVar[str | None] = None
     aliases: ClassVar[list[str] | None] = None
     description: str = ""
@@ -683,6 +683,7 @@ class BundledPackage(BasePackage):
         cls: Type[BundledPackage_T],
         io: cleo_io.IO,
         *,
+        name: NormalizedName | None = None,
         version: str | None = None,
         revision: str | None = None,
         is_release: bool = False,
@@ -757,6 +758,7 @@ class BundledPackage(BasePackage):
             source_version=source_version,
             resolved_sources=sources,
             requires=requires,
+            name=name,
         )
 
     @classmethod
@@ -810,6 +812,7 @@ class BundledPackage(BasePackage):
         requires: list[poetry_dep.Dependency] | None = None,
         options: Mapping[str, Any] | None = None,
         resolved_sources: list[af_sources.BaseSource] | None = None,
+        name: NormalizedName | None = None,
     ) -> None:
         if self.title is None:
             raise RuntimeError(
@@ -817,7 +820,10 @@ class BundledPackage(BasePackage):
                 f"title attribute"
             )
 
-        super().__init__(self.name, version, pretty_version=pretty_version)
+        if name is None:
+            name = self.__class__.ident
+
+        super().__init__(name, version, pretty_version=pretty_version)
 
         if requires is not None:
             reqs = list(requires)

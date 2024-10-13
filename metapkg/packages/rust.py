@@ -109,6 +109,7 @@ class BundledAdHocRustPackage(BundledRustPackage):
         cls,
         io: cleo_io.IO,
         *,
+        name: base.NormalizedName | None = None,
         version: str | None = None,
         revision: str | None = None,
         is_release: bool = False,
@@ -136,6 +137,7 @@ class BundledAdHocRustPackage(BundledRustPackage):
         version, pretty_version = cls.format_version(ver)
 
         return cls(
+            name=name,
             version=version,
             pretty_version=pretty_version,
             source_version=version,
