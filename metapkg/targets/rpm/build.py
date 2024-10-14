@@ -439,9 +439,11 @@ class Build(targets.Build):
     def _get_source_spec(self) -> str:
         lines = []
 
-        for i, tarballs in enumerate(self._tarballs.values()):
+        i = 0
+        for _, tarballs in enumerate(self._tarballs.values()):
             for _, tarball in tarballs:
                 lines.append(f"Source{i}: {tarball.name}")
+                i += 1
 
         return "\n".join(lines)
 
