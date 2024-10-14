@@ -84,10 +84,9 @@ class BasePackage(poetry_pkg.Package):
     def slot_suffix(self) -> str:
         return ""
 
-    @classmethod
-    def get_dep_pkg_name(cls) -> str:
+    def get_dep_pkg_name(self) -> str:
         """Name used by pkg-config or CMake to refer to this package."""
-        return str(cls.ident).upper()
+        return str(self.name).upper()
 
     def get_dep_pkg_config_script(self) -> str | None:
         return None
@@ -525,7 +524,7 @@ class BundledPackage(BasePackage):
                     dirname=clsdirname,
                     **cls.get_source_url_variables(version),
                 )
-                extras = source.get("extras")
+                extras = af_sources.SourceExtraDecl(source.get("extras", {}))
                 if extras:
                     if "version" not in extras:
                         extras["version"] = version
@@ -586,7 +585,7 @@ class BundledPackage(BasePackage):
 
     @classmethod
     def get_vcs_source(
-        cls, ref: str | None = None
+        cls, io: cleo_io.IO, ref: str | None = None
     ) -> af_sources.GitSource | None:
         sources = cls._get_sources(version=ref)
         if isinstance(sources[0], af_sources.GitSource):
@@ -598,7 +597,7 @@ class BundledPackage(BasePackage):
     def resolve_vcs_source(
         cls, io: cleo_io.IO, *, ref: str | None = None
     ) -> pathlib.Path:
-        source = cls.get_vcs_source(ref)
+        source = cls.get_vcs_source(io, ref)
         if source is None:
             raise ValueError("Unable to resolve non-git bundled package")
         return source.download(io)
@@ -690,10 +689,12 @@ class BundledPackage(BasePackage):
         target: targets.Target,
         requires: list[poetry_dep.Dependency] | None = None,
     ) -> BundledPackage_T:
-        sources = cls._get_sources(version)
-        is_git = cls.get_vcs_source(version) is not None
+        sources = list(cls._get_sources(version))
+        vcs_source = cls.get_vcs_source(io, version)
+        is_git = vcs_source is not None
 
         if is_git:
+            sources[0] = vcs_source
             repo = cls.resolve_vcs_repo(io, version)
             if version:
                 vcs_version = cls.to_vcs_version(version)
@@ -821,7 +822,7 @@ class BundledPackage(BasePackage):
             )
 
         if name is None:
-            name = self.__class__.ident
+            name = canonicalize_name(self.__class__.ident)
 
         super().__init__(name, version, pretty_version=pretty_version)
 

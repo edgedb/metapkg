@@ -163,9 +163,7 @@ class PyPiRepository(pypi_repository.PyPiRepository):
 
         return package
 
-    def get_package_info(
-        self, name: base.NormalizedName
-    ) -> dict[str, Any]:
+    def get_package_info(self, name: base.NormalizedName) -> dict[str, Any]:
         if name.startswith("pypkg-"):
             name = packaging.utils.canonicalize_name(name[len("pypkg-") :])
 

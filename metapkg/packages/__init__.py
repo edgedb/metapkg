@@ -22,7 +22,7 @@ from .base import (
 from .go import BundledGoPackage, BundledAdHocGoPackage
 from .python import PythonPackage, BundledPythonPackage
 from .rust import BundledRustPackage, BundledAdHocRustPackage
-from .sources import BaseSource, HttpsSource
+from .sources import BaseSource, HttpsSource, GitSource
 
 
 __all__ = (
@@ -51,4 +51,5 @@ __all__ = (
     "semver_pre_tag",
     "BaseSource",
     "HttpsSource",
+    "GitSource",
 )
