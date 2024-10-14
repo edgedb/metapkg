@@ -639,6 +639,13 @@ class BundledPackage(BasePackage):
         return rev
 
     @classmethod
+    def get_next_feature_version(
+        cls,
+        version: poetry_version.Version,
+    ) -> poetry_version.Version:
+        return version.next_minor()
+
+    @classmethod
     def version_from_vcs_version(
         cls,
         io: cleo_io.IO,
@@ -658,7 +665,9 @@ class BundledPackage(BasePackage):
             and parts[1].isascii()
         ):
             # Have commits after the tag
-            parsed_ver = cls.parse_vcs_version(parts[0]).next_major()
+            parsed_ver = cls.get_next_feature_version(
+                cls.parse_vcs_version(parts[0]),
+            )
 
             if not is_release:
                 commits = repo.run(
