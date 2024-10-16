@@ -461,6 +461,11 @@ class MacOSTarget(generic.GenericTarget):
     ) -> list[str]:
         return []
 
+    def get_global_env(self, build: targets.Build) -> dict[str, str]:
+        return super().get_global_env(build) | {
+            "MACOSX_DEPLOYMENT_TARGET": self.min_supported_version,
+        }
+
     def get_global_cflags(self, build: targets.Build) -> list[str]:
         flags = super().get_global_cflags(build)
         return flags + [

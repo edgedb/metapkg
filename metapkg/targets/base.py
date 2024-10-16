@@ -191,6 +191,9 @@ class Target:
     def get_global_cflags(self, build: Build) -> list[str]:
         return []
 
+    def get_global_env(self, build: Build) -> dict[str, str]:
+        return {}
+
     def get_global_cxxflags(self, build: Build) -> list[str]:
         return self.get_global_cflags(build)
 
@@ -1949,6 +1952,8 @@ class Build:
         if args is None:
             args = {}
         conf_args = dict(args)
+        for k, v in self.target.get_global_env(self).items():
+            self.sh_append_flags(conf_args, k, [v])
         if global_cflags:
             self.sh_append_flags(conf_args, "CFLAGS", global_cflags)
         if global_cxxflags:
