@@ -2105,12 +2105,12 @@ class Build:
         self,
         args: dict[str, str | pathlib.Path | None],
         key: str,
-        paths: list[str] | tuple[str, ...],
+        paths: list[str | pathlib.Path] | tuple[str | pathlib.Path, ...],
         *,
         sep: str = os.pathsep,
         ignore_env: bool = False,
     ) -> None:
-        new_paths = self.sh_quote_flags(paths)
+        new_paths = self.sh_quote_flags([str(p) for p in paths])
         self.sh_append_quoted_paths(
             args, key, new_paths, sep=sep, ignore_env=ignore_env
         )
@@ -2133,12 +2133,12 @@ class Build:
         self,
         args: dict[str, str | pathlib.Path | None],
         key: str,
-        paths: list[str] | tuple[str, ...],
+        paths: list[str | pathlib.Path] | tuple[str | pathlib.Path, ...],
         *,
         sep: str = os.pathsep,
         ignore_env: bool = False,
     ) -> None:
-        new_paths = self.sh_quote_flags(paths)
+        new_paths = self.sh_quote_flags([str(p) for p in paths])
         self.sh_prepend_quoted_paths(
             args, key, new_paths, sep=sep, ignore_env=ignore_env
         )
