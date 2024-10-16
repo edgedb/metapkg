@@ -349,6 +349,7 @@ class BasePackage(poetry_pkg.Package):
         paths: dict[str, str | pathlib.Path] = {}
         for aspect in (
             "systembin",
+            "sysconf",
             "bin",
             "data",
             "include",
