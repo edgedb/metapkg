@@ -1954,7 +1954,7 @@ class Build:
             args = {}
         conf_args = dict(args)
         for k, v in self.target.get_global_env(self).items():
-            self.sh_append_flags(conf_args, k, [v])
+            self.sh_replace_flags(conf_args, k, [v])
         if global_cflags:
             self.sh_append_flags(conf_args, "CFLAGS", global_cflags)
         if global_cxxflags:
@@ -2059,6 +2059,36 @@ class Build:
         sep: str = '" "',
     ) -> None:
         self.sh_combine_quoted_flags(args, key, flags, sep=sep, how="prepend")
+
+    def sh_replace_flags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        flags: list[str] | tuple[str, ...],
+        *,
+        sep: str = '" "',
+    ) -> None:
+        self.sh_replace_quoted_flags(
+            args,
+            key,
+            self.sh_quote_flags(flags),
+            sep=sep,
+        )
+
+    def sh_prepend_flags(
+        self,
+        args: dict[str, str | pathlib.Path | None],
+        key: str,
+        flags: list[str] | tuple[str, ...],
+        *,
+        sep: str = '" "',
+    ) -> None:
+        self.sh_prepend_quoted_flags(
+            args,
+            key,
+            self.sh_quote_flags(flags),
+            sep=sep,
+        )
 
     def sh_append_flags(
         self,
