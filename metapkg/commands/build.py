@@ -41,7 +41,10 @@ class Build(base.Command):
         { --pkg-revision= : Override package revision number (defaults to 1). }
         { --pkg-subdist= : Set package sub-distribution (e.g. nightly). }
         { --pkg-tags= : Comma-separated list of key=value pairs to include in
-                        pckage metadata }
+                        pckage metadata. }
+        { --pkg-compression= : Comma-separated list of compression encodings to
+                               apply if building for the specified target
+                               produces a tarball (defaults to gzip,zstd). }
         { --extra-optimizations : Enable extra optimization
                                   (increases build times). }
     """
@@ -66,6 +69,7 @@ class Build(base.Command):
         extra_opt = self.option("extra-optimizations")
         jobs = self.option("jobs")
         tags_string = self.option("pkg-tags")
+        compression_string = self.option("pkg-compression")
 
         # Older yum, fakeroot and possibly other tools
         # customarily attempt to iterate over _all_
@@ -85,6 +89,10 @@ class Build(base.Command):
             for pair in tags_string.split(","):
                 k, _, v = pair.strip().partition("=")
                 tags[k.strip()] = v.strip()
+
+        compression = []
+        if compression_string:
+            compression = compression_string.split(",")
 
         modname, _, clsname = pkgname.rpartition(":")
 
@@ -131,6 +139,10 @@ class Build(base.Command):
 
         os.chmod(workdir, 0o755)
 
+        extra = {}
+        if compression:
+            extra["compression"] = compression
+
         try:
             target.build(
                 targets.BuildRequest(
@@ -148,6 +160,7 @@ class Build(base.Command):
                     subdist=subdist,
                     extra_opt=extra_opt,
                     jobs=jobs or 0,
+                    **extra,
                 ),
             )
         finally:

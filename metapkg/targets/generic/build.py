@@ -17,9 +17,28 @@ from metapkg import targets
 from metapkg import tools
 
 
+_supported_compression_schemes = {
+    "gzip",
+    "zip",
+    "zstd",
+}
+
+
 class Build(targets.Build):
     _srcroot: pathlib.Path
     _pkgroot: pathlib.Path
+
+    def __init__(
+        self,
+        target: targets.Target,
+        request: targets.BuildRequest,
+    ) -> None:
+        super().__init__(target, request)
+        self._compression = frozenset(request.compression)
+        if unsup := self._compression - _supported_compression_schemes:
+            raise ValueError(
+                f"unsupported compression scheme(s): {', '.join(unsup)}"
+            )
 
     def prepare(self) -> None:
         super().prepare()
@@ -560,17 +579,18 @@ class Build(targets.Build):
 
             mime = magic.from_file(str(src_root / dest), mime=True)
 
-            tools.cmd(
-                "zstd",
-                "-19",
-                f"{an}{fn.suffix}",
-                cwd=archives_abs,
-            )
-
             installrefs = [
                 f"{an}{fn.suffix}",
                 f"{an}{fn.suffix}.zst",
             ]
+
+            installrefs_ct = {
+                f"{an}{fn.suffix}": {
+                    "type": mime,
+                    "encoding": "identity",
+                    "suffix": fn.suffix,
+                },
+            }
 
             installrefs_ct = {
                 f"{an}{fn.suffix}": {
@@ -585,56 +605,134 @@ class Build(targets.Build):
                 },
             }
 
-        else:
-            if layout is packages.PackageFileLayout.FLAT:
-                src = image_root
-            else:
-                prefix = self.get_bundle_install_prefix().relative_to("/")
-                src = image_root / prefix
-
-            tarball = f"{an}.tar"
-            tools.cmd(
-                self.sh_get_command("tar"),
-                "--transform",
-                f"flags=r;s|^\\./|{an}/|",
-                "-c",
-                "-f",
-                os.path.relpath(archives_abs / tarball, start=src),
-                ".",
-                cwd=src,
-            )
-
-            tools.cmd(
-                "zstd",
-                "-19",
-                tarball,
-                cwd=archives_abs,
-            )
-
-            tools.cmd(
-                "gzip",
-                "-9",
-                tarball,
-                cwd=archives_abs,
-            )
-
-            installrefs = [
-                f"{tarball}.gz",
-                f"{tarball}.zst",
-            ]
-
-            installrefs_ct = {
-                f"{tarball}.gz": {
-                    "type": "application/x-tar",
-                    "encoding": "gzip",
-                    "suffix": ".tar.gz",
-                },
-                f"{tarball}.zst": {
-                    "type": "application/x-tar",
+            if "zstd" in self._compression:
+                tools.cmd(
+                    "zstd",
+                    "--keep",
+                    "-19",
+                    f"{an}{fn.suffix}",
+                    cwd=archives_abs,
+                )
+                installrefs.append(f"{an}{fn.suffix}.zst")
+                installrefs_ct[f"{an}{fn.suffix}.zst"] = {
+                    "type": mime,
                     "encoding": "zstd",
-                    "suffix": ".tar.zst",
-                },
-            }
+                    "suffix": ".zst",
+                }
+
+            if "gzip" in self._compression:
+                tools.cmd(
+                    "gzip",
+                    "-k",
+                    "-9",
+                    f"{an}{fn.suffix}",
+                    cwd=archives_abs,
+                )
+                installrefs.append(f"{an}{fn.suffix}.gz")
+                installrefs_ct[f"{an}{fn.suffix}.gz"] = {
+                    "type": mime,
+                    "encoding": "gzip",
+                    "suffix": ".gz",
+                }
+
+            if "zip" in self._compression:
+                tools.cmd(
+                    "zip",
+                    "-9",
+                    f"{an}{fn.suffix}.zip",
+                    f"{an}{fn.suffix}",
+                    cwd=archives_abs,
+                )
+                installrefs.append(f"{an}{fn.suffix}.zip")
+                installrefs_ct[f"{an}{fn.suffix}.zip"] = {
+                    "type": "application/zip",
+                    "encoding": "identity",
+                    "suffix": ".zip",
+                }
+
+        else:
+            prefix = self.get_bundle_install_prefix().relative_to("/")
+
+            installrefs = []
+            installrefs_ct = {}
+
+            if self._compression & {"gzip", "zstd"}:
+                if layout is packages.PackageFileLayout.FLAT:
+                    src = image_root
+                else:
+                    src = image_root / prefix
+
+                tarball = f"{an}.tar"
+                tools.cmd(
+                    self.sh_get_command("tar"),
+                    "--transform",
+                    f"flags=r;s|^\\./|{an}/|",
+                    "-c",
+                    "-f",
+                    os.path.relpath(archives_abs / tarball, start=src),
+                    ".",
+                    cwd=src,
+                )
+
+                if "zstd" in self._compression:
+                    tools.cmd(
+                        "zstd",
+                        "--keep",
+                        "-19",
+                        tarball,
+                        cwd=archives_abs,
+                    )
+                    installrefs.append(f"{tarball}.zst")
+                    installrefs_ct[f"{tarball}.zst"] = {
+                        "type": "application/x-tar",
+                        "encoding": "zstd",
+                        "suffix": ".tar.zst",
+                    }
+
+                if "gzip" in self._compression:
+                    tools.cmd(
+                        "gzip",
+                        "-k",
+                        "-9",
+                        tarball,
+                        cwd=archives_abs,
+                    )
+
+                    installrefs.append(f"{tarball}.gz")
+                    installrefs_ct[f"{tarball}.gz"] = {
+                        "type": "application/x-tar",
+                        "encoding": "gzip",
+                        "suffix": ".tar.gz",
+                    }
+
+                (archives_abs / tarball).unlink(missing_ok=True)
+
+            if "zip" in self._compression:
+                if layout is packages.PackageFileLayout.FLAT:
+                    src = "."
+                else:
+                    os.symlink(
+                        prefix,
+                        image_root / an,
+                        target_is_directory=True,
+                    )
+                    src = an
+
+                tools.cmd(
+                    "zip",
+                    "-9",
+                    "-r",
+                    archives_abs / f"{an}.zip",
+                    src,
+                    cwd=image_root,
+                )
+
+                installrefs.append(f"{an}.zip")
+                installrefs_ct[f"{an}.zip"] = {
+                    "type": "application/zip",
+                    "encoding": "identity",
+                    "suffix": ".zip",
+                }
 
         with open(archives_abs / "build-metadata.json", "w") as vf:
             json.dump(

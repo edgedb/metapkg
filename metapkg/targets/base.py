@@ -85,6 +85,7 @@ class BuildRequest(NamedTuple):
     subdist: str | None = None
     extra_opt: bool = False
     jobs: int = 1
+    compression: list[str] = ["gzip", "zstd"]
 
 
 class Target:
