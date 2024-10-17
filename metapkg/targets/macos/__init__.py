@@ -276,7 +276,7 @@ class MacOSTarget(generic.GenericTarget):
         if self.machine_architecture_alias == "arm64":
             return "10.15"
         else:
-            return "10.10"
+            return "10.12"
 
     def get_package_repository(self) -> MacOSRepository:
         repo = MacOSRepository("macos")
