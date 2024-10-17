@@ -75,7 +75,7 @@ def get_specific_target(
 
         like_set = set(like.split(" "))
 
-        if like_set & {"rhel", "fedora", "centos"}:
+        if like_set & {"rhel", "fedora", "centos", "amzn"}:
             target = rpm.get_specific_target(distro_info, arch, libc)
         elif like_set & {"debian", "ubuntu"}:
             target = deb.get_specific_target(distro_info, arch, libc)

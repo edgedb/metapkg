@@ -274,7 +274,7 @@ class MacOSTarget(generic.GenericTarget):
     @property
     def min_supported_version(self) -> str:
         if self.machine_architecture_alias == "arm64":
-            return "10.15"
+            return "11.0"
         else:
             return "10.12"
 

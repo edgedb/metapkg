@@ -311,6 +311,27 @@ class FedoraTarget(RHEL7OrNewerTarget):
         )
 
 
+class AmazonLinuxTarget(RHEL7OrNewerTarget):
+    def __init__(
+        self, distro_info: distro.InfoDict, arch: str, libc: str
+    ) -> None:
+        super().__init__(distro_info, arch, libc)
+        self.distro["codename"] = (
+            f'amzn{self.distro["version_parts"]["major"]}'
+        )
+
+    def install_build_deps(self, build: rpmbuild.Build, spec: str) -> None:
+        tools.cmd(
+            "dnf",
+            "builddep",
+            "-y",
+            spec,
+            cwd=str(build.get_spec_root(relative_to="fsroot")),
+            stdout=build._io.output.stream,
+            stderr=subprocess.STDOUT,
+        )
+
+
 def get_specific_target(
     distro_info: distro.InfoDict, arch: str, libc: str
 ) -> BaseRPMTarget:
@@ -335,6 +356,16 @@ def get_specific_target(
             )
         else:
             return FedoraTarget(distro_info, arch, libc)
+
+    elif distro_info["id"] == "amzn":
+        ver = int(distro_info["version_parts"]["major"])
+        if ver < 2023:
+            raise NotImplementedError(
+                f'{distro_info["id"]} {distro_info["version"]} '
+                f"is not supported"
+            )
+        else:
+            return AmazonLinuxTarget(distro_info, arch, libc)
 
     else:
         raise NotImplementedError(f'{distro_info["id"]} is not supported')
