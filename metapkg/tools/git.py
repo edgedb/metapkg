@@ -4,6 +4,7 @@ from typing import (
     Any,
 )
 
+import os
 import pathlib
 import subprocess
 
@@ -79,7 +80,19 @@ def update_repo(
                 # Origin URL has changed, perform a full clone.
                 clean_checkout = True
 
-    GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
+    old_keyring_backend = os.environ.get("PYTHON_KEYRING_BACKEND")
+    try:
+        # Prevent Poetry from trying to read system keyrings and failing
+        # (specifically reading Windows keyring from an SSH session fails
+        # with "A specified logon session does not exist.")
+        os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
+        GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
+    finally:
+        if old_keyring_backend is None:
+            os.environ.pop("PYTHON_KEYRING_BACKEND")
+        else:
+            os.environ["PYTHON_KEYRING_BACKEND"] = old_keyring_backend
+
     repo_dir = repodir(repo_url)
     repo = Git(repo_dir)
     args: tuple[str | pathlib.Path, ...]
