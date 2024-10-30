@@ -1024,6 +1024,34 @@ class BundledPackage(BasePackage):
 
         return script
 
+    def get_build_command(
+        self,
+        build: targets.Build,
+        args: Args,
+        target: str = "",
+    ) -> str:
+        wd = "${_wd}"
+        env = build.sh_format_command(
+            "env",
+            self.get_build_env(build, wd=wd),
+            force_args_eq=True,
+            linebreaks=False,
+        )
+        cmd = build.sh_format_args(args, force_args_eq=True)
+
+        if target:
+            if target.startswith("!"):
+                target = target[1:]
+            else:
+                target = shlex.quote(target)
+
+        return textwrap.dedent(
+            f"""\
+            _wd=$(pwd -P)
+            {env} {cmd} {target}
+            """
+        )
+
     def get_build_install_script(self, build: targets.Build) -> str:
         script = super().get_build_install_script(build)
         service_scripts = self.get_service_scripts(build)
