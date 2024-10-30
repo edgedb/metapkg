@@ -1438,7 +1438,9 @@ class Build:
     def unpack_sources(self) -> None:
         if isinstance(self._root_pkg, mpkg_base.PrePackagedPackage):
             assert len(self._tarballs) == 1
-            _, (_, tarball) = next(iter(self._tarballs.values()))
+            tarballs = next(iter(self._tarballs.values()))
+            assert len(tarballs) == 1
+            _, tarball = next(iter(tarballs))
             self._io.write_line(f"<info>Extracting {tarball.name}...</>")
             mpkg_sources.unpack(
                 tarball,
