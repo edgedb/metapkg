@@ -1564,23 +1564,29 @@ class BundledCAutoconfPackage(BundledCPackage):
                     dep, relative_to="pkgbuild", wd=wd
                 )
 
-                build.sh_append_quoted_flags(
-                    conf_args,
-                    f"{var_prefix}_CFLAGS",
-                    [f"-I{rel_path}/include"],
-                )
-                build.sh_append_quoted_flags(
-                    conf_args,
-                    f"{var_prefix}_LIBS",
-                    dep_ldflags,
-                )
-                build.sh_append_quoted_flags(
-                    conf_args,
-                    f"{var_prefix}_CFLAGS",
-                    transitive_cflags,
-                )
+                if var_prefix:
+                    build.sh_append_quoted_flags(
+                        conf_args,
+                        f"{var_prefix}_CFLAGS",
+                        [f"-I{rel_path}/include"] + transitive_cflags,
+                    )
+                    build.sh_append_quoted_flags(
+                        conf_args,
+                        f"{var_prefix}_LIBS",
+                        dep_ldflags,
+                    )
+                else:
+                    build.sh_append_quoted_flags(
+                        conf_args,
+                        "CFLAGS",
+                        [f"-I{rel_path}/include"] + transitive_cflags,
+                    )
+                    build.sh_append_quoted_ldflags(
+                        conf_args,
+                        dep_ldflags,
+                    )
 
-        elif build.is_stdlib(dep):
+        elif build.is_stdlib(dep) and pkg_config_meta.provides_pkg_config:
             conf_args[f"{var_prefix}_CFLAGS"] = f"-D_{var_prefix}_IS_SYSLIB"
             std_ldflags = []
             for shlib in dep.get_shlibs(build):
