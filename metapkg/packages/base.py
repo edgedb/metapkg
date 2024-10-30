@@ -525,7 +525,9 @@ class BundledPackage(BasePackage):
                     dirname=clsdirname,
                     **cls.get_source_url_variables(version),
                 )
-                extras = af_sources.SourceExtraDecl(source.get("extras", {}))
+                extras = af_sources.SourceExtraDecl(
+                    source.get("extras", {})
+                )  # type: ignore
                 if extras:
                     if "version" not in extras:
                         extras["version"] = version
@@ -703,7 +705,7 @@ class BundledPackage(BasePackage):
         vcs_source = cls.get_vcs_source(io, version)
         is_git = vcs_source is not None
 
-        if is_git:
+        if vcs_source is not None:
             sources[0] = vcs_source
             repo = cls.resolve_vcs_repo(io, version)
             if version:

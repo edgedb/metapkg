@@ -709,21 +709,21 @@ class Build(targets.Build):
 
             if "zip" in self._compression:
                 if layout is packages.PackageFileLayout.FLAT:
-                    src = "."
+                    srcdir = "."
                 else:
                     os.symlink(
                         prefix,
                         image_root / an,
                         target_is_directory=True,
                     )
-                    src = an
+                    srcdir = an
 
                 tools.cmd(
                     "zip",
                     "-9",
                     "-r",
                     archives_abs / f"{an}.zip",
-                    src,
+                    srcdir,
                     cwd=image_root,
                 )
 
