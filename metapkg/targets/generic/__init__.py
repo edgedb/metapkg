@@ -96,11 +96,11 @@ class GenericTarget(targets.FHSTarget):
         elif aspect == "legal":
             return prefix / "licenses"
         elif aspect == "doc":
-            return prefix / "doc" / root_subdir
+            return prefix / "share" / "doc" / root_subdir
         elif aspect == "info":
-            return prefix / "info"
+            return prefix / "share" / "info"
         elif aspect == "man":
-            return prefix / "man"
+            return prefix / "share" / "man"
         elif aspect == "bin":
             return prefix / "bin"
         elif aspect == "systembin":
