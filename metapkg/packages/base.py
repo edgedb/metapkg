@@ -165,8 +165,12 @@ class BasePackage(poetry_pkg.Package):
                 f"""\
                 mkdir -p "{lic_dest}"
                 for _lic_src in "{sdir}"/{licenses_pattern}; do
-                    if [ -e "$_lic_src" ]; then
+                    if [ -f "$_lic_src" ]; then
                         cp "$_lic_src" "{prefix}-$(basename "$_lic_src")"
+                    elif [ -d "$_lic_src" ]; then
+                        for _lic_file in "$_lic_src"/*; do
+                            cp "$_lic_file" "{prefix}-$(basename "$_lic_src")-$(basename "$_lic_file")"
+                        done
                     fi
                 done
                 """
