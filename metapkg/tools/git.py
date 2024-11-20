@@ -8,6 +8,7 @@ import os
 import pathlib
 import subprocess
 
+import urllib3
 from dulwich import repo as dulwich_repo
 
 from poetry.core.vcs import git as core_git
@@ -81,17 +82,25 @@ def update_repo(
                 clean_checkout = True
 
     old_keyring_backend = os.environ.get("PYTHON_KEYRING_BACKEND")
-    try:
-        # Prevent Poetry from trying to read system keyrings and failing
-        # (specifically reading Windows keyring from an SSH session fails
-        # with "A specified logon session does not exist.")
-        os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
-        GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
-    finally:
-        if old_keyring_backend is None:
-            os.environ.pop("PYTHON_KEYRING_BACKEND")
-        else:
-            os.environ["PYTHON_KEYRING_BACKEND"] = old_keyring_backend
+    n = 10
+    for i in range(n):
+        try:
+            # Prevent Poetry from trying to read system keyrings and failing
+            # (specifically reading Windows keyring from an SSH session fails
+            # with "A specified logon session does not exist.")
+            os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
+            GitBackend.clone(repo_url, revision=ref, clean=clean_checkout)
+        except urllib3.exceptions.ProtocolError as e:
+            if i == n-1:
+                raise e
+            print(f"retrying {i}th protocol error: {e}")
+            continue
+        finally:
+            if old_keyring_backend is None:
+                os.environ.pop("PYTHON_KEYRING_BACKEND")
+            else:
+                os.environ["PYTHON_KEYRING_BACKEND"] = old_keyring_backend
+        break
 
     repo_dir = repodir(repo_url)
     repo = Git(repo_dir)
