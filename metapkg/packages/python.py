@@ -399,6 +399,7 @@ class BasePythonPackage(base.BasePackage):
             cflags = build.sh_get_bundled_pkgs_cflags(
                 build_deps,
                 relative_to="pkgsource",
+                relative_to_package=self,
             )
 
             if cflags:
@@ -407,13 +408,14 @@ class BasePythonPackage(base.BasePackage):
             ldflags = build.sh_get_bundled_pkgs_ldflags(
                 build_deps,
                 relative_to="pkgsource",
+                relative_to_package=self,
             )
 
             if ldflags:
                 build.sh_append_quoted_ldflags(env, ldflags)
 
             bin_paths = build.sh_get_bundled_pkgs_bin_paths(
-                build_deps, relative_to="pkgsource"
+                build_deps, relative_to="pkgsource", relative_to_package=self
             )
 
             if bin_paths:

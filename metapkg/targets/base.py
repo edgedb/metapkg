@@ -982,6 +982,7 @@ class Build:
         package: mpkg_base.BasePackage,
         *,
         relative_to: Location = "sourceroot",
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> pathlib.Path:
         """Return the path at which *package* is installed in the buildroot.
 
@@ -1770,12 +1771,17 @@ class Build:
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> str | None:
         if wd is None:
             wd = "$(pwd -P)"
         assert self.is_bundled(pkg)
 
-        root_path = self.get_build_install_dir(pkg, relative_to=relative_to)
+        root_path = self.get_build_install_dir(
+            pkg,
+            relative_to=relative_to,
+            relative_to_package=relative_to_package,
+        )
         shlib_path = pkg.get_install_path(self, "lib")
         if shlib_path is not None:
             lib_path = root_path / shlib_path.relative_to("/")
@@ -1788,8 +1794,11 @@ class Build:
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> str:
-        path = self.sh_get_bundled_pkg_lib_path(pkg, relative_to, wd)
+        path = self.sh_get_bundled_pkg_lib_path(
+            pkg, relative_to, wd, relative_to_package
+        )
         if path is None:
             raise AssertionError(f"{pkg.name} does not define a DSO lib path")
         return path
@@ -1799,6 +1808,7 @@ class Build:
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> list[str]:
         flags = []
 
@@ -1808,6 +1818,7 @@ class Build:
             pkg,
             relative_to=relative_to,
             wd=wd,
+            relative_to_package=relative_to_package,
         )
         if lib_path is not None:
             # link-time
@@ -1831,6 +1842,7 @@ class Build:
         deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> list[str]:
         flags = []
 
@@ -1838,7 +1850,10 @@ class Build:
             if self.is_bundled(pkg):
                 flags.extend(
                     self.sh_get_bundled_pkg_ldflags(
-                        pkg, relative_to=relative_to, wd=wd
+                        pkg,
+                        relative_to=relative_to,
+                        wd=wd,
+                        relative_to_package=relative_to_package,
                     )
                 )
 
@@ -1849,6 +1864,7 @@ class Build:
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> str | None:
         assert self.is_bundled(pkg)
 
@@ -1858,7 +1874,9 @@ class Build:
         rel_inc_path = pkg.get_install_path(self, "include")
         if rel_inc_path is not None:
             root_path = self.get_build_install_dir(
-                pkg, relative_to=relative_to
+                pkg,
+                relative_to=relative_to,
+                relative_to_package=relative_to_package,
             )
             inc_path = root_path / rel_inc_path.relative_to("/")
             return f"{wd}/{shlex.quote(str(inc_path))}"
@@ -1870,8 +1888,11 @@ class Build:
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> str:
-        path = self.sh_get_bundled_pkg_include_path(pkg, relative_to, wd)
+        path = self.sh_get_bundled_pkg_include_path(
+            pkg, relative_to, wd, relative_to_package
+        )
         if path is None:
             raise AssertionError(
                 f"{pkg.name} does not define a header include path"
@@ -1883,8 +1904,11 @@ class Build:
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> list[str]:
-        path = self.sh_get_bundled_pkg_include_path(pkg, relative_to, wd=wd)
+        path = self.sh_get_bundled_pkg_include_path(
+            pkg, relative_to, wd=wd, relative_to_package=relative_to_package
+        )
         if path is not None:
             return [f"-I{path}"]
         else:
@@ -1894,6 +1918,7 @@ class Build:
         self,
         deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> list[str]:
         flags = []
 
@@ -1901,7 +1926,9 @@ class Build:
             if self.is_bundled(pkg):
                 flags.extend(
                     self.sh_get_bundled_pkg_cflags(
-                        pkg, relative_to=relative_to
+                        pkg,
+                        relative_to=relative_to,
+                        relative_to_package=relative_to_package,
                     )
                 )
 
@@ -1912,6 +1939,7 @@ class Build:
         pkg: mpkg_base.BasePackage,
         relative_to: Location = "pkgbuild",
         wd: str | None = None,
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> str | None:
         assert self.is_bundled(pkg)
 
@@ -1921,7 +1949,9 @@ class Build:
         rel_bin_path = pkg.get_install_path(self, "bin")
         if rel_bin_path:
             root_path = self.get_build_install_dir(
-                pkg, relative_to=relative_to
+                pkg,
+                relative_to=relative_to,
+                relative_to_package=relative_to_package,
             )
             bin_path = root_path / rel_bin_path.relative_to("/")
             return f"{wd}/{shlex.quote(str(bin_path))}"
@@ -1932,13 +1962,16 @@ class Build:
         self,
         deps: Iterable[mpkg_base.BasePackage],
         relative_to: Location = "pkgbuild",
+        relative_to_package: mpkg_base.BasePackage | None = None,
     ) -> list[str]:
         paths = []
 
         for pkg in deps:
             if self.is_bundled(pkg):
                 path = self.sh_get_bundled_pkg_bin_path(
-                    pkg, relative_to=relative_to
+                    pkg,
+                    relative_to=relative_to,
+                    relative_to_package=relative_to_package,
                 )
                 if path is not None:
                     paths.append(path)
