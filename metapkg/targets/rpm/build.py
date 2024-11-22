@@ -468,7 +468,7 @@ class Build(targets.Build):
 
     def _get_package_unpack_script(self, pkg: mpkg.BasePackage) -> str:
         tarball_root = self.get_tarball_root(relative_to="pkgbuild")
-        tarballs = self._tarballs[pkg]
+        tarballs = self._tarballs.get(pkg, [])
         script = []
 
         for src, tarball_path in tarballs:
