@@ -25,3 +25,4 @@ docs/_build
 /.vscode
 /.mypy_cache
 .dmypy.json
+/.venv
