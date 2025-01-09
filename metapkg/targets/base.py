@@ -1264,7 +1264,7 @@ class Build:
             "man",
             "userconf",
         ):
-            path = self.get_install_path(package, aspect)  # type: ignore
+            path = self.get_install_path(package, aspect)
             variables[f"{aspect}dir"] = str(path)
 
         variables["prefix"] = str(self.get_bundle_install_subdir())

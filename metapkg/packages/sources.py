@@ -592,7 +592,7 @@ def unpack_tar(
         else:
             raise ValueError(f"{archive.name} is not a supported archive")
 
-        with tarfile.open(archive, f"r:{compression}") as tf:
+        with tarfile.open(archive, mode=f"r:{compression}") as tf:
             for member in tf.getmembers():
                 if strip_components:
                     member_parts = pathlib.Path(member.name).parts

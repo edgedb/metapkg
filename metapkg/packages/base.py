@@ -5,6 +5,7 @@ from typing import (
     ClassVar,
     Literal,
     Mapping,
+    Sequence,
     Type,
     TypeVar,
     Union,
@@ -363,9 +364,9 @@ class BasePackage(poetry_pkg.Package):
             "man",
             "info",
         ):
-            path = build.get_install_path(self, aspect)  # type: ignore
+            path = build.get_install_path(self, aspect)
             paths[f"{aspect}dir"] = path.relative_to("/")
-            path = build.get_bundle_install_path(aspect)  # type: ignore
+            path = build.get_bundle_install_path(aspect)
             paths[f"bundle{aspect}dir"] = path.relative_to("/")
 
         paths["name"] = self.name
@@ -437,6 +438,14 @@ class PkgConfigMeta:
 
 BundledPackage_T = TypeVar("BundledPackage_T", bound="BundledPackage")
 
+RequirementsSpec = Union[
+    list[str | poetry_dep.Dependency],
+    Mapping[
+        str | poetry_constr.VersionConstraint,
+        Sequence[str | poetry_dep.Dependency],
+    ],
+]
+
 
 class BundledPackage(BasePackage):
     ident: ClassVar[str]
@@ -450,21 +459,8 @@ class BundledPackage(BasePackage):
 
     source_version: str
 
-    artifact_requirements: Union[
-        list[str | poetry_dep.Dependency],
-        dict[
-            str | poetry_constr.VersionConstraint,
-            list[str | poetry_dep.Dependency],
-        ],
-    ] = []
-    artifact_build_requirements: Union[
-        list[str | poetry_dep.Dependency],
-        dict[
-            str | poetry_constr.VersionConstraint,
-            list[str | poetry_dep.Dependency],
-        ],
-    ] = []
-
+    artifact_requirements: RequirementsSpec = []
+    artifact_build_requirements: RequirementsSpec = []
     build_requires: list[poetry_dep.Dependency]
 
     options: dict[str, Any]
@@ -889,35 +885,28 @@ class BundledPackage(BasePackage):
 
     def _get_requirements(
         self,
-        spec: (
-            dict[
-                str | poetry_constr.VersionConstraint,
-                list[str | poetry_dep.Dependency],
-            ]
-            | list[str | poetry_dep.Dependency]
-        ),
+        spec: RequirementsSpec,
         prop: str,
     ) -> list[poetry_dep.Dependency]:
         reqs = []
 
         req_spec: list[str | poetry_dep.Dependency] = []
 
-        if isinstance(spec, dict):
+        if isinstance(spec, list):
+            req_spec = list(spec)
+        else:
             for ver, ver_reqs in spec.items():
                 if isinstance(ver, str):
                     ver = poetry_constr.parse_constraint(ver)
                 if ver.allows(self.version):
-                    req_spec = ver_reqs
-                    break
-            else:
-                if spec:
-                    raise RuntimeError(
-                        f"{prop} for {self.name!r} are not "
-                        f"empty, but don't match the requested version "
-                        f"{self.version}"
-                    )
-        else:
-            req_spec = spec
+                    req_spec.extend(ver_reqs)
+
+            if not req_spec and spec:
+                raise RuntimeError(
+                    f"{prop} for {self.name!r} are not "
+                    f"empty, but don't match the requested version "
+                    f"{self.version}"
+                )
 
         for item in req_spec:
             if isinstance(item, str):
@@ -1216,6 +1205,22 @@ class BundledPackage(BasePackage):
 
     def set_metadata_tags(self, tags: Mapping[str, str]) -> None:
         self.metadata_tags = dict(tags)
+
+
+def merge_requirements(
+    *specs: RequirementsSpec,
+) -> RequirementsSpec:
+    result: collections.defaultdict[
+        str | poetry_constr.VersionConstraint,
+        list[str | poetry_dep.Dependency],
+    ] = collections.defaultdict(list)
+    for spec in specs:
+        if isinstance(spec, list):
+            result["*"].extend(spec)
+        else:
+            for k, v in spec.items():
+                result[k].extend(v)
+    return dict(result)
 
 
 @functools.cache
