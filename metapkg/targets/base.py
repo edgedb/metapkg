@@ -783,6 +783,10 @@ class Build:
     def build_parallelism(self) -> int:
         return self._jobs
 
+    @property
+    def is_debug_build(self) -> bool:
+        return self._build_debug
+
     def get_source_abspath(self) -> pathlib.Path:
         raise NotImplementedError
 
