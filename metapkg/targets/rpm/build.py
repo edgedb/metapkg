@@ -181,6 +181,7 @@ class Build(targets.Build):
     def _write_spec(self) -> None:
         sysreqs = self.get_extra_system_requirements()
         base_name = self._root_pkg.name
+        name = self._root_pkg.name_slot
 
         if self._bin_shims:
             common_package = textwrap.dedent(
@@ -239,6 +240,37 @@ class Build(targets.Build):
                     f'Requires: {d_name}{" " if d_ver else ""}{d_ver or ""}'
                     for d_name, d_ver in meta_pkg.dependencies.items()
                 ),
+            )
+            meta_pkg_specs.append(meta_pkg_spec)
+
+        transitions = self._root_pkg.get_transition_packages(self)
+        for transition in transitions:
+            description = (
+                f"transitional package, can be safely removed, use "
+                f"{name} instead"
+            )
+            meta_pkg_spec = textwrap.dedent(
+                """\
+                %package -n {name}
+                Summary: {description}
+                Group: {group}
+                License: {license}
+                URL: {url}
+                {dependencies}
+
+                %description -n {name}
+                {description}
+
+                %files -n {name}
+            """
+            ).format(
+                name=transition,
+                license=self._root_pkg.license,
+                url=self._root_pkg.url,
+                group=self._root_pkg.group,
+                version=self._format_version(),
+                description=description,
+                dependencies=f"Requires: {name}{root_version}",
             )
             meta_pkg_specs.append(meta_pkg_spec)
 

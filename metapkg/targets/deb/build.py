@@ -246,6 +246,31 @@ class Build(targets.Build):
             meta_pkg_specs.append(meta_pkg_spec)
 
         conflicts = self._root_pkg.get_conflict_packages(self, root_version)
+        replaces = list(conflicts)
+        transitions = self._root_pkg.get_transition_packages(self)
+        for transition in transitions:
+            description = (
+                f"transitional package, can be safely removed, use "
+                f"{name} instead"
+            )
+            meta_pkg_spec = textwrap.dedent(
+                """\
+                Package: {name}
+                Architecture: all
+                Priority: optional
+                Description:
+                 {description}
+                Depends:
+                 {dependencies}
+            """
+            ).format(
+                name=transition,
+                description=description,
+                dependencies=f"{name} (= {root_version}), ${{misc:Depends}}",
+            )
+            meta_pkg_specs.append(meta_pkg_spec)
+            replaces.append(f"{transition} (<< {root_version})")
+
         if conflicts:
             conflicts_list = ",\n ".join(conflicts)
             conflicts_spec = (
@@ -253,8 +278,6 @@ class Build(targets.Build):
                 + textwrap.dedent(
                     """\
                 Conflicts:
-                 {conflicts_list}
-                Replaces:
                  {conflicts_list}
             """
                 )
@@ -265,6 +288,24 @@ class Build(targets.Build):
             )
         else:
             conflicts_spec = ""
+
+        if replaces:
+            replaces_list = ",\n ".join(replaces)
+            replaces_spec = (
+                "\n"
+                + textwrap.dedent(
+                    """\
+                Replaces:
+                 {replaces_list}
+            """
+                )
+                .format(
+                    replaces_list=replaces_list,
+                )
+                .rstrip()
+            )
+        else:
+            replaces_spec = ""
 
         provides = self._root_pkg.get_provided_packages(self, root_version)
         if provides:
@@ -314,7 +355,7 @@ class Build(targets.Build):
             Depends:
              {deps},
              ${{misc:Depends}},
-             ${{shlibs:Depends}}{conflicts_spec}{provides_spec}
+             ${{shlibs:Depends}}{conflicts_spec}{replaces_spec}{provides_spec}
             Description:
              {description}
 
@@ -327,6 +368,7 @@ class Build(targets.Build):
             deps=deps,
             build_deps=build_deps,
             conflicts_spec=conflicts_spec,
+            replaces_spec=replaces_spec,
             provides_spec=provides_spec,
             section=section,
             description=self._root_pkg.description,

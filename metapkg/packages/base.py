@@ -75,7 +75,12 @@ class PackageFileLayout(enum.IntEnum):
 
 @dataclasses.dataclass
 class MetaPackage:
+    base_name: str
+    """Package name not including the slot"""
+
     name: str
+    """Package name with slot (if any)"""
+
     description: str
     dependencies: dict[str, str]
 
@@ -1103,6 +1108,12 @@ class BundledPackage(BasePackage):
         self,
         build: targets.Build,
         root_version: str,
+    ) -> list[str]:
+        return []
+
+    def get_transition_packages(
+        self,
+        build: targets.Build,
     ) -> list[str]:
         return []
 

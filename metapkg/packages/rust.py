@@ -67,10 +67,24 @@ class BundledRustPackage(base.BundledPackage):
     def get_build_script(self, build: targets.Build) -> str:
         return ""
 
+    def get_prepare_script(self, build: targets.Build) -> str:
+        script = super().get_prepare_script(build)
+        sed = build.sh_get_command("sed")
+        src = build.get_source_dir(self, relative_to="pkgbuild")
+        semver = base.pep440_to_semver(self.version)
+        script += textwrap.dedent(
+            f"""\
+            {sed} -i -e '/\\[package\\]/,/\\[.*\\]/{{
+                    s/^version\\s*=.*/version = "{semver}"/;
+                }}' \\
+                "{src}/Cargo.toml"
+            """
+        )
+        return script
+
     def get_build_install_script(self, build: targets.Build) -> str:
         script = super().get_build_install_script(build)
         cargo = build.sh_get_command("cargo")
-        sed = build.sh_get_command("sed")
         installdest = build.get_temp_dir(self, relative_to="pkgbuild")
         src = build.get_source_dir(self, relative_to="pkgbuild")
         bindir = build.get_bundle_install_path("systembin").relative_to("/")
@@ -80,13 +94,8 @@ class BundledRustPackage(base.BundledPackage):
         env = build.sh_append_global_flags({})
         env["RUST_BACKTRACE"] = "1"
         env_str = build.sh_format_command("env", env, force_args_eq=True)
-        semver = base.pep440_to_semver(self.version)
         script += textwrap.dedent(
             f"""\
-            {sed} -i -e '/\\[package\\]/,/\\[.*\\]/{{
-                    s/^version\\s*=.*/version = "{semver}"/;
-                }}' \\
-                "{src}/Cargo.toml"
             {env_str} \\
                 {cargo} install --target {build.target.triple} \\
                     --verbose --verbose \\
