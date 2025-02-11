@@ -256,7 +256,7 @@ class Build(targets.Build):
             meta_pkg_spec = textwrap.dedent(
                 """\
                 Package: {name}
-                Architecture: all
+                Architecture: any
                 Priority: optional
                 Description:
                  {description}
