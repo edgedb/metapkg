@@ -42,8 +42,7 @@ class BundledRustPackage(base.BundledPackage):
         vcs_version: str,
         is_release: bool,
     ) -> str:
-        out = tools.cmd("cargo", "pkgid", cwd=repo.work_tree).strip()
-        _, _, version = out.rpartition("#")
+        version = cls.version_from_cargo(repo.work_tree)
 
         if not is_release:
             commits = repo.run(
