@@ -270,7 +270,7 @@ class Build(targets.Build):
                 group=self._root_pkg.group,
                 version=self._format_version(),
                 description=description,
-                dependencies=f"Requires: {name}{root_version}",
+                dependencies=f"Requires: {name} = {root_version}",
             )
             meta_pkg_specs.append(meta_pkg_spec)
 
