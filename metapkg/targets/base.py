@@ -1277,6 +1277,8 @@ class Build:
             self, package
         )
         variables["name"] = package.name
+        variables["name_for_user_and_dir"] = package.name_for_user_and_dir
+        variables["pre_start_script"] = package.get_pre_start_script(self)
         variables["description"] = package.description
         variables["documentation"] = package.url
 

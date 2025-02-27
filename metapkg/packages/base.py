@@ -493,6 +493,10 @@ class BundledPackage(BasePackage):
     def name_slot(self) -> str:
         return f"{self.name}{self.slot_suffix}"
 
+    @property
+    def name_for_user_and_dir(self) -> str:
+        return self.name
+
     def version_includes_revision(self) -> bool:
         return True
 
@@ -1082,6 +1086,9 @@ class BundledPackage(BasePackage):
             return script + "\n" + "\n".join(commands)
 
         return script
+
+    def get_pre_start_script(self, build: targets.Build) -> str:
+        return ""
 
     def get_resources(self, build: targets.Build) -> dict[str, bytes]:
         return self.read_support_files(build, "resources/*", binary=True)
